@@ -1,0 +1,181 @@
+import { create } from 'zustand'
+import type { Camera, Object3D, Scene as ThreeScene, WebGLRenderer } from 'three'
+import type { Anchor, CatalogItem, PlacedItem, ProjectData } from '../types'
+import { PROJECT_SCHEMA_VERSION } from '../types'
+
+export interface CaptureRefs {
+  gl: WebGLRenderer
+  scene: ThreeScene
+  camera: Camera
+}
+
+export type GizmoMode = 'translate' | 'rotate'
+
+const HISTORY_LIMIT = 50
+
+interface ConfiguratorState {
+  project: ProjectData | null
+  selectedId: string | null
+  /**
+   * Catalog of known products, keyed by `id`. Populated from the
+   * `catalog` prop on Configurator3D and from imperative `addItem` calls.
+   * Used by Item/Inspector to look up glbUrl, label, size by catalogId.
+   */
+  catalog: Record<string, CatalogItem>
+  /** Current gizmo mode for the selected item (TransformControls). */
+  gizmoMode: GizmoMode
+  /** Anchors extracted at runtime from the enclosure GLB (takes priority over project.enclosure.anchors). */
+  runtimeAnchors: Anchor[]
+  /** Id of the item currently being mouse-dragged. Suspends OrbitControls. */
+  draggingItemId: string | null
+  /** Refs into the live Three.js renderer (set by SceneCaptureBridge inside Canvas). */
+  captureRefs: CaptureRefs | null
+  /** Undo/redo stacks of ProjectData snapshots. */
+  past: ProjectData[]
+  future: ProjectData[]
+
+  setProject: (p: ProjectData) => void
+  setCatalog: (items: CatalogItem[]) => void
+  addCatalogItem: (item: CatalogItem) => void
+  setGizmoMode: (m: GizmoMode) => void
+  setRuntimeAnchors: (anchors: Anchor[]) => void
+  setDraggingItemId: (id: string | null) => void
+  setCaptureRefs: (refs: CaptureRefs | null) => void
+  /** Walk the scene and return all Object3Ds tagged with userData.exportable === true. */
+  collectExportRoots: () => Object3D[]
+  /** Returns the active anchor set (runtime > project.enclosure.anchors > []). */
+  getEffectiveAnchors: () => Anchor[]
+  updateItem: (id: string, patch: Partial<PlacedItem>) => void
+  addItem: (item: PlacedItem) => void
+  removeItem: (id: string) => void
+  select: (id: string | null) => void
+  exportProject: () => ProjectData | null
+
+  // Undo / redo
+  undo: () => void
+  redo: () => void
+  canUndo: () => boolean
+  canRedo: () => boolean
+}
+
+export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
+  // Snapshot current project into past, clear future. Call BEFORE mutating.
+  const pushHistory = () => {
+    const cur = get().project
+    if (!cur) return
+    set((s) => ({
+      past: [...s.past, cur].slice(-HISTORY_LIMIT),
+      future: [],
+    }))
+  }
+
+  return {
+    project: null,
+    selectedId: null,
+    catalog: {},
+    gizmoMode: 'translate',
+    runtimeAnchors: [],
+    draggingItemId: null,
+    captureRefs: null,
+    past: [],
+    future: [],
+
+    setProject: (p) =>
+      set({
+        project: { ...p, version: p.version ?? PROJECT_SCHEMA_VERSION },
+        past: [],
+        future: [],
+        runtimeAnchors: [],
+      }),
+
+    setCatalog: (items) =>
+      set({ catalog: Object.fromEntries(items.map((it) => [it.id, it])) }),
+
+    addCatalogItem: (item) =>
+      set((s) => (s.catalog[item.id] ? s : { catalog: { ...s.catalog, [item.id]: item } })),
+
+    setGizmoMode: (m) => set({ gizmoMode: m }),
+
+    setRuntimeAnchors: (anchors) => set({ runtimeAnchors: anchors }),
+
+    setDraggingItemId: (id) => set({ draggingItemId: id }),
+
+    setCaptureRefs: (refs) => set({ captureRefs: refs }),
+
+    collectExportRoots: () => {
+      const refs = get().captureRefs
+      if (!refs) return []
+      const roots: Object3D[] = []
+      refs.scene.traverse((obj) => {
+        if (obj.userData?.exportable === true) roots.push(obj)
+      })
+      return roots
+    },
+
+    getEffectiveAnchors: () => {
+      const s = get()
+      if (s.runtimeAnchors.length > 0) return s.runtimeAnchors
+      return s.project?.enclosure.anchors ?? []
+    },
+
+    updateItem: (id, patch) => {
+      const s = get()
+      if (!s.project) return
+      pushHistory()
+      set({
+        project: {
+          ...s.project,
+          items: s.project.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
+        },
+      })
+    },
+
+    addItem: (item) => {
+      const s = get()
+      if (!s.project) return
+      pushHistory()
+      set({ project: { ...s.project, items: [...s.project.items, item] } })
+    },
+
+    removeItem: (id) => {
+      const s = get()
+      if (!s.project) return
+      pushHistory()
+      set({
+        project: { ...s.project, items: s.project.items.filter((it) => it.id !== id) },
+        selectedId: s.selectedId === id ? null : s.selectedId,
+      })
+    },
+
+    select: (id) => set({ selectedId: id }),
+
+    exportProject: () => get().project,
+
+    undo: () => {
+      const { past, future, project } = get()
+      if (past.length === 0 || !project) return
+      const prev = past[past.length - 1]
+      set({
+        project: prev,
+        past: past.slice(0, -1),
+        future: [project, ...future].slice(0, HISTORY_LIMIT),
+        selectedId: null,
+      })
+    },
+
+    redo: () => {
+      const { past, future, project } = get()
+      if (future.length === 0 || !project) return
+      const next = future[0]
+      set({
+        project: next,
+        past: [...past, project].slice(-HISTORY_LIMIT),
+        future: future.slice(1),
+        selectedId: null,
+      })
+    },
+
+    canUndo: () => get().past.length > 0,
+    canRedo: () => get().future.length > 0,
+  }
+})

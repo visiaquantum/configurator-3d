@@ -1,0 +1,72 @@
+{
+  "name": "@visiaquantum/configurator-3d",
+  "version": "0.1.0",
+  "description": "React 3D configurator: place catalog GLBs inside an enclosure GLB, snap on vertices, export PDF/PNG/GLB.",
+  "type": "module",
+  "main": "dist/configurator-3d.umd.cjs",
+  "module": "dist/configurator-3d.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/configurator-3d.js",
+      "require": "./dist/configurator-3d.umd.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com",
+    "access": "restricted"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/visiaquantum/configurator-3d.git"
+  },
+  "license": "UNLICENSED",
+  "scripts": {
+    "dev": "vite",
+    "build:lib": "tsc -b && vite build --mode lib",
+    "build:demo": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build:lib"
+  },
+  "peerDependencies": {
+    "@react-three/drei": ">=10",
+    "@react-three/fiber": ">=9",
+    "jspdf": ">=3",
+    "nanoid": ">=5",
+    "react": ">=18",
+    "react-dom": ">=18",
+    "three": ">=0.180",
+    "zod": ">=4",
+    "zustand": ">=5"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@types/node": "^24.12.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-react": "^6.0.1",
+    "eslint": "^10.3.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "globals": "^17.6.0",
+    "jspdf": "^4.2.1",
+    "nanoid": "^5.1.11",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "three": "^0.184.0",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vite": "^8.0.12",
+    "vite-plugin-dts": "^5.0.0",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.13"
+  }
+}
