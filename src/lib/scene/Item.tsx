@@ -45,6 +45,7 @@ interface DragCtx {
   mode: 'translate' | 'rotate'
   startClientX: number
   startClientY: number
+  startRotX: number
   startRotY: number
   /** Horizontal plane at the group's initial Y; raycast target for translate. */
   plane: Plane
@@ -200,6 +201,7 @@ function ItemInner({
       mode: e.shiftKey ? 'rotate' : 'translate',
       startClientX: e.clientX,
       startClientY: e.clientY,
+      startRotX: group.rotation.x,
       startRotY: group.rotation.y,
       plane,
       grabOffset,
@@ -224,6 +226,7 @@ function ItemInner({
     }
     if (d.mode === 'rotate') {
       group.rotation.y = d.startRotY + dx * ROTATION_SENSITIVITY
+      group.rotation.x = d.startRotX + dy * ROTATION_SENSITIVITY
       return
     }
     if (!e.ray.intersectPlane(d.plane, _hit)) return
@@ -303,7 +306,7 @@ function ItemInner({
 
     if (d.mode === 'rotate') {
       updateItem(item.id, {
-        rotation: [item.rotation[0], group.rotation.y, item.rotation[2]],
+        rotation: [group.rotation.x, group.rotation.y, item.rotation[2]],
       })
       return
     }

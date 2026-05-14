@@ -358,6 +358,8 @@ function ViewControls() {
   const walkMode = useConfiguratorStore((s) => s.walkMode)
   const setWalkMode = useConfiguratorStore((s) => s.setWalkMode)
   const bbox = useConfiguratorStore((s) => s.enclosureBBox)
+  const doorsOpen = useConfiguratorStore((s) => s.doorsOpen)
+  const setDoorsOpen = useConfiguratorStore((s) => s.setDoorsOpen)
 
   return (
     <div style={viewControlsStyle}>
@@ -375,6 +377,14 @@ function ViewControls() {
           title="POV camminata dentro il furgone (clicca canvas per attivare mouse-look, Esc per uscire)"
         >
           Walk
+        </button>
+        <button
+          type="button"
+          style={{ ...presetBtn, background: doorsOpen ? '#3aa0ff' : presetBtn.background, color: doorsOpen ? '#fff' : presetBtn.color }}
+          onClick={() => setDoorsOpen(!doorsOpen)}
+          title="Apri/chiudi le porte del furgone"
+        >
+          {doorsOpen ? 'Chiudi' : 'Apri'}
         </button>
       </div>
       <div style={viewRowStyle}>
@@ -425,6 +435,7 @@ function WalkHint() {
 
 function EnclosureInfo() {
   const bbox = useConfiguratorStore((s) => s.enclosureBBox)
+  const interior = useConfiguratorStore((s) => s.interiorBBox)
   const itemCount = useConfiguratorStore((s) => s.project?.items.length ?? 0)
   if (!bbox) return null
   // X = larghezza, Y = altezza, Z = lunghezza (van faces -Z by convention).
@@ -432,6 +443,10 @@ function EnclosureInfo() {
   const hM = bbox.max[1] - bbox.min[1]
   const lM = bbox.max[2] - bbox.min[2]
   const volumeM3 = wM * hM * lM
+  const iwM = interior ? interior.max[0] - interior.min[0] : null
+  const ihM = interior ? interior.max[1] - interior.min[1] : null
+  const ilM = interior ? interior.max[2] - interior.min[2] : null
+  const iVolM3 = interior && iwM != null && ihM != null && ilM != null ? iwM * ihM * ilM : null
   // Dual-unit formatter: ≥1 m → metri con 2 decimali; altrimenti cm.
   const fmt = (m: number) =>
     m >= 1 ? `${m.toFixed(2)} m` : `${(m * 100).toFixed(0)} cm`
@@ -461,6 +476,24 @@ function EnclosureInfo() {
         <span style={infoLabel}>Componenti</span>
         <span style={infoValue}>{itemCount}</span>
       </div>
+      {interior && iwM != null && ihM != null && ilM != null && iVolM3 != null && (
+        <>
+          <span style={infoDivider} />
+          <span style={infoTitle}>Vano interno</span>
+          <div style={infoMetric}>
+            <span style={infoLabel}>L × W × H</span>
+            <span style={infoValue}>
+              {fmt(ilM)} × {fmt(iwM)} × {fmt(ihM)}
+            </span>
+          </div>
+          <div style={infoMetric}>
+            <span style={infoLabel}>Volume</span>
+            <span style={infoValue}>
+              {iVolM3 >= 1 ? `${iVolM3.toFixed(2)} m³` : `${(iVolM3 * 1000).toFixed(0)} L`}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   )
 }

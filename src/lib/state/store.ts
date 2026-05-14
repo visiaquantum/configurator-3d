@@ -63,6 +63,10 @@ interface ConfiguratorState {
   cameraPreset: CameraPreset | null
   /** AABB of the loaded enclosure GLB in world units, or null until it loads. */
   enclosureBBox: EnclosureBBox | null
+  /** AABB of the inner cargo area (`Body_interior` node) in world units, if available. */
+  interiorBBox: EnclosureBBox | null
+  /** When true, enclosure doors are animated to the open pose. */
+  doorsOpen: boolean
   /** Live clearance for the dragged item, or null when no drag is active. */
   dragClearance: DragClearance | null
   /** Ids of items currently overlapping another item's AABB. */
@@ -83,6 +87,8 @@ interface ConfiguratorState {
   setGridStep: (v: number) => void
   setCameraPreset: (p: CameraPreset | null) => void
   setEnclosureBBox: (b: EnclosureBBox | null) => void
+  setInteriorBBox: (b: EnclosureBBox | null) => void
+  setDoorsOpen: (v: boolean) => void
   setDragClearance: (c: DragClearance | null) => void
   setOverlappingIds: (ids: Set<string>) => void
   setWalkMode: (v: boolean) => void
@@ -130,6 +136,8 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     gridStep: 0.05,
     cameraPreset: null,
     enclosureBBox: null,
+    interiorBBox: null,
+    doorsOpen: false,
     dragClearance: null,
     overlappingIds: new Set<string>(),
     walkMode: false,
@@ -143,6 +151,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
         selectedId: null,
         draggingItemId: null,
         enclosureBBox: null,
+        interiorBBox: null,
         dragClearance: null,
         overlappingIds: new Set<string>(),
       }),
@@ -168,6 +177,8 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     setGridStep: (v) => set({ gridStep: v }),
     setCameraPreset: (p) => set({ cameraPreset: p }),
     setEnclosureBBox: (b) => set({ enclosureBBox: b }),
+    setInteriorBBox: (b) => set({ interiorBBox: b }),
+    setDoorsOpen: (v) => set({ doorsOpen: v }),
     setDragClearance: (c) => set({ dragClearance: c }),
     setOverlappingIds: (ids) => set({ overlappingIds: ids }),
     setWalkMode: (v) =>

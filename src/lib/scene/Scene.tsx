@@ -73,7 +73,7 @@ export function Scene({ project }: Props) {
           files="/hdr/empty_warehouse_01_4k.hdr"
           background
           resolution={2048}
-          ground={{ height: 1.5, radius: 5, scale: 20 }}
+          ground={{ height: 3, radius: 10, scale: 20 }}
           backgroundBlurriness={0}
           backgroundIntensity={1}
           environmentIntensity={1}

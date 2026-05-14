@@ -25,8 +25,8 @@ const catalog: CatalogItem[] = [
 ]
 
 const ENCLOSURE: EnclosureData = {
-  glbUrl: '/models/FIAT-NDC40H2.glb',
-  scale: MODEL_SCALE,
+  glbUrl: '/models/iveco.glb',
+  scale: 1,
 }
 const PROJECT_METADATA: ProjectMetadata = {
   name: 'Demo — host-driven catalog',
