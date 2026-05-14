@@ -5,7 +5,10 @@ interface Props {
   anchors: Anchor[]
 }
 
-const RADIUS = 0.006
+const CORE_RADIUS = 0.012
+const HALO_RADIUS = 0.028
+const RING_RADIUS_INNER = 0.032
+const RING_RADIUS_OUTER = 0.04
 
 export function AnchorMarkers({ anchors }: Props) {
   const selectedId = useConfiguratorStore((s) => s.selectedId)
@@ -19,26 +22,56 @@ export function AnchorMarkers({ anchors }: Props) {
     <>
       {anchors.map((a) => {
         const isActive = activeAnchorId === a.id
+        const color = isActive ? '#33ff88' : selectedItem ? '#3aa0ff' : '#ffaa22'
+        const coreOpacity = selectedItem ? 1 : 0.85
+        const haloOpacity = selectedItem ? 0.35 : 0.25
+
         return (
-          <mesh
-            key={a.id}
-            position={a.position}
-            onPointerDown={(e) => {
-              if (!selectedItem || isActive) return
-              e.stopPropagation()
-              updateItem(selectedItem.id, {
-                position: a.position,
-                constraints: [{ type: 'snapToAnchor', target: a.id }],
-              })
-            }}
-          >
-            <sphereGeometry args={[RADIUS, 12, 12]} />
-            <meshBasicMaterial
-              color={isActive ? '#33ff88' : selectedItem ? '#3aa0ff' : '#666'}
-              transparent
-              opacity={selectedItem ? 0.9 : 0.4}
-            />
-          </mesh>
+          <group key={a.id} position={a.position}>
+            <mesh
+              renderOrder={999}
+              onPointerDown={(e) => {
+                if (!selectedItem || isActive) return
+                e.stopPropagation()
+                updateItem(selectedItem.id, {
+                  position: a.position,
+                  constraints: [{ type: 'snapToAnchor', target: a.id }],
+                })
+              }}
+            >
+              <sphereGeometry args={[CORE_RADIUS, 16, 16]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={coreOpacity}
+                depthTest={false}
+                toneMapped={false}
+              />
+            </mesh>
+
+            <mesh renderOrder={998}>
+              <sphereGeometry args={[HALO_RADIUS, 16, 16]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={haloOpacity}
+                depthTest={false}
+                toneMapped={false}
+              />
+            </mesh>
+
+            <mesh renderOrder={1000} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[RING_RADIUS_INNER, RING_RADIUS_OUTER, 32]} />
+              <meshBasicMaterial
+                color={color}
+                transparent
+                opacity={isActive ? 1 : 0.7}
+                depthTest={false}
+                toneMapped={false}
+                side={2}
+              />
+            </mesh>
+          </group>
         )
       })}
     </>
