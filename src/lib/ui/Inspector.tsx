@@ -18,6 +18,7 @@ export function Inspector({ readOnly }: Props) {
 
   const cat = catalog[item.catalogId]
   const [x, y, z] = item.position
+  const size = cat?.size
   const anchors =
     runtimeAnchors.length > 0 ? runtimeAnchors : project?.enclosure.anchors ?? []
   const snapTarget = item.constraints?.find((c) => c.type === 'snapToAnchor')?.target
@@ -35,6 +36,14 @@ export function Inspector({ readOnly }: Props) {
         <div style={rowStyle}><span style={labelStyle}>id</span><span style={valueStyle}>{item.id}</span></div>
         <div style={rowStyle}><span style={labelStyle}>tipo</span><span style={valueStyle}>{cat?.label ?? item.catalogId}</span></div>
         <div style={rowStyle}><span style={labelStyle}>pos (m)</span><span style={valueStyle}>{x.toFixed(3)}, {y.toFixed(3)}, {z.toFixed(3)}</span></div>
+        {size && (
+          <div style={rowStyle}>
+            <span style={labelStyle}>dim (cm)</span>
+            <span style={valueStyle}>
+              {(size[0] * 100).toFixed(1)} × {(size[1] * 100).toFixed(1)} × {(size[2] * 100).toFixed(1)}
+            </span>
+          </div>
+        )}
 
         {anchors.length > 0 && (
           <div style={{ marginTop: 8 }}>

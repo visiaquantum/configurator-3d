@@ -11,6 +11,24 @@ export interface CaptureRefs {
 
 export type GizmoMode = 'translate' | 'rotate'
 
+export type CameraPreset = 'top' | 'front' | 'side' | 'iso'
+
+export interface EnclosureBBox {
+  min: [number, number, number]
+  max: [number, number, number]
+}
+
+export interface DragClearance {
+  itemId: string
+  /** Distances (m) from item AABB to enclosure AABB on each axis face. */
+  left: number
+  right: number
+  front: number
+  back: number
+  bottom: number
+  top: number
+}
+
 const HISTORY_LIMIT = 50
 
 interface ConfiguratorState {
@@ -33,6 +51,24 @@ interface ConfiguratorState {
   /** Undo/redo stacks of ProjectData snapshots. */
   past: ProjectData[]
   future: ProjectData[]
+  /** When true, disables selection, gizmo, drag, and export via keyboard. */
+  readOnly: boolean
+  /** When true, enclosure renders semi-transparent so the interior is visible. */
+  xrayEnabled: boolean
+  /** When true, drag positions snap to a discrete X/Z grid. */
+  snapToGridEnabled: boolean
+  /** Grid step (m) used when `snapToGridEnabled` is true. */
+  gridStep: number
+  /** One-shot camera preset request. CameraPresetBridge resets to null after applying. */
+  cameraPreset: CameraPreset | null
+  /** AABB of the loaded enclosure GLB in world units, or null until it loads. */
+  enclosureBBox: EnclosureBBox | null
+  /** Live clearance for the dragged item, or null when no drag is active. */
+  dragClearance: DragClearance | null
+  /** Ids of items currently overlapping another item's AABB. */
+  overlappingIds: Set<string>
+  /** When true, switches to first-person POV inside the enclosure (WASD + mouse-look). */
+  walkMode: boolean
 
   setProject: (p: ProjectData) => void
   setCatalog: (items: CatalogItem[]) => void
@@ -41,6 +77,15 @@ interface ConfiguratorState {
   setRuntimeAnchors: (anchors: Anchor[]) => void
   setDraggingItemId: (id: string | null) => void
   setCaptureRefs: (refs: CaptureRefs | null) => void
+  setReadOnly: (v: boolean) => void
+  setXrayEnabled: (v: boolean) => void
+  setSnapToGridEnabled: (v: boolean) => void
+  setGridStep: (v: number) => void
+  setCameraPreset: (p: CameraPreset | null) => void
+  setEnclosureBBox: (b: EnclosureBBox | null) => void
+  setDragClearance: (c: DragClearance | null) => void
+  setOverlappingIds: (ids: Set<string>) => void
+  setWalkMode: (v: boolean) => void
   /** Walk the scene and return all Object3Ds tagged with userData.exportable === true. */
   collectExportRoots: () => Object3D[]
   /** Returns the active anchor set (runtime > project.enclosure.anchors > []). */
@@ -79,6 +124,15 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     captureRefs: null,
     past: [],
     future: [],
+    readOnly: false,
+    xrayEnabled: false,
+    snapToGridEnabled: false,
+    gridStep: 0.05,
+    cameraPreset: null,
+    enclosureBBox: null,
+    dragClearance: null,
+    overlappingIds: new Set<string>(),
+    walkMode: false,
 
     setProject: (p) =>
       set({
@@ -86,13 +140,18 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
         past: [],
         future: [],
         runtimeAnchors: [],
+        selectedId: null,
+        draggingItemId: null,
+        enclosureBBox: null,
+        dragClearance: null,
+        overlappingIds: new Set<string>(),
       }),
 
     setCatalog: (items) =>
       set({ catalog: Object.fromEntries(items.map((it) => [it.id, it])) }),
 
     addCatalogItem: (item) =>
-      set((s) => (s.catalog[item.id] ? s : { catalog: { ...s.catalog, [item.id]: item } })),
+      set((s) => ({ catalog: { ...s.catalog, [item.id]: item } })),
 
     setGizmoMode: (m) => set({ gizmoMode: m }),
 
@@ -101,6 +160,23 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     setDraggingItemId: (id) => set({ draggingItemId: id }),
 
     setCaptureRefs: (refs) => set({ captureRefs: refs }),
+
+    setReadOnly: (v) => set({ readOnly: v }),
+
+    setXrayEnabled: (v) => set({ xrayEnabled: v }),
+    setSnapToGridEnabled: (v) => set({ snapToGridEnabled: v }),
+    setGridStep: (v) => set({ gridStep: v }),
+    setCameraPreset: (p) => set({ cameraPreset: p }),
+    setEnclosureBBox: (b) => set({ enclosureBBox: b }),
+    setDragClearance: (c) => set({ dragClearance: c }),
+    setOverlappingIds: (ids) => set({ overlappingIds: ids }),
+    setWalkMode: (v) =>
+      set({
+        walkMode: v,
+        selectedId: v ? null : get().selectedId,
+        draggingItemId: null,
+        dragClearance: null,
+      }),
 
     collectExportRoots: () => {
       const refs = get().captureRefs

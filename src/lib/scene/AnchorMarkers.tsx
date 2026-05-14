@@ -24,9 +24,10 @@ export function AnchorMarkers({ anchors }: Props) {
             key={a.id}
             position={a.position}
             onPointerDown={(e) => {
-              if (!selectedItem) return
+              if (!selectedItem || isActive) return
               e.stopPropagation()
               updateItem(selectedItem.id, {
+                position: a.position,
                 constraints: [{ type: 'snapToAnchor', target: a.id }],
               })
             }}

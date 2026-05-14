@@ -32,6 +32,7 @@ export type {
   Anchor,
   ItemConstraint,
   Configurator3DProps,
+  ConfiguratorHandle,
   ProjectMetadata,
   Vec3,
   Euler,

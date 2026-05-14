@@ -76,22 +76,37 @@ function nearestAnchor(
 }
 
 export function Item({ item, catalog, anchors = [] }: Props) {
+  const url = catalog?.glbUrl
+  if (!url) return null
+  return <ItemInner item={item} catalog={catalog} anchors={anchors} url={url} />
+}
+
+function ItemInner({
+  item,
+  catalog,
+  anchors = [],
+  url,
+}: Props & { url: string }) {
   const select = useConfiguratorStore((s) => s.select)
   const updateItem = useConfiguratorStore((s) => s.updateItem)
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
+  const readOnly = useConfiguratorStore((s) => s.readOnly)
   const isSelected = selectedId === item.id
+  const isOverlapping = useConfiguratorStore((s) => s.overlappingIds.has(item.id))
 
-  // The Three Group ref is also exposed as state so consumers (TransformControls,
-  // the snap registry) can read it during render without tripping
-  // react-hooks/refs lint.
   const [group, setGroup] = useState<Group | null>(null)
   const dragRef = useRef<DragCtx | null>(null)
 
-  const url = catalog?.glbUrl
-  const gltf = useGLTF(url ?? '')
-  const cloned = useMemo(() => gltf.scene.clone(), [gltf.scene])
+  const gltf = useGLTF(url)
+  const scale = catalog?.scale ?? 1
+  const cloned = useMemo(() => {
+    const c = gltf.scene.clone()
+    c.scale.setScalar(scale)
+    c.updateMatrixWorld(true)
+    return c
+  }, [gltf.scene, scale])
 
   const bbox = useMemo(() => {
     const b = new Box3().setFromObject(cloned)
@@ -102,14 +117,17 @@ export function Item({ item, catalog, anchors = [] }: Props) {
     return { size, center }
   }, [cloned])
 
+  const catSize = catalog?.size
   const colliderSize = useMemo<Vec3>(
     () =>
-      catalog?.size ?? [
-        Math.max(bbox.size.x, 0.005),
-        Math.max(bbox.size.y, 0.005),
-        Math.max(bbox.size.z, 0.005),
-      ],
-    [catalog?.size, bbox.size.x, bbox.size.y, bbox.size.z],
+      catSize
+        ? [catSize[0] * scale, catSize[1] * scale, catSize[2] * scale]
+        : [
+            Math.max(bbox.size.x, 0.005),
+            Math.max(bbox.size.y, 0.005),
+            Math.max(bbox.size.z, 0.005),
+          ],
+    [catSize, scale, bbox.size.x, bbox.size.y, bbox.size.z],
   )
 
   const snapConstraint = item.constraints?.find((c) => c.type === 'snapToAnchor')
@@ -142,6 +160,7 @@ export function Item({ item, catalog, anchors = [] }: Props) {
 
   const handleTransformEnd = () => {
     if (!group) return
+    pushOutOverlaps(item.id)
     const newPos: Vec3 = [
       group.position.x,
       group.position.y - colliderSize[1] / 2,
@@ -163,8 +182,10 @@ export function Item({ item, catalog, anchors = [] }: Props) {
   }
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (useConfiguratorStore.getState().walkMode) return
     e.stopPropagation()
     if (!isSelected) select(item.id)
+    if (readOnly) return
     if (!group) return
     ;(e.target as Element & { setPointerCapture?: (id: number) => void })
       .setPointerCapture?.(e.pointerId)
@@ -210,6 +231,14 @@ export function Item({ item, catalog, anchors = [] }: Props) {
     group.position.z = _hit.z + d.grabOffset.z
     // Y stays at the plane constant.
 
+    // Grid snap (base step). Vertex snap below may override on engagement.
+    const store = useConfiguratorStore.getState()
+    if (store.snapToGridEnabled && store.gridStep > 0) {
+      const s = store.gridStep
+      group.position.x = Math.round(group.position.x / s) * s
+      group.position.z = Math.round(group.position.z / s) * s
+    }
+
     // Vertex snap with hysteresis. A held lock survives until the corner pair
     // drifts beyond RELEASE_RADIUS, then we look for a fresh pair within
     // ENGAGE_RADIUS. ENGAGE < RELEASE, so we don't oscillate at the threshold.
@@ -239,6 +268,26 @@ export function Item({ item, catalog, anchors = [] }: Props) {
         }
       }
     }
+
+    // Live clearance from enclosure walls (item AABB ↔ enclosure AABB).
+    const bbox = store.enclosureBBox
+    if (bbox) {
+      const hx = colliderSize[0] / 2
+      const hy = colliderSize[1] / 2
+      const hz = colliderSize[2] / 2
+      const px = group.position.x
+      const py = group.position.y
+      const pz = group.position.z
+      store.setDragClearance({
+        itemId: item.id,
+        left: px - hx - bbox.min[0],
+        right: bbox.max[0] - (px + hx),
+        back: pz - hz - bbox.min[2],
+        front: bbox.max[2] - (pz + hz),
+        bottom: py - hy - bbox.min[1],
+        top: bbox.max[1] - (py + hy),
+      })
+    }
   }
 
   const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
@@ -249,6 +298,7 @@ export function Item({ item, catalog, anchors = [] }: Props) {
     dragRef.current = null
     if (!d.started) return // pure click — selection already handled in pointerdown
     setDraggingItemId(null)
+    useConfiguratorStore.getState().setDragClearance(null)
     if (!group) return
 
     if (d.mode === 'rotate') {
@@ -277,9 +327,16 @@ export function Item({ item, catalog, anchors = [] }: Props) {
       updateItem(item.id, { position: newPos, constraints: [] })
     }
   }
+  const handlePointerCancel = (e: ThreeEvent<PointerEvent>) => {
+    const d = dragRef.current
+    if (!d) return
+    ;(e.target as Element & { releasePointerCapture?: (id: number) => void })
+      .releasePointerCapture?.(e.pointerId)
+    dragRef.current = null
+    setDraggingItemId(null)
+    useConfiguratorStore.getState().setDragClearance(null)
+  }
   /* eslint-enable react-hooks/immutability */
-
-  if (!url) return null
 
   return (
     <>
@@ -289,22 +346,33 @@ export function Item({ item, catalog, anchors = [] }: Props) {
         // eslint-disable-next-line react-hooks/immutability -- handler mutates group.position imperatively (three.js scene-graph)
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
+        onPointerCancel={handlePointerCancel}
       >
         <group position={[-bbox.center.x, -colliderSize[1] / 2, -bbox.center.z]}>
           <primitive object={cloned} />
         </group>
-        {isSelected && (
+        {isSelected && !readOnly && (
           <mesh>
             <boxGeometry
               args={[colliderSize[0] * 1.05, colliderSize[1] * 1.05, colliderSize[2] * 1.05]}
             />
-            <meshBasicMaterial wireframe color={snappedAnchor ? '#33ff88' : '#ffcc33'} />
+            <meshBasicMaterial
+              wireframe
+              color={isOverlapping ? '#ff4040' : snappedAnchor ? '#33ff88' : '#ffcc33'}
+            />
+          </mesh>
+        )}
+        {!isSelected && isOverlapping && (
+          <mesh>
+            <boxGeometry
+              args={[colliderSize[0] * 1.05, colliderSize[1] * 1.05, colliderSize[2] * 1.05]}
+            />
+            <meshBasicMaterial wireframe color="#ff4040" />
           </mesh>
         )}
       </group>
 
-      {isSelected && group && (
+      {isSelected && group && !readOnly && (
         <TransformControls
           object={group as Object3D}
           mode={gizmoMode}

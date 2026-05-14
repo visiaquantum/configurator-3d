@@ -1,5 +1,5 @@
 import type { Object3D } from 'three'
-import { Vector3 } from 'three'
+import { Quaternion, Vector3 } from 'three'
 import type { Anchor, Vec3 } from '../types'
 
 /**
@@ -26,7 +26,9 @@ interface ExtractedAnchorNode {
 export function extractAnchorsFromObject(root: Object3D): ExtractedAnchorNode[] {
   const out: ExtractedAnchorNode[] = []
   const worldPos = new Vector3()
+  const worldUp = new Vector3()
   const localUp = new Vector3(0, 1, 0)
+  const worldQuat = new Quaternion()
 
   root.traverse((obj) => {
     const ud = (obj.userData ?? {}) as Record<string, unknown>
@@ -53,7 +55,8 @@ export function extractAnchorsFromObject(root: Object3D): ExtractedAnchorNode[] 
     ) {
       normal = overrideNormal as Vec3
     } else {
-      const worldUp = localUp.clone().applyQuaternion(obj.getWorldQuaternion(obj.quaternion.clone())).normalize()
+      obj.getWorldQuaternion(worldQuat)
+      worldUp.copy(localUp).applyQuaternion(worldQuat).normalize()
       normal = [+worldUp.x.toFixed(6), +worldUp.y.toFixed(6), +worldUp.z.toFixed(6)]
     }
 

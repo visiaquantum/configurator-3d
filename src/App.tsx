@@ -6,37 +6,45 @@ import {
   ProjectParseError,
   useConfiguratorStore,
 } from './lib'
-import type { CatalogItem, ProjectData, ProjectIssue } from './lib'
+import type {
+  CatalogItem,
+  ConfiguratorHandle,
+  EnclosureData,
+  ProjectIssue,
+  ProjectMetadata,
+} from './lib'
+
+// Models were exported at 0.1× scale; apply 10× to render at real meters.
+const MODEL_SCALE = 10
 
 const catalog: CatalogItem[] = [
-  { id: 'ksi44036', label: 'KSI 44036', glbUrl: '/models/A-KSI44036.glb', size: [0.101, 0.036, 0.144] },
-  { id: 'kdw40236', label: 'KDW 40236', glbUrl: '/models/KDW40236.glb', size: [0.100, 0.036, 0.007] },
-  { id: 'ptbm31sx', label: 'PTBM 31SX', glbUrl: '/models/PTBM31SX.glb', size: [0.009, 0.031, 0.014] },
-  { id: 'xds40536', label: 'XDS 40536 KMD02', glbUrl: '/models/XDS40536KMD02.glb', size: [0.101, 0.036, 0.018] },
+  { id: 'ksi44036', label: 'KSI 44036', glbUrl: '/models/A-KSI44036.glb', size: [0.101, 0.036, 0.144], scale: MODEL_SCALE },
+  { id: 'kdw40236', label: 'KDW 40236', glbUrl: '/models/KDW40236.glb', size: [0.100, 0.036, 0.007], scale: MODEL_SCALE },
+  { id: 'ptbm31sx', label: 'PTBM 31SX', glbUrl: '/models/PTBM31SX.glb', size: [0.009, 0.031, 0.014], scale: MODEL_SCALE },
+  { id: 'xds40536', label: 'XDS 40536 KMD02', glbUrl: '/models/XDS40536KMD02.glb', size: [0.101, 0.036, 0.018], scale: MODEL_SCALE },
 ]
 
-const initialProject: ProjectData = {
-  id: 'demo-008',
-  version: 1,
-  // Anchors now embedded in the enclosure GLB itself as `anchor_*` nodes.
-  // The library extracts them at runtime; no need to declare them here.
-  enclosure: { glbUrl: '/models/FIAT-NDC40H2.glb' },
-  items: [
-    { id: 'i1', catalogId: 'ksi44036', position: [-0.05, 0, 0], rotation: [0, 0, 0] },
-    { id: 'i2', catalogId: 'kdw40236', position: [0.0, 0, 0], rotation: [0, 0, 0] },
-    { id: 'i3', catalogId: 'xds40536', position: [0.05, 0, 0], rotation: [0, 0, 0] },
-    { id: 'i4', catalogId: 'ptbm31sx', position: [0.1, 0, 0], rotation: [0, 0, 0] },
-  ],
-  metadata: { name: 'Demo M8 — serialize', customer: 'Proarredi' },
+const ENCLOSURE: EnclosureData = {
+  glbUrl: '/models/FIAT-NDC40H2.glb',
+  scale: MODEL_SCALE,
+}
+const PROJECT_METADATA: ProjectMetadata = {
+  name: 'Demo — host-driven catalog',
+  customer: 'Proarredi',
 }
 
 export default function App() {
+  const cfg = useRef<ConfiguratorHandle>(null)
   const [savedJson, setSavedJson] = useState('')
   const [loadStatus, setLoadStatus] = useState<{ ok: boolean; msg: string; issues?: ProjectIssue[] } | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const handleExport = () => {
-    const project = useConfiguratorStore.getState().project
+  const handleAdd = (product: CatalogItem) => {
+    cfg.current?.addItem(product)
+  }
+
+  const handleExportJson = () => {
+    const project = cfg.current?.getProject()
     if (!project) return
     const blob = new Blob([serializeProject(project)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -70,39 +78,42 @@ export default function App() {
     <div style={{ display: 'flex', height: '100vh', width: '100vw', margin: 0 }}>
       <div style={{ flex: 1, position: 'relative' }}>
         <Configurator3D
-          initialProject={initialProject}
+          ref={cfg}
+          enclosure={ENCLOSURE}
+          projectId="demo-010"
+          metadata={PROJECT_METADATA}
+          // `catalog` here just seeds the registry. New items come through addItem.
           catalog={catalog}
           onSave={(p) => setSavedJson(serializeProject(p))}
         />
       </div>
-      <aside
-        style={{
-          width: 360,
-          padding: 16,
-          background: '#0f0f14',
-          color: '#ddd',
-          fontFamily: 'monospace',
-          fontSize: 12,
-          overflow: 'auto',
-        }}
-      >
-        <h3 style={{ marginTop: 0 }}>Configurator3D — M8 (serialize)</h3>
+      <aside style={sidebarStyle}>
+        <h3 style={{ marginTop: 0 }}>Catalogo</h3>
+        <p style={{ color: '#778', marginTop: 0, fontSize: 11 }}>
+          Click su un prodotto per aggiungerlo alla scena.
+        </p>
 
+        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px 0' }}>
+          {catalog.map((p) => (
+            <li key={p.id} style={{ marginBottom: 6 }}>
+              <button
+                type="button"
+                onClick={() => handleAdd(p)}
+                style={productBtnStyle}
+              >
+                <div style={{ fontWeight: 600 }}>{p.label}</div>
+                <div style={{ color: '#778', fontSize: 10 }}>{p.id}</div>
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        <h3 style={{ marginBottom: 6 }}>Progetto</h3>
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          <button
-            type="button"
-            onClick={handleExport}
-            style={{ flex: 1, padding: '6px 10px', background: '#3aa0ff', color: 'white', border: 'none', borderRadius: 4, cursor: 'pointer' }}
-            data-testid="export"
-          >
+          <button type="button" onClick={handleExportJson} style={ghostBtn}>
             Export JSON
           </button>
-          <button
-            type="button"
-            onClick={() => fileRef.current?.click()}
-            style={{ flex: 1, padding: '6px 10px', background: '#2a2a35', color: '#ddd', border: '1px solid #3a3a45', borderRadius: 4, cursor: 'pointer' }}
-            data-testid="import"
-          >
+          <button type="button" onClick={() => fileRef.current?.click()} style={ghostBtn}>
             Import JSON
           </button>
           <input
@@ -116,6 +127,15 @@ export default function App() {
               e.target.value = ''
             }}
           />
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <button type="button" onClick={() => cfg.current?.undo()} style={ghostBtn}>
+            Undo
+          </button>
+          <button type="button" onClick={() => cfg.current?.redo()} style={ghostBtn}>
+            Redo
+          </button>
         </div>
 
         {loadStatus && (
@@ -143,9 +163,39 @@ export default function App() {
         )}
 
         <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {savedJson || '(premi Salva nel canvas)'}
+          {savedJson || '(premi Salva nel canvas o Export JSON)'}
         </pre>
       </aside>
     </div>
   )
+}
+
+const sidebarStyle: React.CSSProperties = {
+  width: 320,
+  padding: 16,
+  background: '#0f0f14',
+  color: '#ddd',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 12,
+  overflow: 'auto',
+}
+const productBtnStyle: React.CSSProperties = {
+  width: '100%',
+  textAlign: 'left',
+  padding: '8px 10px',
+  background: '#1a1a25',
+  color: '#ddd',
+  border: '1px solid #2a2a35',
+  borderRadius: 4,
+  cursor: 'pointer',
+}
+const ghostBtn: React.CSSProperties = {
+  flex: 1,
+  padding: '6px 10px',
+  background: '#2a2a35',
+  color: '#ddd',
+  border: '1px solid #3a3a45',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontSize: 11,
 }

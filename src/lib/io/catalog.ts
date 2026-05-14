@@ -54,16 +54,16 @@ export class CatalogParseError extends Error {
 export function parseCatalog(raw: string | unknown): CatalogItem[] {
   const obj = typeof raw === 'string' ? safeJsonParse(raw) : raw
 
-  // Try wrapper first.
-  const wrapped = CatalogDataSchema.safeParse(obj)
-  if (wrapped.success) return wrapped.data.items as CatalogItem[]
+  // Pick schema by shape of input so errors come from the form the caller
+  // actually used. Array → bare; object → wrapped.
+  const isArray = Array.isArray(obj)
+  const schema = isArray ? CatalogArraySchema : CatalogDataSchema
+  const result = schema.safeParse(obj)
+  if (result.success) {
+    return (isArray ? result.data : (result.data as { items: CatalogItem[] }).items) as CatalogItem[]
+  }
 
-  // Fall back to bare array.
-  const bare = CatalogArraySchema.safeParse(obj)
-  if (bare.success) return bare.data as CatalogItem[]
-
-  // Neither matched — surface the wrapper's errors since that's the canonical form.
-  const issues = wrapped.error.issues.map<CatalogIssue>((iss) => ({
+  const issues = result.error.issues.map<CatalogIssue>((iss) => ({
     level: 'error',
     path: '$' + (iss.path.length ? '.' + iss.path.join('.') : ''),
     message: iss.message,

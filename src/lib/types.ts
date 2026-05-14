@@ -11,6 +11,9 @@ export interface EnclosureData {
   glbUrl: string
   dimensions?: Vec3
   anchors?: Anchor[]
+  /** Uniform scale applied to the loaded GLB. Use when the model was exported
+   * at a non-meter scale (e.g. 0.1× → scale: 10). Default 1. */
+  scale?: number
 }
 
 export interface CatalogItem {
@@ -18,6 +21,9 @@ export interface CatalogItem {
   label: string
   glbUrl: string
   size?: Vec3
+  /** Uniform scale applied to the loaded GLB and to `size` for collider math.
+   * Same purpose as EnclosureData.scale. Default 1. */
+  scale?: number
 }
 
 export interface ItemConstraint {
@@ -52,11 +58,29 @@ export interface ProjectData {
 }
 
 export interface Configurator3DProps {
-  initialProject: ProjectData
+  /** Optional ref to the imperative handle (addItem, exports, undo/redo, ...). */
+  ref?: React.Ref<ConfiguratorHandle>
   /**
-   * Item catalog. Accepts either an inline array or a URL string pointing to a
-   * JSON file. The JSON may be a bare CatalogItem[] or a wrapped
-   * { version, items, metadata? } document.
+   * The enclosure ("contenitore", e.g. truck body, cabinet). Required.
+   * Either a URL string to a GLB (shorthand) or a full EnclosureData object
+   * with optional pre-declared anchors and dimensions.
+   * The component resets when this prop's reference changes — memoize on the
+   * host side to avoid losing in-progress edits.
+   */
+  enclosure: string | EnclosureData
+  /** Items already placed at mount. Defaults to an empty scene. */
+  initialItems?: PlacedItem[]
+  /** Stable identifier used for export filenames. Auto-generated if omitted. */
+  projectId?: string
+  /** Free-form project metadata (customer, name, custom fields). */
+  metadata?: ProjectMetadata
+  /**
+   * Optional bootstrap catalog. Needed when `initialItems` references
+   * products the configurator must know about up front; otherwise the host
+   * drives additions through the imperative `addItem` ref.
+   *
+   * Accepts an inline array, or a URL string pointing to a JSON file
+   * (bare CatalogItem[] or wrapped { version, items, metadata? }).
    */
   catalog?: CatalogItem[] | string
   onChange?: (project: ProjectData) => void
@@ -65,9 +89,41 @@ export interface Configurator3DProps {
   onCatalogLoaded?: (items: CatalogItem[]) => void
   /** Fires if a remote catalog URL fails to load or validate. */
   onCatalogError?: (error: Error) => void
+  /** Show the bottom-left inspector for the selected item. Default: true. */
+  showInspector?: boolean
+  /** Show the top-right toolbar with Save / PNG / GLB / PDF buttons. Default: true. */
+  showToolbar?: boolean
+  /** Show the top-center hints bar (gizmo mode + undo/redo counters). Default: true. */
+  showHints?: boolean
   readOnly?: boolean
   className?: string
   style?: React.CSSProperties
+}
+
+/**
+ * Imperative API exposed by Configurator3D via ref. The host page uses it to
+ * drive the scene from its own UI (catalog list, custom export buttons, etc.).
+ */
+export interface ConfiguratorHandle {
+  /**
+   * Place a catalog product into the scene. If the product id is unknown to
+   * the configurator, it is registered first so the item can be rendered.
+   * Auto-positions to the right of the last item unless `opts.position` is
+   * given. Returns the new placed-item id.
+   */
+  addItem(product: CatalogItem, opts?: { position?: Vec3; select?: boolean }): string
+  removeItem(id: string): void
+  selectItem(id: string | null): void
+  getProject(): ProjectData | null
+  setProject(p: ProjectData): void
+  undo(): void
+  redo(): void
+  /** PNG snapshot of the current scene as a Blob. */
+  exportPNG(): Promise<Blob>
+  /** Binary glTF of the enclosure + placed items as a Blob. */
+  exportGLB(): Promise<Blob>
+  /** A4 PDF with image + component list as a Blob. */
+  exportPDF(): Promise<Blob>
 }
 
 export const PROJECT_SCHEMA_VERSION = 1

@@ -2,11 +2,10 @@ import { Box3, Vector3, type Group } from 'three'
 
 /**
  * Registry of all live placed-item Three.js groups, keyed by item id.
- * Used by drag handlers (in PhysicsItem) to query other items' world geometry
- * for vertex-snapping and overlap push-out.
+ * Used by drag handlers (in scene/Item.tsx) to query other items' world
+ * geometry for vertex-snapping and overlap push-out.
  *
- * Lives at module scope so it survives PhysicsItem remounts (which happen
- * on selection / snap-state changes via the Scene `key`).
+ * Lives at module scope so it survives Item remounts.
  */
 
 export interface ItemRegistration {
