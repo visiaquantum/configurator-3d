@@ -53,17 +53,27 @@ export interface ExportPdfOptions {
   date?: Date
 }
 
+async function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve({ w: img.naturalWidth, h: img.naturalHeight })
+    img.onerror = () => reject(new Error('Failed to decode screenshot for PDF'))
+    img.src = dataUrl
+  })
+}
+
 /**
  * Produce a single-page A4 PDF summarizing the project: title, customer, date,
  * the scene screenshot, and a grouped component count (one row per catalog id).
  */
-export function exportProjectPDF(opts: ExportPdfOptions): Blob {
+export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   const { project, catalog, imageDataUrl, date = new Date() } = opts
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
   const PAGE_W = 210
   const MARGIN = 15
   const CONTENT_W = PAGE_W - MARGIN * 2
+  const MAX_IMG_H = 130 // mm — keeps room for the components table below
 
   doc.setFontSize(16)
   doc.text(project.metadata?.name ?? project.id, MARGIN, 20)
@@ -76,11 +86,18 @@ export function exportProjectPDF(opts: ExportPdfOptions): Blob {
   let y = customer ? 48 : 42
 
   if (imageDataUrl) {
-    // Maintain aspect by reading the data URL dimensions via a temp image is
-    // overkill for a single PDF page — clamp to a fixed 16:9-ish box that fits.
-    const imgW = CONTENT_W
-    const imgH = Math.round((imgW * 9) / 16)
-    doc.addImage(imageDataUrl, 'PNG', MARGIN, y, imgW, imgH, undefined, 'FAST')
+    // Preserve the screenshot's native aspect ratio: fit it inside CONTENT_W ×
+    // MAX_IMG_H, scaling down whichever dimension would overflow.
+    const { w: natW, h: natH } = await loadImageSize(imageDataUrl)
+    const aspect = natW > 0 && natH > 0 ? natW / natH : 16 / 9
+    let imgW = CONTENT_W
+    let imgH = imgW / aspect
+    if (imgH > MAX_IMG_H) {
+      imgH = MAX_IMG_H
+      imgW = imgH * aspect
+    }
+    const fmt = imageDataUrl.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG'
+    doc.addImage(imageDataUrl, fmt, MARGIN, y, imgW, imgH, undefined, 'FAST')
     y += imgH + 8
   }
 

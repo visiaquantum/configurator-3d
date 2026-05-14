@@ -1,6 +1,15 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Group, Object3D } from 'three'
-import { Box3, Euler, MathUtils, Plane, Vector3 } from 'three'
+import type { Group, Material, Object3D } from 'three'
+import {
+  Box3,
+  Euler,
+  MathUtils,
+  Mesh,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  Plane,
+  Vector3,
+} from 'three'
 import { TransformControls, useGLTF } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import type {
@@ -28,6 +37,9 @@ interface Props {
 const ANCHOR_SNAP_RADIUS = 0.04 // 4 cm — distance to an enclosure anchor that triggers a snap
 const DRAG_THRESHOLD_PX = 4 // mouse movement (px) before a pointerdown is treated as a drag
 const ROTATION_SENSITIVITY = 0.01 // radians of Y rotation per pixel of horizontal mouse delta
+const ROTATION_STEP = Math.PI / 2 // rotations snap to 90° increments
+
+const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
 
 // Scratch instances reused across pointermove. Drag is single-threaded so this
 // is safe and saves ~100s of Vector3 allocations per second during a drag.
@@ -168,7 +180,8 @@ function ItemInner({
       group.position.z,
     ]
     _euler.setFromQuaternion(group.quaternion)
-    const newRot: EulerTuple = [_euler.x, _euler.y, _euler.z]
+    const newRot: EulerTuple = [snapAngle(_euler.x), snapAngle(_euler.y), snapAngle(_euler.z)]
+    group.rotation.set(newRot[0], newRot[1], newRot[2])
     _basePt.set(newPos[0], newPos[1], newPos[2])
     const nearest = nearestAnchor(_basePt, anchors)
     if (nearest && nearest.dist <= ANCHOR_SNAP_RADIUS) {
@@ -225,8 +238,8 @@ function ItemInner({
       setDraggingItemId(item.id)
     }
     if (d.mode === 'rotate') {
-      group.rotation.y = d.startRotY + dx * ROTATION_SENSITIVITY
-      group.rotation.x = d.startRotX + dy * ROTATION_SENSITIVITY
+      group.rotation.y = snapAngle(d.startRotY + dx * ROTATION_SENSITIVITY)
+      group.rotation.x = snapAngle(d.startRotX + dy * ROTATION_SENSITIVITY)
       return
     }
     if (!e.ray.intersectPlane(d.plane, _hit)) return
@@ -305,8 +318,12 @@ function ItemInner({
     if (!group) return
 
     if (d.mode === 'rotate') {
+      const rx = snapAngle(group.rotation.x)
+      const ry = snapAngle(group.rotation.y)
+      group.rotation.x = rx
+      group.rotation.y = ry
       updateItem(item.id, {
-        rotation: [group.rotation.x, group.rotation.y, item.rotation[2]],
+        rotation: [rx, ry, item.rotation[2]],
       })
       return
     }
@@ -380,6 +397,7 @@ function ItemInner({
           object={group as Object3D}
           mode={gizmoMode}
           size={MathUtils.clamp(Math.max(...colliderSize) * 4, 0.05, 0.3)}
+          rotationSnap={ROTATION_STEP}
           onMouseUp={handleTransformEnd}
         />
       )}

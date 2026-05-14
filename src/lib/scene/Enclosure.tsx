@@ -199,6 +199,7 @@ export function Enclosure({ data }: Props) {
       const existing = useConfiguratorStore.getState().runtimeAnchors
       if (existing.length === 0) {
         const inset = 0.15
+        const wallInset = 0.05
         const xL = ibox.min.x + inset
         const xR = ibox.max.x - inset
         const zF = ibox.max.z - inset
@@ -206,12 +207,35 @@ export function Enclosure({ data }: Props) {
         const cx = (ibox.min.x + ibox.max.x) / 2
         const cz = (ibox.min.z + ibox.max.z) / 2
         const fy = ibox.min.y
+        // Wall anchors: stand-off from the wall by `wallInset` so a snapped
+        // item sits flush against the wall instead of clipping through it.
+        const xWallL = ibox.min.x + wallInset
+        const xWallR = ibox.max.x - wallInset
+        const zWallB = ibox.min.z + wallInset
+        const yMid = (ibox.min.y + ibox.max.y) / 2
+        const yHigh = ibox.min.y + (ibox.max.y - ibox.min.y) * 0.75
+        const zFrontMid = (ibox.max.z + cz) / 2
+        const zBackMid = (ibox.min.z + cz) / 2
         setRuntimeAnchors([
+          // Floor
           { id: 'floor-front-left', position: [xL, fy, zF], normal: [0, 1, 0] },
           { id: 'floor-front-right', position: [xR, fy, zF], normal: [0, 1, 0] },
           { id: 'floor-back-left', position: [xL, fy, zB], normal: [0, 1, 0] },
           { id: 'floor-back-right', position: [xR, fy, zB], normal: [0, 1, 0] },
           { id: 'floor-center', position: [cx, fy, cz], normal: [0, 1, 0] },
+          // Left wall — normal points into the cabin (+X)
+          { id: 'wall-left-front-mid', position: [xWallL, yMid, zFrontMid], normal: [1, 0, 0] },
+          { id: 'wall-left-center-mid', position: [xWallL, yMid, cz], normal: [1, 0, 0] },
+          { id: 'wall-left-back-mid', position: [xWallL, yMid, zBackMid], normal: [1, 0, 0] },
+          { id: 'wall-left-center-high', position: [xWallL, yHigh, cz], normal: [1, 0, 0] },
+          // Right wall — normal points into the cabin (-X)
+          { id: 'wall-right-front-mid', position: [xWallR, yMid, zFrontMid], normal: [-1, 0, 0] },
+          { id: 'wall-right-center-mid', position: [xWallR, yMid, cz], normal: [-1, 0, 0] },
+          { id: 'wall-right-back-mid', position: [xWallR, yMid, zBackMid], normal: [-1, 0, 0] },
+          { id: 'wall-right-center-high', position: [xWallR, yHigh, cz], normal: [-1, 0, 0] },
+          // Back wall — normal points forward (+Z)
+          { id: 'wall-back-left-mid', position: [(xL + cx) / 2, yMid, zWallB], normal: [0, 0, 1] },
+          { id: 'wall-back-right-mid', position: [(xR + cx) / 2, yMid, zWallB], normal: [0, 0, 1] },
         ])
       }
     } else {
