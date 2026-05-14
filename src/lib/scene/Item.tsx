@@ -2,6 +2,7 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Group, Material, Object3D } from 'three'
 import {
   Box3,
+  Color,
   Euler,
   MathUtils,
   Mesh,
@@ -40,6 +41,49 @@ const ROTATION_SENSITIVITY = 0.01 // radians of Y rotation per pixel of horizont
 const ROTATION_STEP = Math.PI / 2 // rotations snap to 90° increments
 
 const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
+
+// Tuning for item reflections. Picks up the scene Environment HDR so items
+// look glossy and reflect the warehouse lighting like the enclosure paint.
+const ITEM_ENV_INTENSITY = 1.5
+const ITEM_CLEARCOAT = 0.5
+const ITEM_CLEARCOAT_ROUGHNESS = 0.1
+
+/**
+ * Walk the cloned item scene and per-instance-clone each material so we can
+ * boost reflections without leaking through the shared `useGLTF` cache.
+ *
+ * For MeshPhysicalMaterial we can also raise the clearcoat to add a glossy
+ * top-coat. For plain MeshStandardMaterial we only boost envMapIntensity —
+ * upgrading to Physical via `copy()` corrupts physical-specific uniforms
+ * (transmission/thickness become undefined) and the mesh renders invisible.
+ */
+function enhanceItemMaterials(root: Object3D) {
+  const upgrade = (m: Material): Material => {
+    if (m instanceof MeshPhysicalMaterial) {
+      const next = m.clone()
+      next.envMapIntensity = Math.max(next.envMapIntensity, ITEM_ENV_INTENSITY)
+      next.clearcoat = Math.max(next.clearcoat, ITEM_CLEARCOAT)
+      next.clearcoatRoughness = Math.min(next.clearcoatRoughness, ITEM_CLEARCOAT_ROUGHNESS)
+      next.needsUpdate = true
+      return next
+    }
+    if (m instanceof MeshStandardMaterial) {
+      const next = m.clone()
+      next.envMapIntensity = Math.max(next.envMapIntensity, ITEM_ENV_INTENSITY)
+      next.needsUpdate = true
+      return next
+    }
+    return m
+  }
+  root.traverse((obj) => {
+    if (!(obj instanceof Mesh)) return
+    if (Array.isArray(obj.material)) {
+      obj.material = obj.material.map(upgrade)
+    } else {
+      obj.material = upgrade(obj.material)
+    }
+  })
+}
 
 // Scratch instances reused across pointermove. Drag is single-threaded so this
 // is safe and saves ~100s of Vector3 allocations per second during a drag.
@@ -117,9 +161,36 @@ function ItemInner({
   const cloned = useMemo(() => {
     const c = gltf.scene.clone()
     c.scale.setScalar(scale)
+    enhanceItemMaterials(c)
     c.updateMatrixWorld(true)
     return c
   }, [gltf.scene, scale])
+
+  // Tint the item red when it overlaps another item or clips the enclosure
+  // body. Originals captured once per material; we lerp toward red instead of
+  // overwriting so textures/branding stay readable.
+  const originalColorsRef = useRef<Map<MeshStandardMaterial, Color>>(new Map())
+  /* eslint-disable react-hooks/immutability */
+  useLayoutEffect(() => {
+    if (!cloned) return
+    const originals = originalColorsRef.current
+    const RED = new Color(0xff0000)
+    cloned.traverse((obj) => {
+      if (!(obj instanceof Mesh)) return
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+      for (const m of mats) {
+        if (!(m instanceof MeshStandardMaterial)) continue
+        if (!originals.has(m)) originals.set(m, m.color.clone())
+        const orig = originals.get(m)!
+        if (isOverlapping) {
+          m.color.copy(orig).lerp(RED, 0.6)
+        } else {
+          m.color.copy(orig)
+        }
+      }
+    })
+  }, [cloned, isOverlapping])
+  /* eslint-enable react-hooks/immutability */
 
   const bbox = useMemo(() => {
     const b = new Box3().setFromObject(cloned)

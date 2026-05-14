@@ -29,13 +29,29 @@ export function OverlapDetector() {
   const prevRef = useRef<Set<string>>(new Set())
 
   useFrame(() => {
-    const project = useConfiguratorStore.getState().project
+    const state = useConfiguratorStore.getState()
+    const project = state.project
     if (!project) return
+    const interior = state.interiorBBox
     const next = new Set<string>()
     for (let i = 0; i < project.items.length; i++) {
       const a = getItem(project.items[i].id)
       if (!a) continue
       getWorldAABB(a, _a)
+      // Item vs. enclosure interior: any AABB face outside the cargo box means
+      // the item is clipping through the van body.
+      if (interior) {
+        if (
+          _a.min.x < interior.min[0] - EPS ||
+          _a.max.x > interior.max[0] + EPS ||
+          _a.min.y < interior.min[1] - EPS ||
+          _a.max.y > interior.max[1] + EPS ||
+          _a.min.z < interior.min[2] - EPS ||
+          _a.max.z > interior.max[2] + EPS
+        ) {
+          next.add(a.id)
+        }
+      }
       for (const other of listOtherItems(a.id)) {
         getWorldAABB(other, _b)
         if (aabbOverlaps(_a, _b)) {
