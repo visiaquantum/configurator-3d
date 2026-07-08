@@ -1,6 +1,5 @@
 import type { Anchor } from '../types'
 import { useConfiguratorStore } from '../state/store'
-import { withSnapConstraint } from './mirrorPair'
 
 interface Props {
   anchors: Anchor[]
