@@ -36,10 +36,7 @@ export function AnchorMarkers({ anchors }: Props) {
                 e.stopPropagation()
                 updateItem(selectedItem.id, {
                   position: a.position,
-                  constraints: withSnapConstraint(selectedItem, {
-                    type: 'snapToAnchor',
-                    target: a.id,
-                  }),
+                  constraints: [{ type: 'snapToAnchor', target: a.id }],
                 })
               }}
             >
