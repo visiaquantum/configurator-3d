@@ -31,6 +31,8 @@ export type {
   CatalogItem,
   Anchor,
   ItemConstraint,
+  ItemRule,
+  ItemSnapPoint,
   Configurator3DProps,
   ConfiguratorHandle,
   ProjectMetadata,

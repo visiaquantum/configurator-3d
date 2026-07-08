@@ -1,6 +1,13 @@
 import { create } from 'zustand'
 import type { Camera, Object3D, Scene as ThreeScene, WebGLRenderer } from 'three'
-import type { Anchor, CatalogItem, PlacedItem, ProjectData } from '../types'
+import type {
+  Anchor,
+  CatalogItem,
+  ItemRule,
+  ItemSnapPoint,
+  PlacedItem,
+  ProjectData,
+} from '../types'
 import { PROJECT_SCHEMA_VERSION } from '../types'
 
 export interface CaptureRefs {
@@ -44,6 +51,17 @@ interface ConfiguratorState {
   gizmoMode: GizmoMode
   /** Anchors extracted at runtime from the enclosure GLB (takes priority over project.enclosure.anchors). */
   runtimeAnchors: Anchor[]
+  /**
+   * Rules extracted at runtime from product GLBs, keyed by catalogId.
+   * Positions/axes are in the item's local frame (set by scene/Item.tsx once
+   * the GLB loads). Derived from the GLB, so they survive setProject.
+   */
+  itemRules: Record<string, ItemRule[]>
+  /**
+   * Snap points extracted at runtime from product GLBs (`SNAP_*` nodes or
+   * extras kind:'snap'), keyed by catalogId, in the item's local frame.
+   */
+  itemSnaps: Record<string, ItemSnapPoint[]>
   /** Id of the item currently being mouse-dragged. Suspends OrbitControls. */
   draggingItemId: string | null
   /** Refs into the live Three.js renderer (set by SceneCaptureBridge inside Canvas). */
@@ -79,6 +97,8 @@ interface ConfiguratorState {
   addCatalogItem: (item: CatalogItem) => void
   setGizmoMode: (m: GizmoMode) => void
   setRuntimeAnchors: (anchors: Anchor[]) => void
+  setItemRules: (catalogId: string, rules: ItemRule[]) => void
+  setItemSnaps: (catalogId: string, snaps: ItemSnapPoint[]) => void
   setDraggingItemId: (id: string | null) => void
   setCaptureRefs: (refs: CaptureRefs | null) => void
   setReadOnly: (v: boolean) => void
@@ -97,8 +117,17 @@ interface ConfiguratorState {
   /** Returns the active anchor set (runtime > project.enclosure.anchors > []). */
   getEffectiveAnchors: () => Anchor[]
   updateItem: (id: string, patch: Partial<PlacedItem>) => void
+  /** Patch several items atomically (single undo step). */
+  updateItems: (patches: Array<{ id: string; patch: Partial<PlacedItem> }>) => void
   addItem: (item: PlacedItem) => void
   removeItem: (id: string) => void
+  /**
+   * Add `twin` and link it to `sourceId` with reciprocal mirrorPair
+   * constraints at `distance` (single undo step).
+   */
+  createMirrorPair: (sourceId: string, twin: PlacedItem, distance: number) => void
+  /** Unlink a mirror pair, removing the auto-created mirrored twin. */
+  removeMirrorPair: (id: string) => void
   select: (id: string | null) => void
   exportProject: () => ProjectData | null
 
@@ -126,6 +155,8 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     catalog: {},
     gizmoMode: 'translate',
     runtimeAnchors: [],
+    itemRules: {},
+    itemSnaps: {},
     draggingItemId: null,
     captureRefs: null,
     past: [],
@@ -165,6 +196,12 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     setGizmoMode: (m) => set({ gizmoMode: m }),
 
     setRuntimeAnchors: (anchors) => set({ runtimeAnchors: anchors }),
+
+    setItemRules: (catalogId, rules) =>
+      set((s) => ({ itemRules: { ...s.itemRules, [catalogId]: rules } })),
+
+    setItemSnaps: (catalogId, snaps) =>
+      set((s) => ({ itemSnaps: { ...s.itemSnaps, [catalogId]: snaps } })),
 
     setDraggingItemId: (id) => set({ draggingItemId: id }),
 
@@ -217,6 +254,22 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
       })
     },
 
+    updateItems: (patches) => {
+      const s = get()
+      if (!s.project || patches.length === 0) return
+      pushHistory()
+      const byId = new Map(patches.map((p) => [p.id, p.patch]))
+      set({
+        project: {
+          ...s.project,
+          items: s.project.items.map((it) => {
+            const patch = byId.get(it.id)
+            return patch ? { ...it, ...patch } : it
+          }),
+        },
+      })
+    },
+
     addItem: (item) => {
       const s = get()
       if (!s.project) return
@@ -228,9 +281,72 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
       const s = get()
       if (!s.project) return
       pushHistory()
+      // A mirror pair is a single block: removing either half removes both.
+      const item = s.project.items.find((it) => it.id === id)
+      const partnerId = item?.constraints?.find((c) => c.type === 'mirrorPair')?.target
+      const removed = new Set(partnerId ? [id, partnerId] : [id])
       set({
-        project: { ...s.project, items: s.project.items.filter((it) => it.id !== id) },
-        selectedId: s.selectedId === id ? null : s.selectedId,
+        project: { ...s.project, items: s.project.items.filter((it) => !removed.has(it.id)) },
+        selectedId: s.selectedId && removed.has(s.selectedId) ? null : s.selectedId,
+      })
+    },
+
+    createMirrorPair: (sourceId, twin, distance) => {
+      const s = get()
+      if (!s.project) return
+      const source = s.project.items.find((it) => it.id === sourceId)
+      if (!source) return
+      pushHistory()
+      const link = (target: string) => ({ type: 'mirrorPair' as const, target, distance })
+      set({
+        project: {
+          ...s.project,
+          items: [
+            ...s.project.items.map((it) =>
+              it.id === sourceId
+                ? {
+                    ...it,
+                    constraints: [
+                      ...(it.constraints?.filter((c) => c.type !== 'mirrorPair') ?? []),
+                      link(twin.id),
+                    ],
+                  }
+                : it,
+            ),
+            {
+              ...twin,
+              constraints: [
+                ...(twin.constraints?.filter((c) => c.type !== 'mirrorPair') ?? []),
+                link(sourceId),
+              ],
+            },
+          ],
+        },
+      })
+    },
+
+    removeMirrorPair: (id) => {
+      const s = get()
+      if (!s.project) return
+      const item = s.project.items.find((it) => it.id === id)
+      const partnerId = item?.constraints?.find((c) => c.type === 'mirrorPair')?.target
+      if (!item || !partnerId) return
+      const partner = s.project.items.find((it) => it.id === partnerId)
+      // Drop the auto-created (mirrored) half, keep the other as a free item.
+      const removeId = partner?.mirrored ? partnerId : item.mirrored ? id : partnerId
+      pushHistory()
+      set({
+        project: {
+          ...s.project,
+          items: s.project.items
+            .filter((it) => it.id !== removeId)
+            .map((it) =>
+              it.id === id || it.id === partnerId
+                ? { ...it, constraints: it.constraints?.filter((c) => c.type !== 'mirrorPair') }
+                : it,
+            ),
+        },
+        selectedId: s.selectedId === removeId ? null : s.selectedId,
       })
     },
 

@@ -1,5 +1,6 @@
 import type { Anchor } from '../types'
 import { useConfiguratorStore } from '../state/store'
+import { withSnapConstraint } from './mirrorPair'
 
 interface Props {
   anchors: Anchor[]
@@ -35,7 +36,10 @@ export function AnchorMarkers({ anchors }: Props) {
                 e.stopPropagation()
                 updateItem(selectedItem.id, {
                   position: a.position,
-                  constraints: [{ type: 'snapToAnchor', target: a.id }],
+                  constraints: withSnapConstraint(selectedItem, {
+                    type: 'snapToAnchor',
+                    target: a.id,
+                  }),
                 })
               }}
             >

@@ -18,15 +18,15 @@ import type {
 const MODEL_SCALE = 10
 
 const catalog: CatalogItem[] = [
-  { id: 'ksi44036', label: 'KSI 44036', glbUrl: '/models/A-KSI44036.glb', size: [0.101, 0.036, 0.144], scale: MODEL_SCALE },
-  { id: 'kdw40236', label: 'KDW 40236', glbUrl: '/models/KDW40236.glb', size: [0.100, 0.036, 0.007], scale: MODEL_SCALE },
-  { id: 'ptbm31sx', label: 'PTBM 31SX', glbUrl: '/models/PTBM31SX.glb', size: [0.009, 0.031, 0.014], scale: MODEL_SCALE },
-  { id: 'xds40536', label: 'XDS 40536 KMD02', glbUrl: '/models/XDS40536KMD02.glb', size: [0.101, 0.036, 0.018], scale: MODEL_SCALE },
+  // KSI12836.glb is exported at real meter scale, unlike the enclosure which
+  // needs MODEL_SCALE. Size = the visible YSI02836 body only (snap markers
+  // excluded): upright panel, 0.36 wide × 1.008 tall × 0.03 thick.
+  { id: 'ksi12836', label: 'KSI 12836', glbUrl: '/models/KSI12836.glb', size: [0.36, 1.008, 0.03], scale: 1 },
 ]
 
 const ENCLOSURE: EnclosureData = {
-  glbUrl: '/models/iveco.glb',
-  scale: 1,
+  glbUrl: '/models/FIAT-NDC40H2.glb',
+  scale: MODEL_SCALE,
 }
 const PROJECT_METADATA: ProjectMetadata = {
   name: 'Demo — host-driven catalog',
@@ -82,7 +82,6 @@ export default function App() {
           enclosure={ENCLOSURE}
           projectId="demo-010"
           metadata={PROJECT_METADATA}
-          // `catalog` here just seeds the registry. New items come through addItem.
           catalog={catalog}
           onSave={(p) => setSavedJson(serializeProject(p))}
         />

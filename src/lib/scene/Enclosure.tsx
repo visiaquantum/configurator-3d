@@ -18,6 +18,19 @@ const BODY_ROUGHNESS = 0.35
 const BODY_CLEARCOAT = 0.9
 const BODY_CLEARCOAT_ROUGHNESS = 0.05
 const XRAY_OPACITY = 0.18
+const FIAT_NDC40H2_URL_RE = /FIAT-NDC40H2\.glb$/i
+const FIAT_FLOOR_ANCHORS = [
+  {
+    id: 'floor-back-side-a',
+    position: [1.65, 0.04, -0.86] as [number, number, number],
+    normal: [0, 1, 0] as [number, number, number],
+  },
+  {
+    id: 'floor-back-side-b',
+    position: [1.65, 0.04, 0.86] as [number, number, number],
+    normal: [0, 1, 0] as [number, number, number],
+  },
+]
 
 // Door rig: node-name → either a hinge rotation or a slide translation.
 // Tuned empirically for the iveco.glb layout. Slide distances are in the
@@ -40,6 +53,7 @@ const DOOR_RIG: Record<string, DoorRig> = {
  */
 export function Enclosure({ data }: Props) {
   const gltf = useGLTF(data.glbUrl)
+  const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl)
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
   const setInteriorBBox = useConfiguratorStore((s) => s.setInteriorBBox)
@@ -138,13 +152,6 @@ export function Enclosure({ data }: Props) {
   }, [xrayEnabled])
   /* eslint-enable react-hooks/immutability */
 
-  // Extract anchors embedded in the GLB (nodes named `anchor_*` or with
-  // `extras.kind === 'anchor'`). Marker nodes are hidden after extraction.
-  useEffect(() => {
-    const anchors = hydrateAnchorsAndHide(gltf.scene)
-    if (anchors.length > 0) setRuntimeAnchors(anchors)
-  }, [gltf.scene, setRuntimeAnchors])
-
   // Find door nodes once per GLB load. They are animated via useFrame below.
   useEffect(() => {
     const found: { node: Object3D; rig: DoorRig; basePos: [number, number, number] }[] = []
@@ -165,6 +172,10 @@ export function Enclosure({ data }: Props) {
   // point sits on Y=0 — many vehicle GLBs are modeled with the body origin
   // at floor level, leaving the wheels below ground. Mutates the cached
   // scene, which is fine here because the enclosure is loaded once per URL.
+  //
+  // Anchor extraction (nodes named `anchor_*` or with `extras.kind ===
+  // 'anchor'`) happens HERE, after scale + lift, so the anchor world
+  // positions include both. Marker nodes are hidden after extraction.
   /* eslint-disable react-hooks/immutability */
   useEffect(() => {
     const s = data.scale ?? 1
@@ -176,7 +187,13 @@ export function Enclosure({ data }: Props) {
       gltf.scene.position.y = -probe.min.y
       gltf.scene.updateMatrixWorld(true)
     }
-  }, [gltf.scene, data.scale])
+    // Extract (and hide) GLB anchor markers. For the FIAT demo van the GLB
+    // anchors are unusable (authored 20 cm above the floor), so only the two
+    // hardcoded floor anchors are exposed.
+    const anchors = hydrateAnchorsAndHide(gltf.scene)
+    const active = needsFiatFloor ? FIAT_FLOOR_ANCHORS : anchors
+    if (active.length > 0) setRuntimeAnchors(active)
+  }, [gltf.scene, data.scale, needsFiatFloor, setRuntimeAnchors])
   /* eslint-enable react-hooks/immutability */
 
   // Compute and publish enclosure world-space AABB once per GLB. Also tries
@@ -287,6 +304,24 @@ export function Enclosure({ data }: Props) {
   return (
     <group userData={{ exportable: true }}>
       <primitive object={gltf.scene} />
+      {needsFiatFloor && <FiatNdc40H2Floor xrayEnabled={xrayEnabled} />}
     </group>
+  )
+}
+
+function FiatNdc40H2Floor({ xrayEnabled }: { xrayEnabled: boolean }) {
+  return (
+    <mesh position={[0, 0.02, 0]} receiveShadow>
+      <boxGeometry args={[3.45, 0.035, 1.82]} />
+      <meshPhysicalMaterial
+        color="#6f7378"
+        metalness={0.15}
+        roughness={0.55}
+        clearcoat={0.35}
+        transparent={xrayEnabled}
+        opacity={xrayEnabled ? XRAY_OPACITY : 1}
+        depthWrite={!xrayEnabled}
+      />
+    </mesh>
   )
 }
