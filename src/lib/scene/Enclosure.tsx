@@ -19,6 +19,9 @@ const BODY_CLEARCOAT = 0.9
 const BODY_CLEARCOAT_ROUGHNESS = 0.05
 const XRAY_OPACITY = 0.18
 const FIAT_NDC40H2_URL_RE = /FIAT-NDC40H2\.glb$/i
+const FIAT_FLOOR_SIZE: [number, number, number] = [3.45, 0.035, 1.82]
+const FIAT_FLOOR_Y = 0.02
+const FIAT_FLOOR_TOP_Y = FIAT_FLOOR_Y + FIAT_FLOOR_SIZE[1] / 2
 const FIAT_FLOOR_ANCHORS = [
   {
     id: 'floor-back-side-a',
@@ -206,8 +209,17 @@ export function Enclosure({ data }: Props) {
       min: [box.min.x, box.min.y, box.min.z],
       max: [box.max.x, box.max.y, box.max.z],
     })
-    const interior = gltf.scene.getObjectByName('Body_interior')
-    if (interior) {
+    const interior = needsFiatFloor ? null : gltf.scene.getObjectByName('Body_interior')
+    if (needsFiatFloor) {
+      // The FIAT GLB does not expose a Body_interior node. Use the visible
+      // cargo floor footprint plus the vehicle top to create a conservative
+      // inner collision box: products stay above the wooden floor and inside
+      // the van outline instead of clipping through the body mesh.
+      setInteriorBBox({
+        min: [-FIAT_FLOOR_SIZE[0] / 2, FIAT_FLOOR_TOP_Y, -FIAT_FLOOR_SIZE[2] / 2],
+        max: [FIAT_FLOOR_SIZE[0] / 2, box.max.y, FIAT_FLOOR_SIZE[2] / 2],
+      })
+    } else if (interior) {
       const ibox = new Box3().setFromObject(interior)
       setInteriorBBox({
         min: [ibox.min.x, ibox.min.y, ibox.min.z],
@@ -262,7 +274,7 @@ export function Enclosure({ data }: Props) {
       setEnclosureBBox(null)
       setInteriorBBox(null)
     }
-  }, [gltf.scene, data.scale, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors])
+  }, [gltf.scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors])
 
   // Target tracks `doorsOpen` as 0/1; the useFrame loop lerps the actual
   // rotation toward it so the swing is smooth and reversible mid-animation.
@@ -311,8 +323,8 @@ export function Enclosure({ data }: Props) {
 
 function FiatNdc40H2Floor({ xrayEnabled }: { xrayEnabled: boolean }) {
   return (
-    <mesh position={[0, 0.02, 0]} receiveShadow>
-      <boxGeometry args={[3.45, 0.035, 1.82]} />
+    <mesh position={[0, FIAT_FLOOR_Y, 0]} receiveShadow>
+      <boxGeometry args={FIAT_FLOOR_SIZE} />
       <meshPhysicalMaterial
         color="#6f7378"
         metalness={0.15}

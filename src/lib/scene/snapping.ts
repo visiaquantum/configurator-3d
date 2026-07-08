@@ -131,10 +131,11 @@ export function offsetForLockedCorners(
  * Y axis is intentionally ignored — items rest on the floor and we never
  * want to lift them vertically to escape an overlap.
  */
-export function pushOutOverlaps(myId: string, maxIter = 8): void {
+export function pushOutOverlaps(myId: string, maxIter = 8): boolean {
   const me = getItem(myId)
-  if (!me) return
+  if (!me) return false
 
+  let pushed = false
   for (let iter = 0; iter < maxIter; iter++) {
     getWorldAABB(me, _myBox)
     let pushedThisPass = false
@@ -142,14 +143,49 @@ export function pushOutOverlaps(myId: string, maxIter = 8): void {
       getWorldAABB(other, _otherBox)
       if (horizontalMTV(_myBox, _otherBox, _mtvVec)) {
         me.group.position.add(_mtvVec)
+        pushed = true
         pushedThisPass = true
       }
     }
-    if (!pushedThisPass) return
+    if (!pushedThisPass) return pushed
   }
+  return pushed
+}
+
+export interface CollisionBounds {
+  min: [number, number, number]
+  max: [number, number, number]
+}
+
+/**
+ * Keep an item's world AABB fully inside the supplied bounds by translating
+ * its group. This prevents products from sinking into the floor or escaping
+ * through the vehicle shell/interior cargo box.
+ */
+export function clampItemToBounds(myId: string, bounds: CollisionBounds | null | undefined): boolean {
+  const me = getItem(myId)
+  if (!me || !bounds) return false
+  getWorldAABB(me, _myBox)
+  _mtvVec.set(
+    clampAxisDelta(_myBox.min.x, _myBox.max.x, bounds.min[0], bounds.max[0]),
+    clampAxisDelta(_myBox.min.y, _myBox.max.y, bounds.min[1], bounds.max[1]),
+    clampAxisDelta(_myBox.min.z, _myBox.max.z, bounds.min[2], bounds.max[2]),
+  )
+  if (_mtvVec.lengthSq() <= EPSILON * EPSILON) return false
+  me.group.position.add(_mtvVec)
+  return true
 }
 
 const EPSILON = 1e-6
+
+function clampAxisDelta(min: number, max: number, boundMin: number, boundMax: number): number {
+  const size = max - min
+  const boundSize = boundMax - boundMin
+  if (size > boundSize) return (boundMin + boundMax - min - max) / 2
+  if (min < boundMin) return boundMin - min
+  if (max > boundMax) return boundMax - max
+  return 0
+}
 
 /**
  * Minimum translation vector to separate AABBs `a` (the one we will move)

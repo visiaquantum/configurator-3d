@@ -35,6 +35,7 @@ import {
   withSnapConstraint,
 } from './mirrorPair'
 import {
+  clampItemToBounds,
   findNearestVertexSnap,
   offsetForLockedCorners,
   pushOutOverlaps,
@@ -286,6 +287,7 @@ function ItemInner({
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
   const readOnly = useConfiguratorStore((s) => s.readOnly)
+  const collisionBounds = useConfiguratorStore((s) => s.interiorBBox ?? s.enclosureBBox)
   const isSelected = selectedId === item.id
   const isOverlapping = useConfiguratorStore((s) => s.overlappingIds.has(item.id))
 
@@ -442,8 +444,29 @@ function ItemInner({
       rule,
       pair.distance,
     )
+    let partnerPos = placement.position
+    const partner = getItem(pair.target)
+    if (partner) {
+      partner.group.position.set(
+        placement.position[0],
+        placement.position[1] + colliderSize[1] / 2,
+        placement.position[2],
+      )
+      partner.group.rotation.set(
+        placement.rotation[0],
+        placement.rotation[1],
+        placement.rotation[2],
+      )
+      pushOutOverlaps(pair.target)
+      clampItemToBounds(pair.target, collisionBounds)
+      partnerPos = [
+        partner.group.position.x,
+        partner.group.position.y - colliderSize[1] / 2,
+        partner.group.position.z,
+      ]
+    }
     return [
-      { id: pair.target, patch: { position: placement.position, rotation: placement.rotation } },
+      { id: pair.target, patch: { position: partnerPos, rotation: placement.rotation } },
     ]
   }
 
@@ -510,6 +533,30 @@ function ItemInner({
     registerItem({ id: item.id, group, localCorners })
     return () => unregisterItem(item.id)
   }, [item.id, colliderSize, group])
+
+  // If an item is loaded/added before enclosure bounds are ready, normalize it
+  // as soon as bounds exist so it never starts below the floor or outside the van.
+  useLayoutEffect(() => {
+    if (!group || !collisionBounds) return
+    const moved = clampItemToBounds(item.id, collisionBounds)
+    if (!moved) return
+    const nextPos: Vec3 = [
+      group.position.x,
+      group.position.y - colliderSize[1] / 2,
+      group.position.z,
+    ]
+    if (
+      Math.abs(nextPos[0] - item.position[0]) < 1e-6 &&
+      Math.abs(nextPos[1] - item.position[1]) < 1e-6 &&
+      Math.abs(nextPos[2] - item.position[2]) < 1e-6
+    ) return
+    updateItems([
+      {
+        id: item.id,
+        patch: { position: nextPos, constraints: withSnapConstraint(item, null) },
+      },
+    ])
+  }, [group, collisionBounds, item, item.id, item.position, colliderSize, updateItems])
   /* eslint-enable react-hooks/immutability */
 
   const handleTransformEnd = () => {
@@ -526,7 +573,10 @@ function ItemInner({
     if (useConfiguratorStore.getState().gizmoMode === 'rotate') {
       if (transformLockPosRef.current) group.position.copy(transformLockPosRef.current)
       transformLockPosRef.current = null
-      const keepSnap = snapConstraint != null && snapCorner == null && snapPointId == null
+      const pushed = pushOutOverlaps(item.id)
+      const clamped = clampItemToBounds(item.id, collisionBounds)
+      const keepSnap =
+        !pushed && !clamped && snapConstraint != null && snapCorner == null && snapPointId == null
       const basePos: Vec3 = [
         group.position.x,
         group.position.y - colliderSize[1] / 2,
@@ -548,19 +598,30 @@ function ItemInner({
 
     transformLockPosRef.current = null
     pushOutOverlaps(item.id)
+    clampItemToBounds(item.id, collisionBounds)
     const newPos: Vec3 = [
       group.position.x,
       group.position.y - colliderSize[1] / 2,
       group.position.z,
     ]
-    const hit = findAnchorSnap(
+    let hit = findAnchorSnap(
       newPos,
       newRot[1],
       colliderSize,
       anchors,
       effectiveCatalogSnaps,
     )
-    const finalPos = hit ? hit.position : newPos
+    if (hit) {
+      group.position.set(hit.position[0], hit.position[1] + colliderSize[1] / 2, hit.position[2])
+      const pushed = pushOutOverlaps(item.id)
+      const clamped = clampItemToBounds(item.id, collisionBounds)
+      if (pushed || clamped) hit = null
+    }
+    const finalPos: Vec3 = [
+      group.position.x,
+      group.position.y - colliderSize[1] / 2,
+      group.position.z,
+    ]
     const constraints = withSnapConstraint(item, hit ? snapHitConstraint(hit) : null)
     updateItems([
       { id: item.id, patch: { position: finalPos, rotation: newRot, constraints } },
@@ -615,6 +676,8 @@ function ItemInner({
       group.position.copy(d.startPos)
       group.rotation.y = snapAngle(d.startRotY + dx * ROTATION_SENSITIVITY)
       group.rotation.x = snapAngle(d.startRotX + dy * ROTATION_SENSITIVITY)
+      pushOutOverlaps(item.id)
+      clampItemToBounds(item.id, collisionBounds)
       return
     }
     if (!e.ray.intersectPlane(d.plane, _hit)) return
@@ -660,6 +723,11 @@ function ItemInner({
       }
     }
 
+    // Hard collision constraints: separate from other products and keep the
+    // collider inside the van/interior bounds before any live pair sync.
+    pushOutOverlaps(item.id)
+    clampItemToBounds(item.id, collisionBounds)
+
     // Keep the mirror-pair partner glued to us while dragging. Commit-time
     // store updates happen in pointerup; here we only move its live group.
     const pair = mirrorPairConstraint(item)
@@ -686,6 +754,8 @@ function ItemInner({
           placement.position[1] + colliderSize[1] / 2,
           placement.position[2],
         )
+        pushOutOverlaps(pair.target)
+        clampItemToBounds(pair.target, collisionBounds)
       }
     }
 
@@ -728,9 +798,12 @@ function ItemInner({
       group.rotation.x = rx
       group.rotation.y = ry
       const newRot: EulerTuple = [rx, ry, item.rotation[2]]
+      const pushed = pushOutOverlaps(item.id)
+      const clamped = clampItemToBounds(item.id, collisionBounds)
       // In-place rotation: a corner/point snap would make the item orbit the
-      // anchor, so drop it and keep the current position (see handleTransformEnd).
-      const keepSnap = snapConstraint == null || (snapCorner == null && snapPointId == null)
+      // anchor. Any collision correction also invalidates the snap.
+      const keepSnap =
+        !pushed && !clamped && (snapConstraint == null || (snapCorner == null && snapPointId == null))
       const basePos: Vec3 = [
         group.position.x,
         group.position.y - colliderSize[1] / 2,
@@ -754,22 +827,34 @@ function ItemInner({
       return
     }
     // Translate commit: resolve any residual AABB overlap (push along smaller
-    // of X/Z), then check for enclosure-anchor snap. The live vertex-snap has
-    // already aligned to a neighbour's corner if one was close enough.
+    // of X/Z), keep inside the van/interior bounds, then check for anchor snap.
+    // The live vertex-snap has already aligned to a neighbour's corner if one
+    // was close enough.
     pushOutOverlaps(item.id)
+    clampItemToBounds(item.id, collisionBounds)
     const newPos: Vec3 = [
       group.position.x,
       group.position.y - colliderSize[1] / 2,
       group.position.z,
     ]
-    const hit = findAnchorSnap(
+    let hit = findAnchorSnap(
       newPos,
       item.rotation[1],
       colliderSize,
       anchors,
       effectiveCatalogSnaps,
     )
-    const finalPos = hit ? hit.position : newPos
+    if (hit) {
+      group.position.set(hit.position[0], hit.position[1] + colliderSize[1] / 2, hit.position[2])
+      const pushed = pushOutOverlaps(item.id)
+      const clamped = clampItemToBounds(item.id, collisionBounds)
+      if (pushed || clamped) hit = null
+    }
+    const finalPos: Vec3 = [
+      group.position.x,
+      group.position.y - colliderSize[1] / 2,
+      group.position.z,
+    ]
     const constraints = withSnapConstraint(item, hit ? snapHitConstraint(hit) : null)
     updateItems([
       { id: item.id, patch: { position: finalPos, constraints } },
@@ -855,6 +940,8 @@ function ItemInner({
             if (gizmoMode === 'rotate' && transformLockPosRef.current) {
               group.position.copy(transformLockPosRef.current)
             }
+            pushOutOverlaps(item.id)
+            clampItemToBounds(item.id, collisionBounds)
           }}
           onMouseUp={handleTransformEnd}
         />

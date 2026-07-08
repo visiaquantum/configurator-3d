@@ -227,11 +227,13 @@ function addItemToScene(
   const lastScale = lastCat?.scale ?? 1
   const nextScale = product.scale ?? 1
   const stepSize = (lastCat?.size?.[0] ?? 0.1) * lastScale || (product.size?.[0] ?? 0.1) * nextScale
+  const bounds = s.interiorBBox ?? s.enclosureBBox
+  const floorY = bounds?.min[1] ?? 0
   const position: Vec3 =
     opts?.position ??
     (last
-      ? [last.position[0] + stepSize + gap, last.position[1], last.position[2]]
-      : [0, 0, 0])
+      ? [last.position[0] + stepSize + gap, Math.max(last.position[1], floorY), last.position[2]]
+      : [0, floorY, 0])
   const id = nanoid(8)
   const placed: PlacedItem = {
     id,
