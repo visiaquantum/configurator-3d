@@ -27,9 +27,46 @@ export interface CatalogItem {
 }
 
 export interface ItemConstraint {
-  type: 'snapToAnchor' | 'lockAxis' | 'noOverlap'
+  type: 'snapToAnchor' | 'lockAxis' | 'noOverlap' | 'mirrorPair'
   target?: string
   axis?: 'x' | 'y' | 'z'
+  /** For `mirrorPair`: distance (m) between the two rule reference points. */
+  distance?: number
+  /**
+   * For `snapToAnchor`: which bottom corner of the item collider sits on the
+   * anchor (index 0-3: -x-z, +x-z, -x+z, +x+z). Omitted = item center.
+   */
+  corner?: number
+  /**
+   * For `snapToAnchor`: id of the product snap point (declared in the GLB,
+   * see io/itemSnaps.ts) sitting on the anchor. Wins over `corner`.
+   */
+  point?: string
+}
+
+/**
+ * A snap point declared inside a product GLB (`SNAP_*` node or extras
+ * `kind: "snap"`), in the item's local frame (origin = collider center).
+ */
+export interface ItemSnapPoint {
+  id: string
+  position: Vec3
+}
+
+/**
+ * A parametric behaviour declared inside a product GLB via glTF extras
+ * (`kind: "rule"`). The GLB carries only the rule id and its parameters;
+ * the logic lives in the configurator (see scene/mirrorPair.ts).
+ */
+export interface ItemRule {
+  /** Rule id, e.g. 'mirror-pair'. */
+  rule: string
+  /** Rule reference point in the item's local frame (origin = collider center). */
+  position: Vec3
+  /** Unit direction of the rule axis in the item's local frame. */
+  axis: Vec3
+  /** Free-form parameters from the GLB extras (schema depends on the rule). */
+  params: Record<string, unknown>
 }
 
 export interface PlacedItem {
@@ -38,6 +75,9 @@ export interface PlacedItem {
   position: Vec3
   rotation: Euler
   locked?: boolean
+  /** Rendered mirrored across the plane perpendicular to the mirror-pair
+   * rule axis (X or Z flip, derived from the GLB rule). */
+  mirrored?: boolean
   constraints?: ItemConstraint[]
 }
 

@@ -7,6 +7,7 @@ import { Item } from './Item'
 import { AnchorMarkers } from './AnchorMarkers'
 import { SceneCaptureBridge } from './SceneCaptureBridge'
 import { CameraPresetBridge } from './CameraPresetBridge'
+import { SelectedOrbitTarget } from './SelectedOrbitTarget'
 import { OverlapDetector } from './OverlapDetector'
 import { WalkControls } from './WalkControls'
 import { useConfiguratorStore } from '../state/store'
@@ -41,7 +42,9 @@ export function Scene({ project }: Props) {
     >
       <SceneCaptureBridge />
       <CameraPresetBridge />
+      <SelectedOrbitTarget />
       <OverlapDetector />
+      <color attach="background" args={['#101827']} />
       <ambientLight intensity={0.4} />
       <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
 
@@ -60,34 +63,29 @@ export function Scene({ project }: Props) {
         </Suspense>
       ))}
       {effectiveAnchors.length > 0 && <AnchorMarkers anchors={effectiveAnchors} />}
-      {/* 4K workshop HDR: reflections + skybox + ground projection so the
-          floor pixels from the HDR map onto a real plane at world Y=0.
-          - height: photographer's eye height when the HDR was captured
-            (~1.5 m for most Poly Haven indoor HDRs). This aligns the HDR
-            horizon line with the world horizon.
-          - radius: how far the floor projection extends before merging with
-            the sphere. Matched to the HDR's visible interior radius.
-          - scale: outer sphere radius (walls/ceiling distance). */}
+      {/* Keep the HDR only for material reflections; the visible scene uses a
+          plain background and a readable floor grid. */}
       <Suspense fallback={null}>
         <Environment
           files="/hdr/empty_warehouse_01_4k.hdr"
-          background
           resolution={2048}
-          ground={{ height: 1.5, radius: 5, scale: 20 }}
-          backgroundBlurriness={0}
-          backgroundIntensity={1}
           environmentIntensity={1}
         />
       </Suspense>
 
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow>
+        <planeGeometry args={[40, 40]} />
+        <meshBasicMaterial color="#111827" />
+      </mesh>
       <Grid
-        args={[20, 20]}
+        position={[0, 0.003, 0]}
+        args={[40, 40]}
         cellSize={0.1}
         cellThickness={0.5}
+        cellColor="#334155"
         sectionSize={1}
         sectionThickness={1}
-        fadeDistance={10}
-        infiniteGrid
+        sectionColor="#64748b"
       />
 
       <OrbitControls

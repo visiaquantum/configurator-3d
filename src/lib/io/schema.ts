@@ -16,9 +16,12 @@ const EnclosureSchema = z.object({
 })
 
 const ItemConstraintSchema = z.object({
-  type: z.enum(['snapToAnchor', 'lockAxis', 'noOverlap']),
+  type: z.enum(['snapToAnchor', 'lockAxis', 'noOverlap', 'mirrorPair']),
   target: z.string().optional(),
   axis: z.enum(['x', 'y', 'z']).optional(),
+  distance: z.number().optional(),
+  corner: z.number().int().min(0).max(3).optional(),
+  point: z.string().optional(),
 })
 
 const PlacedItemSchema = z.object({
@@ -27,6 +30,7 @@ const PlacedItemSchema = z.object({
   position: Vec3Schema,
   rotation: EulerSchema,
   locked: z.boolean().optional(),
+  mirrored: z.boolean().optional(),
   constraints: z.array(ItemConstraintSchema).optional(),
 })
 

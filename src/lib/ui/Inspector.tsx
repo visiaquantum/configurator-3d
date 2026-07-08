@@ -1,4 +1,13 @@
+import { nanoid } from 'nanoid'
 import { useConfiguratorStore } from '../state/store'
+import {
+  computePartnerPlacement,
+  MIRROR_PAIR_RULE,
+  mirrorPairConstraint,
+  mirrorPairDistances,
+  withSnapConstraint,
+} from '../scene/mirrorPair'
+import type { PlacedItem } from '../types'
 
 interface Props {
   readOnly?: boolean
@@ -9,8 +18,12 @@ export function Inspector({ readOnly }: Props) {
   const project = useConfiguratorStore((s) => s.project)
   const removeItem = useConfiguratorStore((s) => s.removeItem)
   const updateItem = useConfiguratorStore((s) => s.updateItem)
+  const updateItems = useConfiguratorStore((s) => s.updateItems)
+  const createMirrorPair = useConfiguratorStore((s) => s.createMirrorPair)
+  const removeMirrorPair = useConfiguratorStore((s) => s.removeMirrorPair)
   const select = useConfiguratorStore((s) => s.select)
   const catalog = useConfiguratorStore((s) => s.catalog)
+  const itemRules = useConfiguratorStore((s) => s.itemRules)
 
   const runtimeAnchors = useConfiguratorStore((s) => s.runtimeAnchors)
   const item = project?.items.find((it) => it.id === selectedId)
@@ -23,10 +36,52 @@ export function Inspector({ readOnly }: Props) {
     runtimeAnchors.length > 0 ? runtimeAnchors : project?.enclosure.anchors ?? []
   const snapTarget = item.constraints?.find((c) => c.type === 'snapToAnchor')?.target
 
+  const pairRule = itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
+  const pairDistances = pairRule ? mirrorPairDistances(pairRule) : []
+  const pair = mirrorPairConstraint(item)
+
   const handleSnap = (anchorId: string | null) => {
     updateItem(item.id, {
-      constraints: anchorId ? [{ type: 'snapToAnchor', target: anchorId }] : [],
+      constraints: withSnapConstraint(
+        item,
+        anchorId ? { type: 'snapToAnchor', target: anchorId } : null,
+      ),
     })
+  }
+
+  const handlePairDistance = (distance: number) => {
+    if (!pairRule) return
+    const placement = computePartnerPlacement(item, pairRule, distance)
+    if (pair?.target) {
+      // Already paired: move the partner and update the stored distance on both.
+      const setDistance = (it: PlacedItem) =>
+        it.constraints?.map((c) => (c.type === 'mirrorPair' ? { ...c, distance } : c))
+      const partner = project?.items.find((it) => it.id === pair.target)
+      if (!partner) return
+      updateItems([
+        { id: item.id, patch: { constraints: setDistance(item) } },
+        {
+          id: partner.id,
+          patch: {
+            position: placement.position,
+            rotation: placement.rotation,
+            constraints: setDistance(partner),
+          },
+        },
+      ])
+    } else {
+      createMirrorPair(
+        item.id,
+        {
+          id: nanoid(8),
+          catalogId: item.catalogId,
+          position: placement.position,
+          rotation: placement.rotation,
+          mirrored: placement.mirrored,
+        },
+        distance,
+      )
+    }
   }
 
   return (
@@ -59,6 +114,43 @@ export function Inspector({ readOnly }: Props) {
                 <option key={a.id} value={a.id}>{a.id}</option>
               ))}
             </select>
+          </div>
+        )}
+
+        {pairDistances.length > 0 && (
+          <div style={{ marginTop: 8 }}>
+            <div style={{ ...labelStyle, marginBottom: 4 }}>coppia specchiata</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {pairDistances.map((d) => {
+                const active = pair?.distance === d
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => handlePairDistance(d)}
+                    style={{
+                      ...pairBtnStyle,
+                      background: active ? '#3aa0ff' : '#1a1a25',
+                      color: active ? '#fff' : '#ddd',
+                      borderColor: active ? '#3aa0ff' : '#2a2a35',
+                    }}
+                  >
+                    {Math.round(d * 100)} cm
+                  </button>
+                )
+              })}
+            </div>
+            {pair && (
+              <button
+                type="button"
+                disabled={readOnly}
+                onClick={() => removeMirrorPair(item.id)}
+                style={{ ...pairBtnStyle, width: '100%', marginTop: 4, background: '#2a2a35' }}
+              >
+                Scollega coppia
+              </button>
+            )}
           </div>
         )}
 
@@ -109,6 +201,16 @@ const btnStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: 12,
   fontWeight: 600,
+}
+const pairBtnStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '5px 6px',
+  border: '1px solid #2a2a35',
+  borderRadius: 4,
+  cursor: 'pointer',
+  fontSize: 11,
+  fontWeight: 600,
+  color: '#ddd',
 }
 const selectStyle: React.CSSProperties = {
   width: '100%',

@@ -1,6 +1,17 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Group, Object3D } from 'three'
-import { Box3, Euler, MathUtils, Plane, Vector3 } from 'three'
+import type { Group, Material, Object3D } from 'three'
+import {
+  Box3,
+  Color,
+  DoubleSide,
+  Euler,
+  MathUtils,
+  Mesh,
+  MeshPhysicalMaterial,
+  MeshStandardMaterial,
+  Plane,
+  Vector3,
+} from 'three'
 import { TransformControls, useGLTF } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import type {
@@ -10,8 +21,19 @@ import type {
   PlacedItem,
   Vec3,
 } from '../types'
+import type { ItemConstraint, ItemSnapPoint } from '../types'
 import { useConfiguratorStore } from '../state/store'
-import { buildLocalCorners, registerItem, unregisterItem } from './itemRegistry'
+import { hydrateItemRulesAndHide } from '../io/rules'
+import { extractAutoSnapGridFromObject } from '../io/autoSnapGrid'
+import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
+import { buildLocalCorners, getItem, registerItem, unregisterItem } from './itemRegistry'
+import {
+  computePartnerPlacement,
+  MIRROR_PAIR_RULE,
+  mirrorAxisOf,
+  mirrorPairConstraint,
+  withSnapConstraint,
+} from './mirrorPair'
 import {
   findNearestVertexSnap,
   offsetForLockedCorners,
@@ -25,14 +47,61 @@ interface Props {
   anchors?: Anchor[]
 }
 
-const ANCHOR_SNAP_RADIUS = 0.04 // 4 cm — distance to an enclosure anchor that triggers a snap
+const ANCHOR_SNAP_RADIUS = 0.06 // 6 cm — XZ distance to an enclosure anchor that triggers a snap
+const ANCHOR_SNAP_MAX_DY = 0.3 // ignore anchors more than 30 cm above/below the item base (e.g. wall anchors while floor-dragging)
 const DRAG_THRESHOLD_PX = 4 // mouse movement (px) before a pointerdown is treated as a drag
 const ROTATION_SENSITIVITY = 0.01 // radians of Y rotation per pixel of horizontal mouse delta
+const ROTATION_STEP = Math.PI / 2 // rotations snap to 90° increments
+const SNAP_POINT_MARKER_RADIUS = 0.006
+
+const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
+
+// Tuning for item reflections. Picks up the scene Environment HDR so items
+// look glossy and reflect the warehouse lighting like the enclosure paint.
+const ITEM_ENV_INTENSITY = 1.5
+const ITEM_CLEARCOAT = 0.5
+const ITEM_CLEARCOAT_ROUGHNESS = 0.1
+
+/**
+ * Walk the cloned item scene and per-instance-clone each material so we can
+ * boost reflections without leaking through the shared `useGLTF` cache.
+ *
+ * For MeshPhysicalMaterial we can also raise the clearcoat to add a glossy
+ * top-coat. For plain MeshStandardMaterial we only boost envMapIntensity —
+ * upgrading to Physical via `copy()` corrupts physical-specific uniforms
+ * (transmission/thickness become undefined) and the mesh renders invisible.
+ */
+function enhanceItemMaterials(root: Object3D) {
+  const upgrade = (m: Material): Material => {
+    if (m instanceof MeshPhysicalMaterial) {
+      const next = m.clone()
+      next.envMapIntensity = Math.max(next.envMapIntensity, ITEM_ENV_INTENSITY)
+      next.clearcoat = Math.max(next.clearcoat, ITEM_CLEARCOAT)
+      next.clearcoatRoughness = Math.min(next.clearcoatRoughness, ITEM_CLEARCOAT_ROUGHNESS)
+      next.needsUpdate = true
+      return next
+    }
+    if (m instanceof MeshStandardMaterial) {
+      const next = m.clone()
+      next.envMapIntensity = Math.max(next.envMapIntensity, ITEM_ENV_INTENSITY)
+      next.needsUpdate = true
+      return next
+    }
+    return m
+  }
+  root.traverse((obj) => {
+    if (!(obj instanceof Mesh)) return
+    if (Array.isArray(obj.material)) {
+      obj.material = obj.material.map(upgrade)
+    } else {
+      obj.material = upgrade(obj.material)
+    }
+  })
+}
 
 // Scratch instances reused across pointermove. Drag is single-threaded so this
 // is safe and saves ~100s of Vector3 allocations per second during a drag.
 const _hit = new Vector3()
-const _basePt = new Vector3()
 const _euler = new Euler()
 
 interface SnapLock {
@@ -45,7 +114,10 @@ interface DragCtx {
   mode: 'translate' | 'rotate'
   startClientX: number
   startClientY: number
+  startRotX: number
   startRotY: number
+  /** Fixed group position used while rotating; rotation must not translate. */
+  startPos: Vector3
   /** Horizontal plane at the group's initial Y; raycast target for translate. */
   plane: Plane
   /** group.position − pointer-hit at pointer-down. Preserves the grab offset. */
@@ -60,19 +132,140 @@ interface DragCtx {
   snapLock: SnapLock | null
 }
 
-function nearestAnchor(
-  pos: Vector3,
+/** XZ offsets of the 4 bottom corners of a centered collider box. */
+function cornerOffsetsXZ(size: Vec3): Array<[number, number]> {
+  const hx = size[0] / 2
+  const hz = size[2] / 2
+  return [
+    [-hx, -hz],
+    [hx, -hz],
+    [-hx, hz],
+    [hx, hz],
+  ]
+}
+
+/** Rotate an XZ offset by `yaw` radians around +Y (three.js convention). */
+function rotateOffsetXZ(ox: number, oz: number, yaw: number): [number, number] {
+  const c = Math.cos(yaw)
+  const s = Math.sin(yaw)
+  return [ox * c + oz * s, -ox * s + oz * c]
+}
+
+function mirroredSnapPoints(snaps: ItemSnapPoint[] | undefined, mirrorScale: Vec3 | undefined) {
+  if (!snaps) return []
+  if (!mirrorScale) return snaps
+  return snaps.map((sp) => ({
+    ...sp,
+    position: [
+      sp.position[0] * mirrorScale[0],
+      sp.position[1] * mirrorScale[1],
+      sp.position[2] * mirrorScale[2],
+    ] as Vec3,
+  }))
+}
+
+interface AnchorSnapHit {
+  anchor: Anchor
+  /** Index into cornerOffsetsXZ, or null when the item center snapped. */
+  corner: number | null
+  /** Id of the product snap point that snapped, or null. Wins over corner. */
+  point: string | null
+  /** New item base position that puts the snapped point on the anchor. */
+  position: Vec3
+  dist: number
+}
+
+interface SnapCandidate {
+  corner: number | null
+  point: string | null
+  dx: number
+  dz: number
+  /** Y offset of the candidate point above the item base. */
+  oy: number
+}
+
+/**
+ * Nearest anchor within ANCHOR_SNAP_RADIUS of the item center, any of its 4
+ * bottom corners, or any product snap point declared in the GLB. Distance is
+ * measured on XZ only (the anchor supplies the Y), with a vertical window so
+ * floor drags don't grab wall anchors.
+ */
+function findAnchorSnap(
+  base: Vec3,
+  yaw: number,
+  colliderSize: Vec3,
   anchors: Anchor[],
-): { anchor: Anchor; dist: number } | null {
-  let best: { anchor: Anchor; dist: number } | null = null
+  snapPoints: ItemSnapPoint[],
+): AnchorSnapHit | null {
+  const candidates: SnapCandidate[] = [{ corner: null, point: null, dx: 0, dz: 0, oy: 0 }]
+  cornerOffsetsXZ(colliderSize).forEach(([ox, oz], i) => {
+    const [dx, dz] = rotateOffsetXZ(ox, oz, yaw)
+    candidates.push({ corner: i, point: null, dx, dz, oy: 0 })
+  })
+  for (const sp of snapPoints) {
+    const [dx, dz] = rotateOffsetXZ(sp.position[0], sp.position[2], yaw)
+    candidates.push({
+      corner: null,
+      point: sp.id,
+      dx,
+      dz,
+      oy: sp.position[1] + colliderSize[1] / 2,
+    })
+  }
+  let best: AnchorSnapHit | null = null
   for (const a of anchors) {
-    const dx = pos.x - a.position[0]
-    const dy = pos.y - a.position[1]
-    const dz = pos.z - a.position[2]
-    const d = Math.sqrt(dx * dx + dy * dy + dz * dz)
-    if (!best || d < best.dist) best = { anchor: a, dist: d }
+    for (const cand of candidates) {
+      if (Math.abs(base[1] + cand.oy - a.position[1]) > ANCHOR_SNAP_MAX_DY) continue
+      const d = Math.hypot(
+        base[0] + cand.dx - a.position[0],
+        base[2] + cand.dz - a.position[2],
+      )
+      if (d <= ANCHOR_SNAP_RADIUS && (!best || d < best.dist)) {
+        best = {
+          anchor: a,
+          corner: cand.corner,
+          point: cand.point,
+          dist: d,
+          position: [
+            a.position[0] - cand.dx,
+            a.position[1] - cand.oy,
+            a.position[2] - cand.dz,
+          ],
+        }
+      }
+    }
   }
   return best
+}
+
+/** World-space AABB of the visible meshes only (markers are hidden). */
+function computeVisibleBBox(root: Object3D): Box3 {
+  root.updateMatrixWorld(true)
+  const box = new Box3()
+  const tmp = new Box3()
+  root.traverseVisible((obj) => {
+    if (!(obj instanceof Mesh)) return
+    const geom = obj.geometry
+    if (!geom.boundingBox) geom.computeBoundingBox()
+    if (geom.boundingBox) {
+      tmp.copy(geom.boundingBox).applyMatrix4(obj.matrixWorld)
+      box.union(tmp)
+    }
+  })
+  return box
+}
+
+/** snapToAnchor constraint recording which item feature landed on the anchor. */
+function snapHitConstraint(hit: AnchorSnapHit): ItemConstraint {
+  return {
+    type: 'snapToAnchor',
+    target: hit.anchor.id,
+    ...(hit.point
+      ? { point: hit.point }
+      : hit.corner != null
+        ? { corner: hit.corner }
+        : {}),
+  }
 }
 
 export function Item({ item, catalog, anchors = [] }: Props) {
@@ -88,7 +281,7 @@ function ItemInner({
   url,
 }: Props & { url: string }) {
   const select = useConfiguratorStore((s) => s.select)
-  const updateItem = useConfiguratorStore((s) => s.updateItem)
+  const updateItems = useConfiguratorStore((s) => s.updateItems)
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
@@ -98,23 +291,89 @@ function ItemInner({
 
   const [group, setGroup] = useState<Group | null>(null)
   const dragRef = useRef<DragCtx | null>(null)
+  const transformLockPosRef = useRef<Vector3 | null>(null)
 
   const gltf = useGLTF(url)
   const scale = catalog?.scale ?? 1
+  const mirrored = item.mirrored === true
   const cloned = useMemo(() => {
     const c = gltf.scene.clone()
     c.scale.setScalar(scale)
+    enhanceItemMaterials(c)
+    if (mirrored) {
+      // The mirror flip (scale.x = -1 on the wrapper) inverts face winding;
+      // render both sides so the geometry doesn't show inside-out.
+      c.traverse((obj) => {
+        if (!(obj instanceof Mesh)) return
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+        for (const m of mats) {
+          // enhanceItemMaterials already cloned Standard/Physical materials,
+          // so mutating them cannot leak into the shared useGLTF cache.
+          if (m instanceof MeshStandardMaterial) m.side = DoubleSide
+        }
+      })
+    }
     c.updateMatrixWorld(true)
     return c
-  }, [gltf.scene, scale])
+  }, [gltf.scene, scale, mirrored])
 
+  // Rules declared in the GLB via extras (kind: "rule") and snap points
+  // (SNAP_* nodes / extras kind: "snap"). Extraction also hides the marker
+  // nodes in this clone.
+  const modelRules = useMemo(() => hydrateItemRulesAndHide(cloned), [cloned])
+  const modelSnaps = useMemo(() => hydrateItemSnapsAndHide(cloned), [cloned])
+  const autoGridSnaps = useMemo(
+    () => extractAutoSnapGridFromObject(cloned, modelRules),
+    [cloned, modelRules],
+  )
+
+  // Mirror flip for the twin of a mirror pair: along the local axis
+  // perpendicular to the rule's mirror plane (X or Z depending on the GLB).
+  const catalogRules = useConfiguratorStore((s) => s.itemRules[item.catalogId])
+  const mirrorScale = useMemo<Vec3 | undefined>(() => {
+    if (!mirrored) return undefined
+    const rule = catalogRules?.find((r) => r.rule === MIRROR_PAIR_RULE)
+    return rule && mirrorAxisOf(rule) === 'z' ? [1, 1, -1] : [-1, 1, 1]
+  }, [mirrored, catalogRules])
+
+  // Tint the item red when it overlaps another item or clips the enclosure
+  // body. Originals captured once per material; we lerp toward red instead of
+  // overwriting so textures/branding stay readable.
+  const originalColorsRef = useRef<Map<MeshStandardMaterial, Color>>(new Map())
+  useLayoutEffect(() => {
+    if (!cloned) return
+    const originals = originalColorsRef.current
+    const RED = new Color(0xff0000)
+    cloned.traverse((obj) => {
+      if (!(obj instanceof Mesh)) return
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+      for (const m of mats) {
+        if (!(m instanceof MeshStandardMaterial)) continue
+        if (!originals.has(m)) originals.set(m, m.color.clone())
+        const orig = originals.get(m)!
+        if (isOverlapping) {
+          m.color.copy(orig).lerp(RED, 0.6)
+        } else {
+          m.color.copy(orig)
+        }
+      }
+    })
+  }, [cloned, isOverlapping])
+
+  // Bounds of the VISIBLE geometry only — rule/snap marker meshes were just
+  // hidden by the hydrate calls above and must not inflate the collider
+  // (e.g. Sincro's 1 mm SNAP_* cubes at floor level under a wall-mounted
+  // panel would stretch the box down to y=0).
   const bbox = useMemo(() => {
-    const b = new Box3().setFromObject(cloned)
+    const b = computeVisibleBBox(cloned)
+    if (b.isEmpty()) b.setFromObject(cloned)
     const size = new Vector3()
     const center = new Vector3()
     b.getSize(size)
     b.getCenter(center)
-    return { size, center }
+    return { size, center, min: b.min.clone() }
+    // modelRules/modelSnaps derive from `cloned` and their memos run above,
+    // so by the time this executes the markers are already hidden.
   }, [cloned])
 
   const catSize = catalog?.size
@@ -130,6 +389,64 @@ function ItemInner({
     [catSize, scale, bbox.size.x, bbox.size.y, bbox.size.z],
   )
 
+  // Publish the GLB rules and snap points (converted into the item's local
+  // frame: origin at the collider center) so UI panels, pair math, and the
+  // anchor-snap logic can read them by catalogId.
+  const setItemRules = useConfiguratorStore((s) => s.setItemRules)
+  const setItemSnaps = useConfiguratorStore((s) => s.setItemSnaps)
+  useLayoutEffect(() => {
+    // Same transform as the render wrapper below: XZ centered on the visible
+    // bbox, Y so the visible bottom sits at the collider bottom (-h/2).
+    const toLocal = (p: Vec3): Vec3 => [
+      p[0] - bbox.center.x,
+      p[1] - colliderSize[1] / 2 - bbox.min.y,
+      p[2] - bbox.center.z,
+    ]
+    const s = useConfiguratorStore.getState()
+    if (modelRules.length > 0 && !s.itemRules[item.catalogId]) {
+      setItemRules(
+        item.catalogId,
+        modelRules.map((r) => ({
+          rule: r.rule,
+          position: toLocal(r.position),
+          axis: r.axis,
+          params: r.params,
+        })),
+      )
+    }
+    const snaps = [...modelSnaps, ...autoGridSnaps]
+    if (snaps.length > 0 && !s.itemSnaps[item.catalogId]) {
+      setItemSnaps(
+        item.catalogId,
+        snaps.map((sp) => ({ id: sp.id, position: toLocal(sp.position) })),
+      )
+    }
+  }, [modelRules, modelSnaps, autoGridSnaps, bbox, colliderSize, item.catalogId, setItemRules, setItemSnaps])
+
+  /**
+   * Patch that keeps the mirror-pair partner glued to this item after a
+   * translate commit at `pos`/`rot`. Empty when the item isn't paired.
+   */
+  const pairSyncPatches = (
+    pos: Vec3,
+    rot: EulerTuple,
+  ): Array<{ id: string; patch: Partial<PlacedItem> }> => {
+    const pair = mirrorPairConstraint(item)
+    if (!pair?.target || pair.distance == null) return []
+    const rule = useConfiguratorStore
+      .getState()
+      .itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
+    if (!rule) return []
+    const placement = computePartnerPlacement(
+      { position: pos, rotation: rot, mirrored: item.mirrored },
+      rule,
+      pair.distance,
+    )
+    return [
+      { id: pair.target, patch: { position: placement.position, rotation: placement.rotation } },
+    ]
+  }
+
   const snapConstraint = item.constraints?.find((c) => c.type === 'snapToAnchor')
   const snappedAnchor = snapConstraint
     ? anchors.find((a) => a.id === snapConstraint.target)
@@ -141,12 +458,49 @@ function ItemInner({
   // the Three.js Group held in state is the idiomatic scene-graph pattern;
   // React state holds the (stable) reference, not the world transform.
   /* eslint-disable react-hooks/immutability */
+  const snapCorner = snapConstraint?.corner ?? null
+  const snapPointId = snapConstraint?.point ?? null
+  const catalogSnaps = useConfiguratorStore((s) => s.itemSnaps[item.catalogId])
+  const effectiveCatalogSnaps = useMemo(
+    () => mirroredSnapPoints(catalogSnaps, mirrorScale),
+    [catalogSnaps, mirrorScale],
+  )
   useLayoutEffect(() => {
     if (!group) return
-    const [px, py, pz] = snappedAnchor?.position ?? item.position
+    let px: number, py: number, pz: number
+    if (snappedAnchor) {
+      const sp = snapPointId ? effectiveCatalogSnaps.find((p) => p.id === snapPointId) : undefined
+      const corner = snapCorner != null ? cornerOffsetsXZ(colliderSize)[snapCorner] : undefined
+      if (sp) {
+        // Snapped by a product snap point: place it exactly on the anchor.
+        const [dx, dz] = rotateOffsetXZ(sp.position[0], sp.position[2], item.rotation[1])
+        px = snappedAnchor.position[0] - dx
+        py = snappedAnchor.position[1] - (sp.position[1] + colliderSize[1] / 2)
+        pz = snappedAnchor.position[2] - dz
+      } else if (corner) {
+        // Snapped by a corner: place the item so that corner sits on the anchor.
+        const [dx, dz] = rotateOffsetXZ(corner[0], corner[1], item.rotation[1])
+        px = snappedAnchor.position[0] - dx
+        py = snappedAnchor.position[1]
+        pz = snappedAnchor.position[2] - dz
+      } else {
+        ;[px, py, pz] = snappedAnchor.position
+      }
+    } else {
+      ;[px, py, pz] = item.position
+    }
     group.position.set(px, py + colliderSize[1] / 2, pz)
     group.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2])
-  }, [group, snappedAnchor, item.position, item.rotation, colliderSize])
+  }, [
+    group,
+    snappedAnchor,
+    snapCorner,
+    snapPointId,
+    effectiveCatalogSnaps,
+    item.position,
+    item.rotation,
+    colliderSize,
+  ])
 
   // Register with the cross-item registry for vertex-snap and overlap push-out.
   useLayoutEffect(() => {
@@ -160,25 +514,58 @@ function ItemInner({
 
   const handleTransformEnd = () => {
     if (!group) return
+    _euler.setFromQuaternion(group.quaternion)
+    const newRot: EulerTuple = [snapAngle(_euler.x), snapAngle(_euler.y), snapAngle(_euler.z)]
+    group.rotation.set(newRot[0], newRot[1], newRot[2])
+
+    // Rotate gizmo: rotate IN PLACE around the collider center. No overlap
+    // push-out, no anchor re-snap — the item must not move in space. A snap
+    // by corner/point can't survive an in-place rotation (the item would
+    // orbit the anchor), so it is dropped and the current position is kept;
+    // a center snap is rotation-invariant and stays.
+    if (useConfiguratorStore.getState().gizmoMode === 'rotate') {
+      if (transformLockPosRef.current) group.position.copy(transformLockPosRef.current)
+      transformLockPosRef.current = null
+      const keepSnap = snapConstraint != null && snapCorner == null && snapPointId == null
+      const basePos: Vec3 = [
+        group.position.x,
+        group.position.y - colliderSize[1] / 2,
+        group.position.z,
+      ]
+      const finalPos = keepSnap ? item.position : basePos
+      updateItems([
+        {
+          id: item.id,
+          patch: {
+            rotation: newRot,
+            ...(keepSnap ? {} : { position: finalPos, constraints: withSnapConstraint(item, null) }),
+          },
+        },
+        ...pairSyncPatches(keepSnap ? (snappedAnchor?.position ?? finalPos) : finalPos, newRot),
+      ])
+      return
+    }
+
+    transformLockPosRef.current = null
     pushOutOverlaps(item.id)
     const newPos: Vec3 = [
       group.position.x,
       group.position.y - colliderSize[1] / 2,
       group.position.z,
     ]
-    _euler.setFromQuaternion(group.quaternion)
-    const newRot: EulerTuple = [_euler.x, _euler.y, _euler.z]
-    _basePt.set(newPos[0], newPos[1], newPos[2])
-    const nearest = nearestAnchor(_basePt, anchors)
-    if (nearest && nearest.dist <= ANCHOR_SNAP_RADIUS) {
-      updateItem(item.id, {
-        position: nearest.anchor.position,
-        rotation: newRot,
-        constraints: [{ type: 'snapToAnchor', target: nearest.anchor.id }],
-      })
-    } else {
-      updateItem(item.id, { position: newPos, rotation: newRot, constraints: [] })
-    }
+    const hit = findAnchorSnap(
+      newPos,
+      newRot[1],
+      colliderSize,
+      anchors,
+      effectiveCatalogSnaps,
+    )
+    const finalPos = hit ? hit.position : newPos
+    const constraints = withSnapConstraint(item, hit ? snapHitConstraint(hit) : null)
+    updateItems([
+      { id: item.id, patch: { position: finalPos, rotation: newRot, constraints } },
+      ...pairSyncPatches(finalPos, newRot),
+    ])
   }
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
@@ -200,7 +587,9 @@ function ItemInner({
       mode: e.shiftKey ? 'rotate' : 'translate',
       startClientX: e.clientX,
       startClientY: e.clientY,
+      startRotX: group.rotation.x,
       startRotY: group.rotation.y,
+      startPos: group.position.clone(),
       plane,
       grabOffset,
       started: false,
@@ -223,7 +612,9 @@ function ItemInner({
       setDraggingItemId(item.id)
     }
     if (d.mode === 'rotate') {
-      group.rotation.y = d.startRotY + dx * ROTATION_SENSITIVITY
+      group.position.copy(d.startPos)
+      group.rotation.y = snapAngle(d.startRotY + dx * ROTATION_SENSITIVITY)
+      group.rotation.x = snapAngle(d.startRotX + dy * ROTATION_SENSITIVITY)
       return
     }
     if (!e.ray.intersectPlane(d.plane, _hit)) return
@@ -269,6 +660,35 @@ function ItemInner({
       }
     }
 
+    // Keep the mirror-pair partner glued to us while dragging. Commit-time
+    // store updates happen in pointerup; here we only move its live group.
+    const pair = mirrorPairConstraint(item)
+    if (pair?.target && pair.distance != null) {
+      const rule = store.itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
+      const partner = getItem(pair.target)
+      if (rule && partner) {
+        const basePos: Vec3 = [
+          group.position.x,
+          group.position.y - colliderSize[1] / 2,
+          group.position.z,
+        ]
+        const placement = computePartnerPlacement(
+          {
+            position: basePos,
+            rotation: [group.rotation.x, group.rotation.y, group.rotation.z],
+            mirrored: item.mirrored,
+          },
+          rule,
+          pair.distance,
+        )
+        partner.group.position.set(
+          placement.position[0],
+          placement.position[1] + colliderSize[1] / 2,
+          placement.position[2],
+        )
+      }
+    }
+
     // Live clearance from enclosure walls (item AABB ↔ enclosure AABB).
     const bbox = store.enclosureBBox
     if (bbox) {
@@ -302,9 +722,35 @@ function ItemInner({
     if (!group) return
 
     if (d.mode === 'rotate') {
-      updateItem(item.id, {
-        rotation: [item.rotation[0], group.rotation.y, item.rotation[2]],
-      })
+      group.position.copy(d.startPos)
+      const rx = snapAngle(group.rotation.x)
+      const ry = snapAngle(group.rotation.y)
+      group.rotation.x = rx
+      group.rotation.y = ry
+      const newRot: EulerTuple = [rx, ry, item.rotation[2]]
+      // In-place rotation: a corner/point snap would make the item orbit the
+      // anchor, so drop it and keep the current position (see handleTransformEnd).
+      const keepSnap = snapConstraint == null || (snapCorner == null && snapPointId == null)
+      const basePos: Vec3 = [
+        group.position.x,
+        group.position.y - colliderSize[1] / 2,
+        group.position.z,
+      ]
+      updateItems([
+        {
+          id: item.id,
+          patch: {
+            rotation: newRot,
+            ...(keepSnap
+              ? {}
+              : { position: basePos, constraints: withSnapConstraint(item, null) }),
+          },
+        },
+        ...pairSyncPatches(
+          snapConstraint && keepSnap ? (snappedAnchor?.position ?? basePos) : basePos,
+          newRot,
+        ),
+      ])
       return
     }
     // Translate commit: resolve any residual AABB overlap (push along smaller
@@ -316,16 +762,19 @@ function ItemInner({
       group.position.y - colliderSize[1] / 2,
       group.position.z,
     ]
-    _basePt.set(newPos[0], newPos[1], newPos[2])
-    const nearest = nearestAnchor(_basePt, anchors)
-    if (nearest && nearest.dist <= ANCHOR_SNAP_RADIUS) {
-      updateItem(item.id, {
-        position: nearest.anchor.position,
-        constraints: [{ type: 'snapToAnchor', target: nearest.anchor.id }],
-      })
-    } else {
-      updateItem(item.id, { position: newPos, constraints: [] })
-    }
+    const hit = findAnchorSnap(
+      newPos,
+      item.rotation[1],
+      colliderSize,
+      anchors,
+      effectiveCatalogSnaps,
+    )
+    const finalPos = hit ? hit.position : newPos
+    const constraints = withSnapConstraint(item, hit ? snapHitConstraint(hit) : null)
+    updateItems([
+      { id: item.id, patch: { position: finalPos, constraints } },
+      ...pairSyncPatches(finalPos, item.rotation),
+    ])
   }
   const handlePointerCancel = (e: ThreeEvent<PointerEvent>) => {
     const d = dragRef.current
@@ -345,11 +794,20 @@ function ItemInner({
         onPointerDown={handlePointerDown}
         // eslint-disable-next-line react-hooks/immutability -- handler mutates group.position imperatively (three.js scene-graph)
         onPointerMove={handlePointerMove}
+        // eslint-disable-next-line react-hooks/immutability -- handler snaps group.rotation imperatively before committing
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}
       >
-        <group position={[-bbox.center.x, -colliderSize[1] / 2, -bbox.center.z]}>
-          <primitive object={cloned} />
+        <group scale={mirrorScale}>
+          <group
+            position={[
+              -bbox.center.x,
+              -colliderSize[1] / 2 - bbox.min.y,
+              -bbox.center.z,
+            ]}
+          >
+            <primitive object={cloned} />
+          </group>
         </group>
         {isSelected && !readOnly && (
           <mesh>
@@ -370,6 +828,18 @@ function ItemInner({
             <meshBasicMaterial wireframe color="#ff4040" />
           </mesh>
         )}
+        {isSelected && effectiveCatalogSnaps.map((sp) => (
+          <mesh key={sp.id} position={sp.position} renderOrder={1001}>
+            <sphereGeometry args={[SNAP_POINT_MARKER_RADIUS, 10, 10]} />
+            <meshBasicMaterial
+              color="#00d5ff"
+              transparent
+              opacity={0.9}
+              depthTest={false}
+              toneMapped={false}
+            />
+          </mesh>
+        ))}
       </group>
 
       {isSelected && group && !readOnly && (
@@ -377,6 +847,15 @@ function ItemInner({
           object={group as Object3D}
           mode={gizmoMode}
           size={MathUtils.clamp(Math.max(...colliderSize) * 4, 0.05, 0.3)}
+          rotationSnap={ROTATION_STEP}
+          onMouseDown={() => {
+            transformLockPosRef.current = gizmoMode === 'rotate' ? group.position.clone() : null
+          }}
+          onObjectChange={() => {
+            if (gizmoMode === 'rotate' && transformLockPosRef.current) {
+              group.position.copy(transformLockPosRef.current)
+            }
+          }}
           onMouseUp={handleTransformEnd}
         />
       )}
