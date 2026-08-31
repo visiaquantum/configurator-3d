@@ -451,71 +451,6 @@ function WalkHint() {
   )
 }
 
-function EnclosureInfo() {
-  const bbox = useConfiguratorStore((s) => s.enclosureBBox)
-  const interior = useConfiguratorStore((s) => s.interiorBBox)
-  const itemCount = useConfiguratorStore((s) => s.project?.items.length ?? 0)
-  if (!bbox) return null
-  // X = larghezza, Y = altezza, Z = lunghezza (van faces -Z by convention).
-  const wM = bbox.max[0] - bbox.min[0]
-  const hM = bbox.max[1] - bbox.min[1]
-  const lM = bbox.max[2] - bbox.min[2]
-  const volumeM3 = wM * hM * lM
-  const iwM = interior ? interior.max[0] - interior.min[0] : null
-  const ihM = interior ? interior.max[1] - interior.min[1] : null
-  const ilM = interior ? interior.max[2] - interior.min[2] : null
-  const iVolM3 = interior && iwM != null && ihM != null && ilM != null ? iwM * ihM * ilM : null
-  // Dual-unit formatter: ≥1 m → metri con 2 decimali; altrimenti cm.
-  const fmt = (m: number) =>
-    m >= 1 ? `${m.toFixed(2)} m` : `${(m * 100).toFixed(0)} cm`
-  return (
-    <div style={infoStyle}>
-      <span style={infoTitle}>Furgone</span>
-      <div style={infoMetric}>
-        <span style={infoLabel}>Lungh.</span>
-        <span style={infoValue}>{fmt(lM)}</span>
-      </div>
-      <div style={infoMetric}>
-        <span style={infoLabel}>Largh.</span>
-        <span style={infoValue}>{fmt(wM)}</span>
-      </div>
-      <div style={infoMetric}>
-        <span style={infoLabel}>Alt.</span>
-        <span style={infoValue}>{fmt(hM)}</span>
-      </div>
-      <span style={infoDivider} />
-      <div style={infoMetric}>
-        <span style={infoLabel}>Volume</span>
-        <span style={infoValue}>
-          {volumeM3 >= 1 ? `${volumeM3.toFixed(2)} m³` : `${(volumeM3 * 1000).toFixed(0)} L`}
-        </span>
-      </div>
-      <div style={infoMetric}>
-        <span style={infoLabel}>Componenti</span>
-        <span style={infoValue}>{itemCount}</span>
-      </div>
-      {interior && iwM != null && ihM != null && ilM != null && iVolM3 != null && (
-        <>
-          <span style={infoDivider} />
-          <span style={infoTitle}>Vano interno</span>
-          <div style={infoMetric}>
-            <span style={infoLabel}>L × W × H</span>
-            <span style={infoValue}>
-              {fmt(ilM)} × {fmt(iwM)} × {fmt(ihM)}
-            </span>
-          </div>
-          <div style={infoMetric}>
-            <span style={infoLabel}>Volume</span>
-            <span style={infoValue}>
-              {iVolM3 >= 1 ? `${iVolM3.toFixed(2)} m³` : `${(iVolM3 * 1000).toFixed(0)} L`}
-            </span>
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
-
 function ClearanceOverlay() {
   const c = useConfiguratorStore((s) => s.dragClearance)
   if (!c) return null
@@ -674,56 +609,6 @@ const selectStyle: React.CSSProperties = {
   padding: '1px 4px',
   fontFamily: 'monospace',
   fontSize: 10,
-}
-const infoStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: 12,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  padding: '6px 14px',
-  background: 'rgba(15,15,20,0.9)',
-  border: '1px solid #2a2a35',
-  borderRadius: 8,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 11,
-  color: '#ddd',
-  backdropFilter: 'blur(6px)',
-}
-const infoTitle: React.CSSProperties = {
-  color: '#9aa',
-  fontSize: 10,
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: 0.6,
-  paddingRight: 8,
-  borderRight: '1px solid #2a2a35',
-}
-const infoMetric: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-start',
-  lineHeight: 1.1,
-}
-const infoLabel: React.CSSProperties = {
-  color: '#778',
-  fontSize: 9,
-  textTransform: 'uppercase',
-  letterSpacing: 0.3,
-}
-const infoValue: React.CSSProperties = {
-  color: '#ddd',
-  fontSize: 12,
-  fontFamily: 'monospace',
-  fontWeight: 600,
-  marginTop: 1,
-}
-const infoDivider: React.CSSProperties = {
-  width: 1,
-  height: 22,
-  background: '#2a2a35',
 }
 const clearanceStyle: React.CSSProperties = {
   position: 'absolute',

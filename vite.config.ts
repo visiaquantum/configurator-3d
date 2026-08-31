@@ -28,8 +28,18 @@ export default defineConfig(({ mode }) => {
     return {
       plugins: [
         react(),
-        dts({ include: ['src/lib/**/*'], insertTypesEntry: true }),
+        // `tsconfigPath` is required: the root tsconfig.json is a solution file
+        // (`files: []` + project references), so the plugin would find no input
+        // files and emit an empty `index.d.ts`.
+        dts({
+          tsconfigPath: resolve(__dirname, 'tsconfig.lib.json'),
+          include: ['src/lib/**/*'],
+          insertTypesEntry: true,
+        }),
       ],
+      // Don't copy `public/` (25 MB HDR + customer GLBs) into the published
+      // package. Demo-only assets; the host app serves its own.
+      publicDir: false,
       build: {
         lib: {
           entry: resolve(__dirname, 'src/lib/index.ts'),
@@ -62,5 +72,9 @@ export default defineConfig(({ mode }) => {
   }
   return {
     plugins: [react()],
+    // Demo output is kept out of `dist/`: that directory is the published
+    // package (`files: ["dist"]`), and a demo build would otherwise overwrite
+    // the library bundle with the SPA + all of `public/`.
+    build: { outDir: 'dist-demo' },
   }
 })
