@@ -143,6 +143,8 @@ export function Configurator3D({
         s.setGizmoMode('translate')
       } else if (e.key === 'r' || e.key === 'R') {
         s.setGizmoMode('rotate')
+      } else if ((e.key === 'f' || e.key === 'F') && s.selectedId) {
+        s.requestFocusSelected()
       } else if ((e.key === 'Delete' || e.key === 'Backspace') && s.selectedId) {
         s.removeItem(s.selectedId)
       }
@@ -194,7 +196,6 @@ export function Configurator3D({
       {showInspector && <Inspector readOnly={readOnly} />}
       {showHints && <Hints />}
       <ViewControls />
-      <EnclosureInfo />
       <ClearanceOverlay />
       <WalkHint />
       {catalogStatus.state === 'loading' && (
@@ -351,6 +352,8 @@ function Hints() {
 
 function ViewControls() {
   const setCameraPreset = useConfiguratorStore((s) => s.setCameraPreset)
+  const requestFocusSelected = useConfiguratorStore((s) => s.requestFocusSelected)
+  const selectedId = useConfiguratorStore((s) => s.selectedId)
   const xrayEnabled = useConfiguratorStore((s) => s.xrayEnabled)
   const setXray = useConfiguratorStore((s) => s.setXrayEnabled)
   const snapToGridEnabled = useConfiguratorStore((s) => s.snapToGridEnabled)
@@ -371,6 +374,19 @@ function ViewControls() {
         <button type="button" style={presetBtn} onClick={() => setCameraPreset('front')} title="Vista frontale">F</button>
         <button type="button" style={presetBtn} onClick={() => setCameraPreset('side')} title="Vista laterale">S</button>
         <button type="button" style={presetBtn} onClick={() => setCameraPreset('iso')} title="Vista isometrica">◆</button>
+        <button
+          type="button"
+          style={presetBtn}
+          disabled={!selectedId || walkMode}
+          onClick={requestFocusSelected}
+          title={
+            selectedId
+              ? 'Centra la vista sul pezzo selezionato (F)'
+              : 'Seleziona un pezzo per centrarlo'
+          }
+        >
+          ⊙
+        </button>
         <button
           type="button"
           style={{ ...presetBtn, background: walkMode ? '#3aa0ff' : presetBtn.background, color: walkMode ? '#fff' : presetBtn.color }}

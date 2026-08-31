@@ -9,6 +9,7 @@ import type {
   ProjectData,
 } from '../types'
 import { PROJECT_SCHEMA_VERSION } from '../types'
+import type { NeighborGap } from '../scene/neighborGap'
 
 export interface CaptureRefs {
   gl: WebGLRenderer
@@ -79,6 +80,12 @@ interface ConfiguratorState {
   gridStep: number
   /** One-shot camera preset request. CameraPresetBridge resets to null after applying. */
   cameraPreset: CameraPreset | null
+  /**
+   * One-shot "center the orbit on the selected item" request, as a counter so
+   * repeated clicks re-fire. SelectedOrbitTarget consumes it; selecting an item
+   * does NOT move the camera on its own.
+   */
+  focusSelectedRequest: number
   /** AABB of the loaded enclosure GLB in world units, or null until it loads. */
   enclosureBBox: EnclosureBBox | null
   /** AABB of the inner cargo area (`Body_interior` node) in world units, if available. */
@@ -87,6 +94,12 @@ interface ConfiguratorState {
   doorsOpen: boolean
   /** Live clearance for the dragged item, or null when no drag is active. */
   dragClearance: DragClearance | null
+  /**
+   * Distance from the selected item to the nearest other product, on the
+   * nearest axis only. Maintained by scene/NeighborGapIndicator; null when
+   * nothing is selected, nothing is in range, or the two overlap.
+   */
+  neighborGap: NeighborGap | null
   /** Ids of items currently overlapping another item's AABB. */
   overlappingIds: Set<string>
   /** When true, switches to first-person POV inside the enclosure (WASD + mouse-look). */
@@ -106,10 +119,13 @@ interface ConfiguratorState {
   setSnapToGridEnabled: (v: boolean) => void
   setGridStep: (v: number) => void
   setCameraPreset: (p: CameraPreset | null) => void
+  /** Ask SelectedOrbitTarget to center the orbit on the selected item. */
+  requestFocusSelected: () => void
   setEnclosureBBox: (b: EnclosureBBox | null) => void
   setInteriorBBox: (b: EnclosureBBox | null) => void
   setDoorsOpen: (v: boolean) => void
   setDragClearance: (c: DragClearance | null) => void
+  setNeighborGap: (g: NeighborGap | null) => void
   setOverlappingIds: (ids: Set<string>) => void
   setWalkMode: (v: boolean) => void
   /** Walk the scene and return all Object3Ds tagged with userData.exportable === true. */
@@ -166,10 +182,12 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     snapToGridEnabled: false,
     gridStep: 0.05,
     cameraPreset: null,
+    focusSelectedRequest: 0,
     enclosureBBox: null,
     interiorBBox: null,
     doorsOpen: false,
     dragClearance: null,
+    neighborGap: null,
     overlappingIds: new Set<string>(),
     walkMode: false,
 
@@ -184,6 +202,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
         enclosureBBox: null,
         interiorBBox: null,
         dragClearance: null,
+        neighborGap: null,
         overlappingIds: new Set<string>(),
       }),
 
@@ -213,10 +232,13 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     setSnapToGridEnabled: (v) => set({ snapToGridEnabled: v }),
     setGridStep: (v) => set({ gridStep: v }),
     setCameraPreset: (p) => set({ cameraPreset: p }),
+    requestFocusSelected: () =>
+      set((s) => ({ focusSelectedRequest: s.focusSelectedRequest + 1 })),
     setEnclosureBBox: (b) => set({ enclosureBBox: b }),
     setInteriorBBox: (b) => set({ interiorBBox: b }),
     setDoorsOpen: (v) => set({ doorsOpen: v }),
     setDragClearance: (c) => set({ dragClearance: c }),
+    setNeighborGap: (g) => set({ neighborGap: g }),
     setOverlappingIds: (ids) => set({ overlappingIds: ids }),
     setWalkMode: (v) =>
       set({
@@ -224,6 +246,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
         selectedId: v ? null : get().selectedId,
         draggingItemId: null,
         dragClearance: null,
+        neighborGap: null,
       }),
 
     collectExportRoots: () => {

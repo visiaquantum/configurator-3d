@@ -13,22 +13,26 @@ function isOrbitLike(c: unknown): c is OrbitLike {
 }
 
 /**
- * When an item is selected, make OrbitControls rotate around that item's
- * collider center instead of the fixed scene/enclosure center.
+ * Centers OrbitControls on the selected item's collider center — **on demand
+ * only**. Selecting an item deliberately does not move the camera; the user
+ * asks for it via the "Centra" button (`requestFocusSelected` in the store),
+ * which bumps `focusSelectedRequest` and triggers the effect below.
  */
 export function SelectedOrbitTarget() {
   const { controls, invalidate } = useThree() as {
     controls: unknown
     invalidate: () => void
   }
-  const selectedId = useConfiguratorStore((s) => s.selectedId)
-  const project = useConfiguratorStore((s) => s.project)
-  const catalog = useConfiguratorStore((s) => s.catalog)
-  const draggingItemId = useConfiguratorStore((s) => s.draggingItemId)
+  const focusRequest = useConfiguratorStore((s) => s.focusSelectedRequest)
   const walkMode = useConfiguratorStore((s) => s.walkMode)
 
   useEffect(() => {
-    if (walkMode || draggingItemId || !selectedId || !project || !isOrbitLike(controls)) return
+    if (focusRequest === 0 || walkMode || !isOrbitLike(controls)) return
+
+    // Read once, untracked: the effect must run when the request counter
+    // changes, not whenever the item moves.
+    const { selectedId, project, catalog } = useConfiguratorStore.getState()
+    if (!selectedId || !project) return
     const item = project.items.find((it) => it.id === selectedId)
     if (!item) return
 
@@ -43,7 +47,7 @@ export function SelectedOrbitTarget() {
     )
     controls.update()
     invalidate()
-  }, [selectedId, project, catalog, controls, invalidate, draggingItemId, walkMode])
+  }, [focusRequest, controls, invalidate, walkMode])
 
   return null
 }

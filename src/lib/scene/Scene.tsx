@@ -9,6 +9,7 @@ import { SceneCaptureBridge } from './SceneCaptureBridge'
 import { CameraPresetBridge } from './CameraPresetBridge'
 import { SelectedOrbitTarget } from './SelectedOrbitTarget'
 import { OverlapDetector } from './OverlapDetector'
+import { NeighborGapIndicator } from './NeighborGapIndicator'
 import { WalkControls } from './WalkControls'
 import { useConfiguratorStore } from '../state/store'
 
@@ -26,13 +27,22 @@ export function Scene({ project }: Props) {
   const effectiveAnchors =
     runtimeAnchors.length > 0 ? runtimeAnchors : project.enclosure.anchors ?? []
 
+  // Pull-back limit: generous multiple of the enclosure size, with a floor so
+  // small enclosures can still be framed from far out. Kept under the camera
+  // `far` plane (150).
   const maxOrbitDistance = enclosureBBox
-    ? Math.max(
-        enclosureBBox.max[0] - enclosureBBox.min[0],
-        enclosureBBox.max[1] - enclosureBBox.min[1],
-        enclosureBBox.max[2] - enclosureBBox.min[2],
-      ) * 1.6
-    : 15
+    ? Math.min(
+        Math.max(
+          Math.max(
+            enclosureBBox.max[0] - enclosureBBox.min[0],
+            enclosureBBox.max[1] - enclosureBBox.min[1], //X su Z
+            enclosureBBox.max[2] - enclosureBBox.min[2], //Z su Y
+          ) * 8,
+          30,
+        ),
+        120,
+      )
+    : 60
 
   return (
     <Canvas
@@ -44,6 +54,7 @@ export function Scene({ project }: Props) {
       <CameraPresetBridge />
       <SelectedOrbitTarget />
       <OverlapDetector />
+      <NeighborGapIndicator />
       <color attach="background" args={['#101827']} />
       <ambientLight intensity={0.4} />
       <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
@@ -94,8 +105,12 @@ export function Scene({ project }: Props) {
         target={[0, 1, 0]}
         enabled={!walkMode && draggingItemId === null}
         maxPolarAngle={Math.PI / 2 - 0.05}
-        minDistance={2}
+        // 12 cm — close enough to inspect a single 3 cm-thick panel, still
+        // clear of the camera `near` plane (0.05).
+        minDistance={0.12}
         maxDistance={maxOrbitDistance}
+        // Wider range needs fewer scroll ticks to cross it.
+        zoomSpeed={1.4}
       />
       {walkMode && <WalkControls />}
       {!walkMode && (

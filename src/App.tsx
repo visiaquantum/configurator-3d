@@ -17,12 +17,39 @@ import type {
 // Models were exported at 0.1× scale; apply 10× to render at real meters.
 const MODEL_SCALE = 10
 
-const catalog: CatalogItem[] = [
-  // KSI12836.glb is exported at real meter scale, unlike the enclosure which
-  // needs MODEL_SCALE. Size = the visible YSI02836 body only (snap markers
-  // excluded): upright panel, 0.36 wide × 1.008 tall × 0.03 thick.
-  { id: 'ksi12836', label: 'KSI 12836', glbUrl: '/models/KSI12836.glb', size: [0.36, 1.008, 0.03], scale: 1 },
+// Product GLBs under public/models are exported at real meter scale, unlike the
+// enclosure which needs MODEL_SCALE. Every `size` below is the visible body
+// bbox only (SNAP_* marker nodes excluded), measured from the GLB itself.
+const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
+  {
+    category: 'Montanti',
+    items: [
+      { id: 'ysi12836', label: 'YSI 12836', glbUrl: '/models/MONTANTI/YSI12836.glb', size: [0.36, 1.008, 0.03], scale: 1 },
+    ],
+  },
+  {
+    category: 'Orizzontali',
+    items: [
+      { id: 'xds40231km02', label: 'XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307], scale: 1 },
+    ],
+  },
+  {
+    category: 'Accessori',
+    items: [
+      { id: 'ptbm31', label: 'PTBM-31', glbUrl: '/models/ACCESSORI/PTBM-31.glb', size: [0.31, 0.14, 0.09], scale: 1 },
+    ],
+  },
+  {
+    category: 'Kit',
+    items: [
+      // Pre-assembled group (XDS40236 + montanti); the body bbox excludes the
+      // snap markers, which reach further on Z (full depth 1.325).
+      { id: 'kit01', label: 'KIT 01', glbUrl: '/models/KIT/KIT01.glb', size: [0.36, 0.864, 1.014], scale: 1 },
+    ],
+  },
 ]
+
+const catalog: CatalogItem[] = catalogGroups.flatMap((g) => g.items)
 
 const ENCLOSURE: EnclosureData = {
   glbUrl: '/models/FIAT-NDC40H2.glb',
@@ -92,20 +119,31 @@ export default function App() {
           Click su un prodotto per aggiungerlo alla scena.
         </p>
 
-        <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 16px 0' }}>
-          {catalog.map((p) => (
-            <li key={p.id} style={{ marginBottom: 6 }}>
-              <button
-                type="button"
-                onClick={() => handleAdd(p)}
-                style={productBtnStyle}
-              >
-                <div style={{ fontWeight: 600 }}>{p.label}</div>
-                <div style={{ color: '#778', fontSize: 10 }}>{p.id}</div>
-              </button>
-            </li>
+        <div style={{ marginBottom: 16 }}>
+          {catalogGroups.map((g) => (
+            <details key={g.category} open style={{ marginBottom: 8 }}>
+              <summary style={summaryStyle}>
+                {g.category} <span style={{ color: '#778' }}>({g.items.length})</span>
+              </summary>
+              <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0 0' }}>
+                {g.items.map((p) => (
+                  <li key={p.id} style={{ marginBottom: 6 }}>
+                    <button
+                      type="button"
+                      onClick={() => handleAdd(p)}
+                      style={productBtnStyle}
+                    >
+                      <div style={{ fontWeight: 600 }}>{p.label}</div>
+                      <div style={{ color: '#778', fontSize: 10 }}>
+                        {p.size ? `${p.size.map((v) => Math.round(v * 1000)).join(' × ')} mm` : p.id}
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
           ))}
-        </ul>
+        </div>
 
         <h3 style={{ marginBottom: 6 }}>Progetto</h3>
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
@@ -177,6 +215,15 @@ const sidebarStyle: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
   fontSize: 12,
   overflow: 'auto',
+}
+const summaryStyle: React.CSSProperties = {
+  cursor: 'pointer',
+  fontWeight: 600,
+  fontSize: 11,
+  textTransform: 'uppercase',
+  letterSpacing: 0.5,
+  padding: '4px 0',
+  userSelect: 'none',
 }
 const productBtnStyle: React.CSSProperties = {
   width: '100%',
