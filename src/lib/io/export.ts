@@ -1,7 +1,40 @@
 import type { Camera, Object3D, Scene, WebGLRenderer } from 'three'
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
-import { jsPDF } from 'jspdf'
-import type { CatalogItem, ProjectData } from '../types'
+import type { AssemblyManifest, CatalogItem, ProjectData, ValidationIssue } from '../types'
+import { definitionFor } from '../assembly/manifest'
+
+export interface BomLine {
+  code: string
+  label: string
+  quantity: number
+}
+
+/** Build a technical BOM from placed products and connector-declared hardware. */
+export function buildProjectBom(
+  project: ProjectData,
+  catalog: CatalogItem[],
+  manifest?: AssemblyManifest | null,
+): BomLine[] {
+  const lines = new Map<string, BomLine>()
+  const add = (code: string, label: string, quantity: number) => {
+    const existing = lines.get(code)
+    if (existing) existing.quantity += quantity
+    else lines.set(code, { code, label, quantity })
+  }
+  for (const item of project.items) {
+    const definition = definitionFor(manifest, item.catalogId)
+    const catalogItem = catalog.find((candidate) => candidate.id === item.catalogId)
+    add(definition?.bom?.code ?? item.catalogId, definition?.bom?.label ?? catalogItem?.label ?? '—', 1)
+  }
+  for (const connection of project.connections ?? []) {
+    const source = project.items.find((item) => item.id === connection.sourceItemId)
+    if (!source) continue
+    const connector = definitionFor(manifest, source.catalogId)?.connectors.find(
+      (candidate) => candidate.id === connection.sourceConnectorId,
+    )
+    connector?.bomComponents?.forEach((component) => add(component.code, component.label, component.quantity))
+  }
+  return [...lines.values()].sort((a, b) => a.code.localeCompare(b.code))
+}
 
 /**
  * Render once and grab the canvas pixels as a PNG data URL.
@@ -25,7 +58,10 @@ export function captureCanvasImage(
  * `roots` should be the exportable geometry only (enclosure + placed items),
  * not the whole scene — otherwise grid/environment/gizmo helpers leak in.
  */
-export function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
+export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
+  // Export libraries are needed only when the user asks for an output. Lazy
+  // loading keeps the initial configurator bundle focused on the 3D editor.
+  const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js')
   const exporter = new GLTFExporter()
   return new Promise((resolve, reject) => {
     exporter.parse(
@@ -51,6 +87,8 @@ export interface ExportPdfOptions {
   imageDataUrl?: string
   /** Override the timestamp shown on the document. Defaults to `new Date()`. */
   date?: Date
+  manifest?: AssemblyManifest | null
+  validationIssues?: ValidationIssue[]
 }
 
 async function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -67,7 +105,11 @@ async function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }>
  * the scene screenshot, and a grouped component count (one row per catalog id).
  */
 export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
-  const { project, catalog, imageDataUrl, date = new Date() } = opts
+  const { project, catalog, imageDataUrl, date = new Date(), manifest, validationIssues = [] } = opts
+  if (validationIssues.some((issue) => issue.level === 'error')) {
+    throw new Error('Impossibile generare la BOM: correggi gli errori di configurazione')
+  }
+  const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
   const PAGE_W = 210
@@ -82,8 +124,12 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   if (customer) doc.text(`Cliente: ${customer}`, MARGIN, 28)
   doc.text(`Data: ${date.toLocaleDateString('it-IT')}`, MARGIN, customer ? 34 : 28)
   doc.text(`Progetto: ${project.id}`, MARGIN, customer ? 40 : 34)
+  doc.setTextColor(validationIssues.some((issue) => issue.level === 'error') ? 180 : 30, validationIssues.some((issue) => issue.level === 'error') ? 50 : 120, 80)
+  doc.text(validationIssues.length ? `Stato: ${validationIssues.length} segnalazioni` : 'Stato: configurazione validata', MARGIN + 75, customer ? 40 : 34)
+  doc.setTextColor(0)
+  if (manifest) doc.text(`Manifest tecnico: v${manifest.version}`, MARGIN + 75, customer ? 46 : 40)
 
-  let y = customer ? 48 : 42
+  let y = manifest ? (customer ? 53 : 47) : (customer ? 48 : 42)
 
   if (imageDataUrl) {
     // Preserve the screenshot's native aspect ratio: fit it inside CONTENT_W ×
@@ -115,14 +161,12 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   doc.line(MARGIN, y, PAGE_W - MARGIN, y)
   y += 5
 
-  const counts = new Map<string, number>()
-  for (const it of project.items) counts.set(it.catalogId, (counts.get(it.catalogId) ?? 0) + 1)
+  const lines = buildProjectBom(project, catalog, manifest)
 
-  for (const [catalogId, qty] of counts) {
-    const cat = catalog.find((c) => c.id === catalogId)
-    doc.text(catalogId, MARGIN, y)
-    doc.text(cat?.label ?? '—', MARGIN + 40, y)
-    doc.text(String(qty), PAGE_W - MARGIN - 10, y, { align: 'right' })
+  for (const line of lines) {
+    doc.text(line.code, MARGIN, y)
+    doc.text(line.label, MARGIN + 40, y)
+    doc.text(String(line.quantity), PAGE_W - MARGIN - 10, y, { align: 'right' })
     y += 5
     if (y > 280) {
       doc.addPage()

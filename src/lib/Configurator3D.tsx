@@ -5,6 +5,8 @@ import { Scene } from './scene/Scene'
 import { Inspector } from './ui/Inspector'
 import { useConfiguratorStore } from './state/store'
 import { loadCatalog } from './io/catalog'
+import { hasBlockingIssues, validateConfiguration } from './assembly/validation'
+import { inferLegacyConnections, loadAssemblyManifest } from './assembly/manifest'
 import {
   captureCanvasImage,
   downloadBlob,
@@ -19,6 +21,7 @@ import type {
   EnclosureData,
   PlacedItem,
   ProjectData,
+  ValidationIssue,
   Vec3,
 } from './types'
 
@@ -29,10 +32,13 @@ export function Configurator3D({
   projectId,
   metadata,
   catalog,
+  assemblyManifest,
   onChange,
   onSave,
   onCatalogLoaded,
   onCatalogError,
+  onValidationChange,
+  onTelemetry,
   showInspector = true,
   showToolbar = true,
   showHints = true,
@@ -44,17 +50,28 @@ export function Configurator3D({
   const setCatalog = useConfiguratorStore((s) => s.setCatalog)
   const setReadOnly = useConfiguratorStore((s) => s.setReadOnly)
   const project = useConfiguratorStore((s) => s.project)
+  const manifest = useConfiguratorStore((s) => s.assemblyManifest)
+  const validationIssues = useConfiguratorStore((s) => s.validationIssues)
+  const itemSnaps = useConfiguratorStore((s) => s.itemSnaps)
+  const itemRules = useConfiguratorStore((s) => s.itemRules)
+  const interiorBBox = useConfiguratorStore((s) => s.interiorBBox)
 
   // Build the project once when any of the source props change (reference compare).
   // Host should memoize these to control when the scene resets.
   const builtProject = useMemo<ProjectData>(() => {
     const enclosureData: EnclosureData =
       typeof enclosure === 'string' ? { glbUrl: enclosure } : enclosure
+    const hasLegacyLinks = initialItems?.some((item) =>
+      item.constraints?.some((constraint) => constraint.type === 'snapToItem'),
+    ) ?? false
     return {
       id: projectId ?? `cfg-${nanoid(8)}`,
       version: PROJECT_SCHEMA_VERSION,
       enclosure: enclosureData,
       items: initialItems ?? [],
+      // A new scene owns an explicit empty graph. Leave legacy links without
+      // the field so they can be upgraded once their GLB snaps hydrate.
+      connections: hasLegacyLinks ? undefined : [],
       metadata,
     }
   }, [enclosure, initialItems, projectId, metadata])
@@ -64,25 +81,71 @@ export function Configurator3D({
   const [fetched, setFetched] = useState<
     { url: string; items: CatalogItem[] } | { url: string; error: string } | null
   >(null)
+  const [manifestError, setManifestError] = useState<{ source: string; error: string } | null>(null)
+
+  useEffect(() => {
+    useConfiguratorStore.getState().setTelemetryListener(onTelemetry ?? null)
+    return () => useConfiguratorStore.getState().setTelemetryListener(null)
+  }, [onTelemetry])
 
   useEffect(() => {
     if (!catalogUrl) return
     let cancelled = false
+    const startedAt = performance.now()
     loadCatalog(catalogUrl)
       .then((items) => {
         if (cancelled) return
         setFetched({ url: catalogUrl, items })
+        useConfiguratorStore.getState().reportTelemetry({
+          type: 'catalog-load', outcome: 'success', durationMs: performance.now() - startedAt,
+          detail: { itemCount: items.length },
+        })
         onCatalogLoaded?.(items)
       })
       .catch((e: Error) => {
         if (cancelled) return
         setFetched({ url: catalogUrl, error: e.message })
+        useConfiguratorStore.getState().reportTelemetry({
+          type: 'catalog-load', outcome: 'error', durationMs: performance.now() - startedAt,
+          detail: { message: e.message },
+        })
         onCatalogError?.(e)
       })
     return () => {
       cancelled = true
     }
   }, [catalogUrl, onCatalogLoaded, onCatalogError])
+
+  useEffect(() => {
+    if (!assemblyManifest) {
+      useConfiguratorStore.getState().setAssemblyManifest(null)
+      return
+    }
+    let cancelled = false
+    const startedAt = performance.now()
+    loadAssemblyManifest(assemblyManifest)
+      .then((next) => {
+        if (cancelled) return
+        useConfiguratorStore.getState().setAssemblyManifest(next)
+        useConfiguratorStore.getState().reportTelemetry({
+          type: 'manifest-load', outcome: 'success', durationMs: performance.now() - startedAt,
+          detail: { version: next.version, productCount: next.products.length },
+        })
+        setManifestError(null)
+      })
+      .catch((error: Error) => {
+        if (cancelled) return
+        useConfiguratorStore.getState().setAssemblyManifest(null)
+        useConfiguratorStore.getState().reportTelemetry({
+          type: 'manifest-load', outcome: 'error', durationMs: performance.now() - startedAt,
+          detail: { message: error.message },
+        })
+        setManifestError({ source: typeof assemblyManifest === 'string' ? assemblyManifest : 'inline', error: error.message })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [assemblyManifest])
 
   // Push prop catalog into the store. Imperative `addItem` adds more on top.
   // Also preload each catalog GLB so the first instance of a new type doesn't
@@ -119,6 +182,35 @@ export function Configurator3D({
   useEffect(() => {
     if (project && onChange) onChange(project)
   }, [project, onChange])
+
+  useEffect(() => {
+    const issues = validateConfiguration(project, useConfiguratorStore.getState().catalog, manifest, {
+      itemSnaps,
+      itemRules,
+      enclosureBounds: interiorBBox,
+    })
+    const current = useConfiguratorStore.getState().validationIssues
+    const same = current.length === issues.length && current.every((issue, i) =>
+      issue.code === issues[i].code && issue.message === issues[i].message && issue.itemIds.join('|') === issues[i].itemIds.join('|'),
+    )
+    if (!same) {
+      useConfiguratorStore.getState().setValidationIssues(issues)
+      useConfiguratorStore.getState().reportTelemetry({
+        type: 'validation',
+        outcome: issues.some((issue) => issue.level === 'error') ? 'error' : 'success',
+        detail: { issueCount: issues.length, errorCount: issues.filter((issue) => issue.level === 'error').length },
+      })
+    }
+    onValidationChange?.(issues)
+  }, [project, manifest, itemSnaps, itemRules, interiorBBox, onValidationChange])
+
+  useEffect(() => {
+    if (!project || project.connections !== undefined || !manifest) return
+    const inferred = inferLegacyConnections(project, manifest, itemSnaps, itemRules)
+    // Wait for GLB snap hydration; an empty result may simply mean that assets
+    // are still loading, so do not freeze migration prematurely.
+    if (inferred.length > 0) useConfiguratorStore.getState().setConnections(inferred)
+  }, [project, manifest, itemSnaps, itemRules])
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -169,6 +261,9 @@ export function Configurator3D({
       getProject() {
         return useConfiguratorStore.getState().project
       },
+      getValidation() {
+        return useConfiguratorStore.getState().validationIssues
+      },
       setProject(p) {
         useConfiguratorStore.getState().setProject(p)
       },
@@ -197,12 +292,16 @@ export function Configurator3D({
       {showHints && <Hints />}
       <ViewControls />
       <ClearanceOverlay />
+      <ValidationPanel issues={validationIssues} />
       <WalkHint />
       {catalogStatus.state === 'loading' && (
         <CatalogStatusBadge text="Caricamento catalogo…" tone="info" />
       )}
       {catalogStatus.state === 'error' && (
         <CatalogStatusBadge text={`Catalogo: ${catalogStatus.message}`} tone="error" />
+      )}
+      {assemblyManifest && manifestError && (
+        <CatalogStatusBadge text={`Manifest: ${manifestError.error}`} tone="error" />
       )}
       {showToolbar && <Toolbar readOnly={readOnly} onSave={onSave} />}
     </div>
@@ -248,34 +347,50 @@ function addItemToScene(
 }
 
 async function exportSceneAsBlob(kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
-  // Deselect, then wait two frames: one for React to commit the unmount of
-  // TransformControls/wireframe, one for R3F to render the clean scene.
-  useConfiguratorStore.getState().select(null)
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-  const s = useConfiguratorStore.getState()
-  const refs = s.captureRefs
-  if (kind === 'png') {
-    if (!refs) throw new Error('Scene not ready')
-    const dataUrl = captureCanvasImage(refs.gl, refs.scene, refs.camera)
-    return await (await fetch(dataUrl)).blob()
+  const startedAt = performance.now()
+  try {
+    // Deselect, then wait two frames: one for React to commit the unmount of
+    // TransformControls/wireframe, one for R3F to render the clean scene.
+    useConfiguratorStore.getState().select(null)
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    const s = useConfiguratorStore.getState()
+    const refs = s.captureRefs
+    let blob: Blob
+    if (kind === 'png') {
+      if (!refs) throw new Error('Scene not ready')
+      const dataUrl = captureCanvasImage(refs.gl, refs.scene, refs.camera)
+      blob = await (await fetch(dataUrl)).blob()
+    } else if (kind === 'glb') {
+      const roots = s.collectExportRoots()
+      if (roots.length === 0) throw new Error('No exportable geometry')
+      blob = await exportSceneGLB(roots)
+    } else {
+      if (hasBlockingIssues(s.validationIssues)) {
+        throw new Error('La configurazione contiene errori bloccanti: correggili prima di esportare la BOM/PDF')
+      }
+      const imageDataUrl = refs
+        ? captureCanvasImage(refs.gl, refs.scene, refs.camera, 'image/jpeg')
+        : undefined
+      const project = s.project
+      if (!project) throw new Error('No project')
+      blob = await exportProjectPDF({
+        project,
+        catalog: Object.values(s.catalog),
+        imageDataUrl,
+        manifest: s.assemblyManifest,
+        validationIssues: s.validationIssues,
+      })
+    }
+    s.reportTelemetry({ type: 'export', outcome: 'success', durationMs: performance.now() - startedAt, detail: { kind, size: blob.size } })
+    return blob
+  } catch (error) {
+    useConfiguratorStore.getState().reportTelemetry({
+      type: 'export', outcome: 'error', durationMs: performance.now() - startedAt,
+      detail: { kind, message: (error as Error).message },
+    })
+    throw error
   }
-  if (kind === 'glb') {
-    const roots = s.collectExportRoots()
-    if (roots.length === 0) throw new Error('No exportable geometry')
-    return exportSceneGLB(roots)
-  }
-  // pdf
-  const imageDataUrl = refs
-    ? captureCanvasImage(refs.gl, refs.scene, refs.camera, 'image/jpeg')
-    : undefined
-  const project = s.project
-  if (!project) throw new Error('No project')
-  return exportProjectPDF({
-    project,
-    catalog: Object.values(s.catalog),
-    imageDataUrl,
-  })
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +405,8 @@ function Toolbar({
   onSave?: (p: ProjectData) => void
 }) {
   const projectId = useConfiguratorStore((s) => s.project?.id ?? 'scene')
+  const validationIssues = useConfiguratorStore((s) => s.validationIssues)
+  const canExportBom = !hasBlockingIssues(validationIssues)
   const download = async (kind: 'png' | 'glb' | 'pdf') => {
     const blob = await exportSceneAsBlob(kind)
     const ext = kind === 'glb' ? 'glb' : kind === 'pdf' ? 'pdf' : 'png'
@@ -317,9 +434,36 @@ function Toolbar({
       <button type="button" onClick={() => download('glb')} style={secondaryBtn} title="Esporta scena GLB">
         GLB
       </button>
-      <button type="button" onClick={() => download('pdf')} style={secondaryBtn} title="Esporta PDF con lista componenti">
+      <button type="button" disabled={!canExportBom} onClick={() => download('pdf')} style={secondaryBtn} title={canExportBom ? 'Esporta PDF con lista componenti' : 'Correggi gli errori di configurazione prima di esportare'}>
         PDF
       </button>
+    </div>
+  )
+}
+
+function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
+  const select = useConfiguratorStore((state) => state.select)
+  const errors = issues.filter((issue) => issue.level === 'error')
+  if (issues.length === 0) {
+    return <div style={{ ...validationStyle, borderColor: '#2c9b68', color: '#a8efc8' }}>Configurazione valida</div>
+  }
+  return (
+    <div style={{ ...validationStyle, borderColor: errors.length ? '#d04040' : '#c98a27' }}>
+      <div style={{ color: errors.length ? '#ff9090' : '#ffd080', fontWeight: 600, marginBottom: 4 }}>
+        {errors.length ? `${errors.length} errore${errors.length === 1 ? '' : 'i'} da correggere` : 'Avvisi configurazione'}
+      </div>
+      {issues.slice(0, 3).map((issue, index) => (
+        <button
+          key={`${issue.code}-${index}`}
+          type="button"
+          onClick={() => select(issue.itemIds[0] ?? null)}
+          style={{ display: 'block', padding: 0, color: '#bbb', background: 'transparent', border: 0, cursor: issue.itemIds[0] ? 'pointer' : 'default', textAlign: 'left', font: 'inherit' }}
+          title={issue.itemIds[0] ? 'Seleziona il primo prodotto coinvolto' : undefined}
+        >
+          {issue.message}
+        </button>
+      ))}
+      {issues.length > 3 && <div style={{ color: '#778', marginTop: 2 }}>+{issues.length - 3} altri</div>}
     </div>
   )
 }
@@ -622,6 +766,18 @@ const clearanceStyle: React.CSSProperties = {
   fontSize: 11,
   color: '#ddd',
   minWidth: 140,
+}
+const validationStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  bottom: 12,
+  maxWidth: 320,
+  padding: '7px 10px',
+  background: 'rgba(15,15,20,0.92)',
+  border: '1px solid',
+  borderRadius: 6,
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 11,
 }
 const clearanceRow: React.CSSProperties = {
   display: 'flex',

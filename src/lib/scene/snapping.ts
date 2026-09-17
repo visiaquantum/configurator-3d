@@ -130,8 +130,16 @@ export function offsetForLockedCorners(
  * translating `myId`'s group along the axis of minimum horizontal penetration.
  * Y axis is intentionally ignored — items rest on the floor and we never
  * want to lift them vertically to escape an overlap.
+ *
+ * `ignore` lists items that may legitimately share space with this one:
+ * products joined through a `snapToItem` constraint interlock by design, and
+ * pushing them apart would fight the assembly.
  */
-export function pushOutOverlaps(myId: string, maxIter = 8): boolean {
+export function pushOutOverlaps(
+  myId: string,
+  maxIter = 8,
+  ignore?: ReadonlySet<string>,
+): boolean {
   const me = getItem(myId)
   if (!me) return false
 
@@ -140,6 +148,7 @@ export function pushOutOverlaps(myId: string, maxIter = 8): boolean {
     getWorldAABB(me, _myBox)
     let pushedThisPass = false
     for (const other of listOtherItems(myId)) {
+      if (ignore?.has(other.id)) continue
       getWorldAABB(other, _otherBox)
       if (horizontalMTV(_myBox, _otherBox, _mtvVec)) {
         me.group.position.add(_mtvVec)

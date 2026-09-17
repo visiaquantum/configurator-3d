@@ -122,70 +122,201 @@ sta sulla faccia a −Z e dichiara `axis: [0, 0, -1]`:
 
 ## 3. Punti di snap prodotto (`SNAP_*`)
 
-Controparte lato-prodotto degli anchor dell'allestimento: durante il drag,
-il configuratore aggancia un punto di snap del prodotto su un anchor
-dell'enclosure (oltre a centro e 4 vertici inferiori del collider).
-Parsing: `src/lib/io/itemSnaps.ts`.
+Sono i punti di giunzione del prodotto. Servono a due cose:
 
-Dichiarazione, in uno dei due modi:
+- agganciare il prodotto a un **anchor dell'allestimento** (es. il pavimento);
+- agganciare il prodotto a **un altro prodotto** (montante → orizzontale →
+  accessorio).
 
-1. **Nome nodo** `SNAP_<ID>` (case-insensitive) — convenzione già in uso nei
-   file Sincro esportati da SolidWorks. Il suffisso istanza `-N` viene
-   scartato: `SNAP_TERRA-7` → id `terra`.
-2. **extras** `{ "kind": "snap", "id": "<id>" }` (id opzionale, fallback al
-   nome nodo).
+Parsing: `src/lib/io/itemSnaps.ts`. Regole di accoppiamento e matematica:
+`src/lib/scene/mating.ts`.
 
-Il punto è il **centro della geometria** del nodo marker (SolidWorks esporta
-i componenti con pivot all'origine e geometria "cotta", quindi l'origine del
-nodo non è significativa); se il nodo è un Empty vale la sua posizione.
-I marker vengono nascosti a runtime.
+### Dichiarazione
 
-Nel project JSON il constraint registra quale punto è agganciato:
-`{ "type": "snapToAnchor", "target": "<anchor>", "point": "terra" }`
-(in alternativa `corner: 0-3` per i vertici del collider; assente = centro).
+1. **Nome nodo** `SNAP_<TIPO>` (case-insensitive) — convenzione già in uso nei
+   file Sincro esportati da SolidWorks. **È il canale da usare**: l'export CAD
+   del cliente non scrive extras.
+2. **extras** `{ "kind": "snap", "id": "<tipo>" }` (alternativa, se il GLB
+   viene post-processato).
 
-## 4. Regola `auto-snap-grid`
+### `kind` e `id`
 
-Per piastre forate regolari, il GLB può dichiarare solo che serve una griglia
-snap; il configuratore ricava i centri dei fori dalla geometria triangolata e
-li pubblica come normali punti prodotto (`auto-grid-r<r>-c<c>`).
+Il suffisso del nome è il **kind**, cioè la famiglia di giunzione. Ogni
+suffisso di istanza viene scartato — sia quello di SolidWorks (`-7`) sia
+quello che three.js aggiunge quando un GLB ripete un nome nodo (`_1`):
 
-Dichiarazione minima:
-
-```json
-{
-  "kind": "rule",
-  "rule": "auto-snap-grid",
-  "params": {}
-}
+```
+SNAP_TERRA-7      → kind terra
+SNAP_TERRA-7_1    → kind terra
+SNAP_FRONTALE-2   → kind frontale
 ```
 
-Il detector scansiona automaticamente tutte le sei facce esterne del modello,
-cerca rettangoli/perforazioni ripetute, e genera i centri sulla faccia relativa.
-Così vengono inclusi anche fori laterali/superiori/inferiori. Parametri
-opzionali:
+L'**id** è ciò che finisce nel project JSON. Un kind presente una volta sola
+tiene l'id nudo (`terra`); un kind ripetuto viene numerato nell'ordine di
+attraversamento (`frontale-1` … `frontale-10`). Così ogni punto è
+indirizzabile: `KIT01` porta dieci marker `frontale` e senza numerazione
+sarebbero tutti lo stesso punto.
+
+> **Per chi prepara i GLB**: non serve inventare nomi univoci. Ripetere
+> `SNAP_FRONTALE` su ogni posizione utile è corretto e voluto — ci pensa il
+> configuratore a numerarli.
+
+### Tabella di accoppiamento
+
+Chi configura sceglie **esplicitamente** il punto di destinazione, quindi
+questa tabella non decide cosa è lecito: filtra e ordina le proposte. Un
+accoppiamento non elencato resta possibile spuntando «mostra anche i punti non
+compatibili» nell'Inspector.
+
+| kind | si accoppia con | significato |
+|---|---|---|
+| `terra` | anchor dell'allestimento | base d'appoggio a pavimento |
+| `laterale` | `laterale` | montanti affiancati |
+| `sovrapposizione` | `sovrapposizione` | montante sopra montante |
+| `frontale` | `frontale`, `foro` | facciata: orizzontali e accessori |
+| `foro` | `frontale`, `foro` | centro foro generato da `auto-snap-grid` |
+| `origine` | — | solo riferimento, non accoppia |
+
+La tabella vive in `MATING_RULES` (`src/lib/scene/mating.ts`) ed è esportata
+dalla libreria.
+
+### Posizione e normale
+
+Il punto è il **centro della geometria** del nodo marker (SolidWorks esporta i
+componenti con pivot all'origine e geometria "cotta", quindi l'origine del nodo
+non è significativa); se il nodo è un Empty vale la sua posizione. I marker
+vengono nascosti a runtime.
+
+La **normale** è la direzione uscente della faccia del bounding box su cui il
+punto appoggia, dedotta geometricamente (i marker non portano una rotazione
+utilizzabile). Un marker su uno spigolo tocca più facce contemporaneamente: in
+quel caso la normale non viene dichiarata, invece di tirare a indovinare.
+
+### Constraint nel project JSON
+
+Aggancio a un anchor dell'allestimento:
+
+```json
+{ "type": "snapToAnchor", "target": "<anchor>", "point": "terra" }
+```
+
+(in alternativa `corner: 0-3` per i vertici del collider; assente = centro).
+
+Aggancio a un altro prodotto:
+
+```json
+{ "type": "snapToItem", "target": "<id-item>", "point": "frontale-2", "targetPoint": "auto-grid-xmax-r4-c1" }
+```
+
+`point` è il punto **di questo** item, `targetPoint` quello dell'item di
+destinazione. Muovere l'item di destinazione trascina tutti gli item agganciati,
+ricorsivamente (`resolveSnappedChildren`). Trascinare a mano l'item agganciato
+rompe il legame.
+
+### Incastro: orientamento e compenetrazione
+
+Agganciare non è solo traslare. Due pezzi si **incastrano** quando le rispettive
+facce di accoppiamento si guardano: il configuratore ruota il pezzo attorno a Y
+finché la normale del suo punto punta esattamente contro quella del punto di
+destinazione (`yawToMate`). Le rotazioni provate sono i quarti di giro, gli
+unici che questo configuratore committa.
+
+Se una delle due facce è orizzontale — normale verso l'alto o il basso, come i
+fori sul piano di una mensola — nessuna rotazione attorno a Y può allinearle: il
+pezzo mantiene la rotazione che ha e viene solo traslato.
+
+L'orientamento del figlio viene **ricalcolato** dalle due facce a ogni
+spostamento, non accumulato come delta: ruotare il montante ruota le mensole
+agganciate, e ripetere l'operazione non fa derivare l'assieme.
+
+Due pezzi incastrati possono condividere volume **solo** nel volume di
+clearance dichiarato dal connettore nel manifest tecnico. La validazione non
+esclude mai in blocco le coppie legate: un'intersezione fuori da quella zona
+resta una collisione rossa e blocca la BOM. La preview di drag comunica subito
+se il giunto è ammesso.
+
+## 4. Regola `auto-snap-grid` (fori come punti di snap)
+
+Per le lamiere forate il GLB dichiara solo che serve la rilevazione dei fori;
+il configuratore ne ricava i centri dalla geometria e li pubblica come normali
+punti prodotto, di kind `foro` (id `auto-grid-<faccia>-r<r>-c<c>`).
+
+### Come attivarla
+
+Tre canali, in ordine di preferenza:
+
+1. **Nodo con extras** — `{ "kind": "rule", "rule": "auto-snap-grid", "params": {} }`.
+2. **Nodo con solo il nome** `RULE_AUTOSNAPGRID` (i suffissi `-N` / `_N` sono
+   ignorati). Serve per gli export CAD che non scrivono extras: basta
+   aggiungere un Empty con quel nome.
+3. **Voce di catalogo** — `{ id, label, glbUrl, autoSnapGrid: true }`, quando
+   il GLB non è modificabile affatto. Può anche passare i parametri, ad esempio
+   `autoSnapGrid: { meshNameIncludes: ["ZDH00200"], normals: [[0, 0, -1], [0, 0, 1]] }`
+   per analizzare solo le due facciate laterali delle staffe.
+
+Quando un'interfaccia meccanica è nota e deve restare invariata tra gli export
+CAD, preferire invece `snapPoints` nel catalogo: gli id e le coordinate sono
+nel frame locale del collider e diventano la mappa certificata del prodotto.
+Per XDS40231KM02 la mappa dei fori è al momento disabilitata in attesa delle
+coordinate certificate. La griglia forata inferiore non è un'interfaccia di
+montaggio e non genera snap.
+
+### Come funziona la rilevazione
+
+Per ogni faccia esterna si prendono i triangoli che giacciono su quel piano e
+si contano gli usi di ciascuno spigolo. Uno spigolo usato da due triangoli è
+interno; usato **una volta sola** delimita la superficie. Concatenando gli
+spigoli di bordo si ottengono i contorni chiusi: quello grande è la sagoma del
+pezzo, quelli piccoli sono i fori. Il centro di ogni contorno piccolo diventa
+un punto di snap.
+
+> La versione precedente cercava «quattro vertici complanari che formano un
+> rettangolo». Quel test scatta su qualunque tassellatura regolare: su un
+> profilo estruso da 52k triangoli produceva ~1800 fori inesistenti su una
+> faccia sola, e il costo era quadratico sul numero di coordinate distinte —
+> un accessorio da 8,8k triangoli non terminava. La ricerca dei contorni è
+> lineare sui triangoli e riporta solo geometria che è davvero un foro.
+
+Misure sul catalogo attuale:
+
+| GLB | triangoli | fori | tempo |
+|---|---|---|---|
+| `YSI12836` (montante) | 8.836 | 42 | 11 ms |
+| `XDS40231KM02` (orizzontale) | 52.472 | nessun foro automatico (mappa in revisione) | — |
+| `KIT01` | 132.352 | 30 | 22 ms |
+| `PTBM-31` (accessorio) | 8.883 | 0 | 7 ms |
+
+### Parametri opzionali
 
 ```json
 {
   "normal": [0, 0, 1],
-  "minHoleSize": 0.006,
-  "maxHoleSize": 0.018,
+  "normals": [[-1, 0, 0], [1, 0, 0]],
+  "meshNameIncludes": ["ZDH00200"],
+  "faces": "primary",
+  "minHoleSize": 0.003,
+  "maxHoleSize": 0.030,
   "planeTolerance": 0.001,
   "vertexTolerance": 0.00001
 }
 ```
 
 - `normal` forza una singola faccia (`+` = lato max dell'asse dominante, `-` =
-  lato min); se assente vengono scansionate tutte le facce.
-- `faces: "primary"` ripristina il vecchio comportamento: una sola faccia,
-  scelta sullo spessore minore del modello.
-- `minHoleSize` / `maxHoleSize` filtrano la dimensione del foro rettangolare
-  cercato, in metri.
-- Le tolleranze servono solo per compensare export CAD non perfettamente
-  allineati.
-
-Per `public/models/KSI12836.glb` questa regola trova una griglia regolare di
-fori sulla faccia frontale e produce gli snap point senza coordinate manuali.
+  lato min); se assente vengono scansionate tutte e sei.
+- `normals` è la variante multi-faccia: limita la rilevazione alle facce con
+  le normali indicate e prevale su `normal`. Usarla quando soltanto alcuni
+  fori del prodotto sono punti d'innesto.
+- `meshNameIncludes` limita l'analisi ai mesh il cui nome contiene uno dei
+  valori indicati. È utile per staffe o pannelli laterali che non coincidono
+  con il bounding box esterno dell'intero prodotto.
+- `faces: "primary"` limita alle due facce dell'asse più sottile, cioè i lati
+  piatti di una lamiera.
+- `minHoleSize` / `maxHoleSize` sono la finestra dimensionale del foro, in
+  metri, applicata al suo bounding box su entrambi gli assi nel piano. È
+  anche ciò che scarta la sagoma esterna del pezzo, troppo grande per
+  rientrarci.
+- Le tolleranze compensano export CAD non perfettamente allineati
+  (`planeTolerance`) e vertici non saldati (`vertexTolerance`).
 
 ## 5. Aggiungere nuove regole
 

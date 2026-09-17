@@ -11,6 +11,7 @@ import { SelectedOrbitTarget } from './SelectedOrbitTarget'
 import { OverlapDetector } from './OverlapDetector'
 import { NeighborGapIndicator } from './NeighborGapIndicator'
 import { WalkControls } from './WalkControls'
+import { PerformanceTelemetry } from './PerformanceTelemetry'
 import { useConfiguratorStore } from '../state/store'
 
 interface Props {
@@ -55,6 +56,7 @@ export function Scene({ project }: Props) {
       <SelectedOrbitTarget />
       <OverlapDetector />
       <NeighborGapIndicator />
+      <PerformanceTelemetry />
       <color attach="background" args={['#101827']} />
       <ambientLight intensity={0.4} />
       <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />

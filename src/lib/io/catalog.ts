@@ -4,12 +4,32 @@ import type { CatalogItem } from '../types'
 export const CATALOG_SCHEMA_VERSION = 1
 
 const Vec3Schema = z.tuple([z.number(), z.number(), z.number()])
+const AutoSnapGridOptionsSchema = z.object({
+  normals: z.array(Vec3Schema).min(1).optional(),
+  meshNameIncludes: z.array(z.string().min(1)).min(1).optional(),
+  minHoleSize: z.number().positive().optional(),
+  maxHoleSize: z.number().positive().optional(),
+  planeTolerance: z.number().positive().optional(),
+  vertexTolerance: z.number().positive().optional(),
+})
+const SnapPointSchema = z.object({
+  id: z.string().min(1),
+  kind: z.string().min(1),
+  position: Vec3Schema,
+  normal: Vec3Schema.optional(),
+})
 
+// `scale`, `autoSnapGrid`, and `snapPoints` must be listed here: zod strips unknown keys, so
+// anything missing from the schema is silently dropped when a catalog is
+// loaded from JSON — a product exported at 0.1× would come back at 1×.
 const CatalogItemSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   glbUrl: z.string().min(1),
   size: Vec3Schema.optional(),
+  scale: z.number().positive().optional(),
+  autoSnapGrid: z.union([z.boolean(), AutoSnapGridOptionsSchema]).optional(),
+  snapPoints: z.array(SnapPointSchema).optional(),
 })
 
 const CatalogMetadataSchema = z

@@ -16,6 +16,18 @@ export interface EnclosureData {
   scale?: number
 }
 
+/** Product-level override for which perforated faces become snap points. */
+export interface AutoSnapGridOptions {
+  /** Scan only the external faces whose outward normals are listed. */
+  normals?: Vec3[]
+  /** Limit detection to mesh names containing one of these strings. */
+  meshNameIncludes?: string[]
+  minHoleSize?: number
+  maxHoleSize?: number
+  planeTolerance?: number
+  vertexTolerance?: number
+}
+
 export interface CatalogItem {
   id: string
   label: string
@@ -24,10 +36,26 @@ export interface CatalogItem {
   /** Uniform scale applied to the loaded GLB and to `size` for collider math.
    * Same purpose as EnclosureData.scale. Default 1. */
   scale?: number
+  /**
+   * Turn on hole detection (`auto-snap-grid`) for this product even though its
+   * GLB declares no rule. Use when the CAD export can carry neither glTF
+   * extras nor a `RULE_AUTOSNAPGRID` node. Default false.
+   */
+  autoSnapGrid?: boolean | AutoSnapGridOptions
+  /**
+   * Product-local snap points declared by the catalog. Use this for known
+   * mechanical interfaces whose authoritative locations must not depend on
+   * runtime geometry inference.
+   */
+  snapPoints?: ItemSnapPoint[]
 }
 
 export interface ItemConstraint {
-  type: 'snapToAnchor' | 'lockAxis' | 'noOverlap' | 'mirrorPair'
+  type: 'snapToAnchor' | 'snapToItem' | 'lockAxis' | 'noOverlap' | 'mirrorPair'
+  /**
+   * For `snapToAnchor`: the enclosure anchor id.
+   * For `snapToItem` and `mirrorPair`: the other item's id.
+   */
   target?: string
   axis?: 'x' | 'y' | 'z'
   /** For `mirrorPair`: distance (m) between the two rule reference points. */
@@ -38,10 +66,16 @@ export interface ItemConstraint {
    */
   corner?: number
   /**
-   * For `snapToAnchor`: id of the product snap point (declared in the GLB,
-   * see io/itemSnaps.ts) sitting on the anchor. Wins over `corner`.
+   * For `snapToAnchor` and `snapToItem`: id of this item's snap point
+   * (declared in the GLB, see io/itemSnaps.ts) that sits on the destination.
+   * Wins over `corner`.
    */
   point?: string
+  /**
+   * For `snapToItem`: id of the snap point on the target item that this
+   * item's `point` is joined to.
+   */
+  targetPoint?: string
 }
 
 /**
@@ -49,8 +83,102 @@ export interface ItemConstraint {
  * `kind: "snap"`), in the item's local frame (origin = collider center).
  */
 export interface ItemSnapPoint {
+  /** Unique within the product. Bare `kind`, or `kind-N` when kind repeats. */
   id: string
+  /** Mating family (`terra`, `frontale`, `laterale`, `foro`, ...). Decides
+   * what this point may be joined to — see scene/mating.ts. */
+  kind: string
   position: Vec3
+  /** Outward normal of the face the point sits on, in the item's local frame. */
+  normal?: Vec3
+}
+
+/** A simplified local-space collider used by the assembly validator. */
+export interface ColliderBox {
+  id: string
+  center: Vec3
+  size: Vec3
+}
+
+/**
+ * A permitted void volume around a connector. Its centre is relative to that
+ * connector's resolved snap point, not to the product origin.
+ */
+export interface ConnectorClearanceBox {
+  id: string
+  center: Vec3
+  size: Vec3
+}
+
+/** A non-geometric part introduced by an assembly connection, e.g. fasteners. */
+export interface BomComponent {
+  code: string
+  label: string
+  quantity: number
+}
+
+/** Semantic connector declared by the external assembly manifest. */
+export interface ConnectorDefinition {
+  id: string
+  snapId?: string
+  snapKind?: string
+  compatibleWith?: string[]
+  capacity?: number
+  /** Maximum permitted collision along the insertion axis, in metres. */
+  insertionDepth?: number
+  insertionAxis?: Vec3
+  /** Exact interpenetration areas permitted for a joint using this connector. */
+  clearance?: ConnectorClearanceBox[]
+  /** Max source/target snap distance once the joint is committed. Default 2 mm. */
+  snapTolerance?: number
+  /** Parts added to the BOM each time this connector is used as the source. */
+  bomComponents?: BomComponent[]
+}
+
+export interface ProductAssemblyDefinition {
+  catalogId: string
+  connectors: ConnectorDefinition[]
+  colliders?: ColliderBox[]
+  bom?: { code?: string; label?: string }
+}
+
+/** Versioned source of truth for product connection and collider semantics. */
+export interface AssemblyManifest {
+  version: number
+  products: ProductAssemblyDefinition[]
+}
+
+/** A persisted, resolved product-to-product joint. */
+export interface Connection {
+  sourceItemId: string
+  sourceConnectorId: string
+  sourcePointId: string
+  targetItemId: string
+  targetConnectorId: string
+  targetPointId: string
+  /** Transform resolved for the source when this joint was committed. */
+  resolvedTransform?: { position: Vec3; rotation: Euler }
+}
+
+export interface ValidationIssue {
+  level: 'error' | 'warning'
+  code: 'collision' | 'connection' | 'connector-capacity' | 'unknown-product' | 'out-of-bounds'
+  message: string
+  itemIds: string[]
+}
+
+export interface ValidationContext {
+  itemSnaps?: Record<string, ItemSnapPoint[]>
+  itemRules?: Record<string, ItemRule[]>
+  enclosureBounds?: { min: Vec3; max: Vec3 } | null
+}
+
+/** Opt-in local instrumentation; the host decides whether and where to send it. */
+export interface ConfiguratorTelemetryEvent {
+  type: 'catalog-load' | 'manifest-load' | 'asset-load' | 'frame-time' | 'export' | 'validation'
+  durationMs?: number
+  outcome?: 'success' | 'error'
+  detail?: Record<string, string | number | boolean>
 }
 
 /**
@@ -94,6 +222,7 @@ export interface ProjectData {
   version: number
   enclosure: EnclosureData
   items: PlacedItem[]
+  connections?: Connection[]
   metadata?: ProjectMetadata
 }
 
@@ -123,12 +252,17 @@ export interface Configurator3DProps {
    * (bare CatalogItem[] or wrapped { version, items, metadata? }).
    */
   catalog?: CatalogItem[] | string
+  /** Versioned connector and collider definitions, inline or fetched as JSON. */
+  assemblyManifest?: AssemblyManifest | string
   onChange?: (project: ProjectData) => void
   onSave?: (project: ProjectData) => void
   /** Fires once a remote catalog URL has been loaded and validated. */
   onCatalogLoaded?: (items: CatalogItem[]) => void
   /** Fires if a remote catalog URL fails to load or validate. */
   onCatalogError?: (error: Error) => void
+  onValidationChange?: (issues: ValidationIssue[]) => void
+  /** Optional local instrumentation callback. The library performs no network I/O. */
+  onTelemetry?: (event: ConfiguratorTelemetryEvent) => void
   /** Show the bottom-left inspector for the selected item. Default: true. */
   showInspector?: boolean
   /** Show the top-right toolbar with Save / PNG / GLB / PDF buttons. Default: true. */
@@ -155,6 +289,7 @@ export interface ConfiguratorHandle {
   removeItem(id: string): void
   selectItem(id: string | null): void
   getProject(): ProjectData | null
+  getValidation(): ValidationIssue[]
   setProject(p: ProjectData): void
   undo(): void
   redo(): void

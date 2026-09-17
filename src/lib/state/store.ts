@@ -2,11 +2,15 @@ import { create } from 'zustand'
 import type { Camera, Object3D, Scene as ThreeScene, WebGLRenderer } from 'three'
 import type {
   Anchor,
+  AssemblyManifest,
   CatalogItem,
+  Connection,
   ItemRule,
   ItemSnapPoint,
   PlacedItem,
   ProjectData,
+  ConfiguratorTelemetryEvent,
+  ValidationIssue,
 } from '../types'
 import { PROJECT_SCHEMA_VERSION } from '../types'
 import type { NeighborGap } from '../scene/neighborGap'
@@ -48,6 +52,9 @@ interface ConfiguratorState {
    * Used by Item/Inspector to look up glbUrl, label, size by catalogId.
    */
   catalog: Record<string, CatalogItem>
+  assemblyManifest: AssemblyManifest | null
+  validationIssues: ValidationIssue[]
+  telemetryListener: ((event: ConfiguratorTelemetryEvent) => void) | null
   /** Current gizmo mode for the selected item (TransformControls). */
   gizmoMode: GizmoMode
   /** Anchors extracted at runtime from the enclosure GLB (takes priority over project.enclosure.anchors). */
@@ -107,6 +114,11 @@ interface ConfiguratorState {
 
   setProject: (p: ProjectData) => void
   setCatalog: (items: CatalogItem[]) => void
+  setAssemblyManifest: (manifest: AssemblyManifest | null) => void
+  setValidationIssues: (issues: ValidationIssue[]) => void
+  setTelemetryListener: (listener: ((event: ConfiguratorTelemetryEvent) => void) | null) => void
+  reportTelemetry: (event: ConfiguratorTelemetryEvent) => void
+  setConnections: (connections: Connection[]) => void
   addCatalogItem: (item: CatalogItem) => void
   setGizmoMode: (m: GizmoMode) => void
   setRuntimeAnchors: (anchors: Anchor[]) => void
@@ -135,6 +147,11 @@ interface ConfiguratorState {
   updateItem: (id: string, patch: Partial<PlacedItem>) => void
   /** Patch several items atomically (single undo step). */
   updateItems: (patches: Array<{ id: string; patch: Partial<PlacedItem> }>) => void
+  /** Atomically commit item changes and the assembly graph as one undo entry. */
+  commitAssembly: (
+    patches: Array<{ id: string; patch: Partial<PlacedItem> }>,
+    connections: Connection[],
+  ) => void
   addItem: (item: PlacedItem) => void
   removeItem: (id: string) => void
   /**
@@ -169,6 +186,9 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     project: null,
     selectedId: null,
     catalog: {},
+    assemblyManifest: null,
+    validationIssues: [],
+    telemetryListener: null,
     gizmoMode: 'translate',
     runtimeAnchors: [],
     itemRules: {},
@@ -208,6 +228,12 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
 
     setCatalog: (items) =>
       set({ catalog: Object.fromEntries(items.map((it) => [it.id, it])) }),
+
+    setAssemblyManifest: (manifest) => set({ assemblyManifest: manifest }),
+    setValidationIssues: (issues) => set({ validationIssues: issues }),
+    setTelemetryListener: (listener) => set({ telemetryListener: listener }),
+    reportTelemetry: (event) => get().telemetryListener?.(event),
+    setConnections: (connections) => set((s) => s.project ? { project: { ...s.project, connections } } : {}),
 
     addCatalogItem: (item) =>
       set((s) => ({ catalog: { ...s.catalog, [item.id]: item } })),
@@ -293,6 +319,23 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
       })
     },
 
+    commitAssembly: (patches, connections) => {
+      const s = get()
+      if (!s.project) return
+      pushHistory()
+      const byId = new Map(patches.map((p) => [p.id, p.patch]))
+      set({
+        project: {
+          ...s.project,
+          items: s.project.items.map((it) => {
+            const patch = byId.get(it.id)
+            return patch ? { ...it, ...patch } : it
+          }),
+          connections,
+        },
+      })
+    },
+
     addItem: (item) => {
       const s = get()
       if (!s.project) return
@@ -309,7 +352,13 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
       const partnerId = item?.constraints?.find((c) => c.type === 'mirrorPair')?.target
       const removed = new Set(partnerId ? [id, partnerId] : [id])
       set({
-        project: { ...s.project, items: s.project.items.filter((it) => !removed.has(it.id)) },
+        project: {
+          ...s.project,
+          items: s.project.items.filter((it) => !removed.has(it.id)),
+          connections: s.project.connections?.filter(
+            (connection) => !removed.has(connection.sourceItemId) && !removed.has(connection.targetItemId),
+          ),
+        },
         selectedId: s.selectedId && removed.has(s.selectedId) ? null : s.selectedId,
       })
     },

@@ -42,6 +42,25 @@ function isVec3(v: unknown): v is Vec3 {
   return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number')
 }
 
+/**
+ * Rules declarable by node name alone, for GLBs whose CAD export cannot write
+ * extras — the same channel as `SNAP_*`. A node named `RULE_AUTOSNAPGRID`
+ * (any instance suffix) turns on hole detection.
+ *
+ * Only rules that need no parameters can travel this way; `mirror-pair`
+ * carries its distances in `params` and still requires extras.
+ */
+const NAME_RULE_RE = /^rule[_:]([a-z0-9]+)(?:-\d+)?(?:_\d+)?$/i
+const NAME_RULE_ALIASES: Record<string, string> = {
+  autosnapgrid: 'auto-snap-grid',
+}
+
+function ruleIdFromName(name: string): string | null {
+  const m = name.match(NAME_RULE_RE)
+  if (!m) return null
+  return NAME_RULE_ALIASES[m[1].toLowerCase()] ?? null
+}
+
 export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
   const out: ExtractedRuleNode[] = []
   const worldPos = new Vector3()
@@ -51,7 +70,9 @@ export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
 
   root.traverse((obj) => {
     const ud = (obj.userData ?? {}) as Record<string, unknown>
-    if (ud.kind !== 'rule' || typeof ud.rule !== 'string' || !ud.rule) return
+    const byExtras = ud.kind === 'rule' && typeof ud.rule === 'string' && ud.rule ? ud.rule : null
+    const ruleId = byExtras ?? ruleIdFromName(obj.name)
+    if (!ruleId) return
 
     const params =
       typeof ud.params === 'object' && ud.params !== null
@@ -71,7 +92,7 @@ export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
       axis = [+worldAxis.x.toFixed(6), +worldAxis.y.toFixed(6), +worldAxis.z.toFixed(6)]
     }
 
-    out.push({ extracted: { rule: ud.rule, position, axis, params }, node: obj })
+    out.push({ extracted: { rule: ruleId, position, axis, params }, node: obj })
   })
 
   return out

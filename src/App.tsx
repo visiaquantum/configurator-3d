@@ -6,6 +6,7 @@ import {
   ProjectParseError,
   useConfiguratorStore,
 } from './lib'
+import { definitionFor } from './lib/assembly/manifest'
 import type {
   CatalogItem,
   ConfiguratorHandle,
@@ -30,6 +31,8 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
   {
     category: 'Orizzontali',
     items: [
+      // Temporarily no inferred or catalog-defined mounting holes: their
+      // definitive locations will be supplied and reviewed separately.
       { id: 'xds40231km02', label: 'XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307], scale: 1 },
     ],
   },
@@ -64,7 +67,23 @@ export default function App() {
   const cfg = useRef<ConfiguratorHandle>(null)
   const [savedJson, setSavedJson] = useState('')
   const [loadStatus, setLoadStatus] = useState<{ ok: boolean; msg: string; issues?: ProjectIssue[] } | null>(null)
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [compatibleOnly, setCompatibleOnly] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const newProjectCount = useRef(0)
+  const selectedId = useConfiguratorStore((s) => s.selectedId)
+  const project = useConfiguratorStore((s) => s.project)
+  const assemblyManifest = useConfiguratorStore((s) => s.assemblyManifest)
+  const selected = project?.items.find((item) => item.id === selectedId)
+  const selectedConnectors = definitionFor(assemblyManifest, selected?.catalogId ?? '')?.connectors ?? []
+
+  const connectableToSelection = (product: CatalogItem) => {
+    if (!selected) return true
+    const productConnectors = definitionFor(assemblyManifest, product.id)?.connectors ?? []
+    return productConnectors.some((candidate) => selectedConnectors.some((current) =>
+      candidate.compatibleWith?.includes(current.id) || current.compatibleWith?.includes(candidate.id),
+    ))
+  }
 
   const handleAdd = (product: CatalogItem) => {
     cfg.current?.addItem(product)
@@ -80,6 +99,20 @@ export default function App() {
     a.download = `${project.id || 'project'}.json`
     a.click()
     URL.revokeObjectURL(url)
+  }
+
+  const handleNewProject = () => {
+    newProjectCount.current += 1
+    cfg.current?.setProject({
+      id: `demo-new-${newProjectCount.current}`,
+      version: 1,
+      enclosure: ENCLOSURE,
+      items: [],
+      connections: [],
+      metadata: PROJECT_METADATA,
+    })
+    setSavedJson('')
+    setLoadStatus(null)
   }
 
   const handleImport = async (file: File) => {
@@ -110,23 +143,46 @@ export default function App() {
           projectId="demo-010"
           metadata={PROJECT_METADATA}
           catalog={catalog}
+          assemblyManifest="/catalog/assembly-manifest.json"
           onSave={(p) => setSavedJson(serializeProject(p))}
         />
       </div>
       <aside style={sidebarStyle}>
         <h3 style={{ marginTop: 0 }}>Catalogo</h3>
         <p style={{ color: '#778', marginTop: 0, fontSize: 11 }}>
-          Click su un prodotto per aggiungerlo alla scena.
+          Cerca e aggiungi un prodotto. Con un pezzo selezionato, il badge indica i connettori compatibili nel manifest.
         </p>
 
+        <input
+          value={catalogQuery}
+          onChange={(event) => setCatalogQuery(event.target.value)}
+          placeholder="Cerca codice o descrizione"
+          style={catalogSearchStyle}
+        />
+        {selected && (
+          <label style={{ display: 'flex', gap: 5, alignItems: 'center', color: '#aaa', fontSize: 11, marginBottom: 10 }}>
+            <input type="checkbox" checked={compatibleOnly} onChange={(event) => setCompatibleOnly(event.target.checked)} />
+            solo agganciabili al selezionato
+          </label>
+        )}
+
         <div style={{ marginBottom: 16 }}>
-          {catalogGroups.map((g) => (
+          {catalogGroups.map((g) => {
+            const matches = g.items.filter((product) => {
+              const query = catalogQuery.trim().toLowerCase()
+              const textualMatch = !query || `${product.id} ${product.label}`.toLowerCase().includes(query)
+              return textualMatch && (!compatibleOnly || connectableToSelection(product))
+            })
+            if (matches.length === 0) return null
+            return (
             <details key={g.category} open style={{ marginBottom: 8 }}>
               <summary style={summaryStyle}>
-                {g.category} <span style={{ color: '#778' }}>({g.items.length})</span>
+                {g.category} <span style={{ color: '#778' }}>({matches.length})</span>
               </summary>
               <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0 0' }}>
-                {g.items.map((p) => (
+                {matches.map((p) => {
+                  const connectable = connectableToSelection(p)
+                  return (
                   <li key={p.id} style={{ marginBottom: 6 }}>
                     <button
                       type="button"
@@ -137,12 +193,19 @@ export default function App() {
                       <div style={{ color: '#778', fontSize: 10 }}>
                         {p.size ? `${p.size.map((v) => Math.round(v * 1000)).join(' × ')} mm` : p.id}
                       </div>
+                      {selected && (
+                        <div style={{ color: connectable ? '#77dca0' : '#778', fontSize: 10, marginTop: 2 }}>
+                          {connectable ? 'agganciabile al selezionato' : 'nessun connettore compatibile'}
+                        </div>
+                      )}
                     </button>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             </details>
-          ))}
+            )
+          })}
         </div>
 
         <h3 style={{ marginBottom: 6 }}>Progetto</h3>
@@ -150,6 +213,11 @@ export default function App() {
           <button type="button" onClick={handleExportJson} style={ghostBtn}>
             Export JSON
           </button>
+          <button type="button" onClick={handleNewProject} style={ghostBtn}>
+            Nuovo
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           <button type="button" onClick={() => fileRef.current?.click()} style={ghostBtn}>
             Import JSON
           </button>
@@ -234,6 +302,17 @@ const productBtnStyle: React.CSSProperties = {
   border: '1px solid #2a2a35',
   borderRadius: 4,
   cursor: 'pointer',
+}
+const catalogSearchStyle: React.CSSProperties = {
+  width: '100%',
+  boxSizing: 'border-box',
+  marginBottom: 8,
+  padding: '7px 9px',
+  border: '1px solid #2a2a35',
+  borderRadius: 4,
+  background: '#171720',
+  color: '#eee',
+  fontSize: 12,
 }
 const ghostBtn: React.CSSProperties = {
   flex: 1,

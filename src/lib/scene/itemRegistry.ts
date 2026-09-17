@@ -37,6 +37,18 @@ export function listOtherItems(excludeId: string): ItemRegistration[] {
   return out
 }
 
+/**
+ * Collider size of a registered item, recovered from its local corners.
+ * Lets snap math size an item without a catalog lookup (the fallback size is
+ * derived from the GLB bbox, so the catalog may not know it).
+ */
+export function colliderSizeOf(id: string): [number, number, number] | null {
+  const reg = registry.get(id)
+  if (!reg) return null
+  const c = reg.localCorners[7] // (+hx, +hy, +hz)
+  return [c.x * 2, c.y * 2, c.z * 2]
+}
+
 /** Build the 8 local-space AABB corners for a centered box of the given size. */
 export function buildLocalCorners(size: [number, number, number]): Vector3[] {
   const [sx, sy, sz] = size

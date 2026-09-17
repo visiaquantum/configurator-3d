@@ -30,6 +30,9 @@
     "build:lib": "tsc -b && vite build --mode lib",
     "build:demo": "tsc -b && vite build",
     "lint": "eslint .",
+    "verify:snaps": "node scripts/verify-snaps.mjs",
+    "verify:assembly": "node scripts/verify-assembly.mjs",
+    "verify:pilot": "node scripts/verify-pilot-assembly.mjs",
     "preview": "vite preview",
     "prepublishOnly": "npm run build:lib"
   },
