@@ -25,7 +25,31 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
   {
     category: 'Montanti',
     items: [
-      { id: 'ysi12836', label: 'YSI 12836', glbUrl: '/models/MONTANTI/YSI12836.glb', size: [0.36, 1.008, 0.03], scale: 1 },
+      {
+        id: 'ysi12836',
+        label: 'YSI 12836',
+        glbUrl: '/models/MONTANTI/YSI12836.glb',
+        size: [0.36, 1.008, 0.03],
+        scale: 1,
+        // Mounting heights read off KIT01.glb, the geometric reference for this
+        // assembly. Each point is the centre of the mating face: shelves at
+        // 0.612 / 0.360 above the floor, rails at 0.305. In the item-local
+        // frame (collider centre, base at -size[1]/2) they sit 0.504 lower.
+        // The GLB only carries markers at the foot, so without these the drag
+        // finds no candidate at working height. The rails are 1.3 mm below the
+        // kit: the standalone parts are ~1 mm fatter than their copies inside
+        // KIT01, and at the kit's exact heights the lower shelf and the rails
+        // graze each other, which the collision check reads as interference.
+        // Normals point *inward* (-Z): the shelf passes through the upright and
+        // its head ends flush with the outer face, so an outward normal would
+        // mate the shelf on the wrong side.
+        snapPoints: [
+          { id: 'shelf-top', kind: 'laterale', position: [0, 0.108, 0.015], normal: [0, 0, -1] },
+          { id: 'shelf-bottom', kind: 'laterale', position: [0, -0.144, 0.015], normal: [0, 0, -1] },
+          { id: 'rail-xmax', kind: 'frontale', position: [0.155, -0.199, 0.0114], normal: [0, 0, -1] },
+          { id: 'rail-xmin', kind: 'frontale', position: [-0.155, -0.199, 0.0114], normal: [0, 0, -1] },
+        ],
+      },
     ],
   },
   {
@@ -34,6 +58,33 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
       // Temporarily no inferred or catalog-defined mounting holes: their
       // definitive locations will be supplied and reviewed separately.
       { id: 'xds40231km02', label: 'XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307], scale: 1 },
+      // Kit-01 members. Contact points are declared here rather than read from
+      // the GLB: the extractor numbers marker ids by traversal order, so a
+      // re-export would silently renumber them and break manifest + saved
+      // projects. Both are the centre of the end face, which is what actually
+      // seats into the upright.
+      {
+        id: 'xds40236km02',
+        label: 'XDS 40236 KM02',
+        glbUrl: '/models/ORIZZONTALI/XDS40236KM02.glb',
+        size: [1.013, 0.07117, 0.357],
+        scale: 1,
+        snapPoints: [
+          { id: 'end-a', kind: 'laterale', position: [-0.5065, 0, 0], normal: [-1, 0, 0] },
+          { id: 'end-b', kind: 'laterale', position: [0.5065, 0, 0], normal: [1, 0, 0] },
+        ],
+      },
+      {
+        id: 'xha40100',
+        label: 'XHA 40100',
+        glbUrl: '/models/ORIZZONTALI/XHA40100.glb',
+        size: [0.05, 0.035, 1.00588],
+        scale: 1,
+        snapPoints: [
+          { id: 'end-a', kind: 'frontale', position: [0, 0, 0.50294], normal: [0, 0, 1] },
+          { id: 'end-b', kind: 'frontale', position: [0, 0, -0.50294], normal: [0, 0, -1] },
+        ],
+      },
     ],
   },
   {

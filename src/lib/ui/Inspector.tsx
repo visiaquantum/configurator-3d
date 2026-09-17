@@ -22,7 +22,7 @@ import {
   yawToMate,
 } from '../scene/mating'
 import { colliderSizeOf, getItem } from '../scene/itemRegistry'
-import { connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
 import { validateConfiguration } from '../assembly/validation'
 import type { Connection, Euler, ItemSnapPoint, PlacedItem } from '../types'
 
@@ -177,8 +177,20 @@ export function Inspector({ readOnly }: Props) {
           resolvedTransform: { position, rotation },
         }
       : null
+    const joints = connection
+      ? connectionsAtPose(item, { position, rotation }, {
+          items: s.project?.items ?? [],
+          itemSnaps: s.itemSnaps,
+          itemRules: s.itemRules,
+          manifest: assemblyManifest,
+          heightOf: (placed) => colliderSizeOf(placed.id)?.[1] ?? 0,
+        })
+      : []
     const connections = connection
-      ? [...(s.project?.connections ?? []).filter((existing) => existing.sourceItemId !== item.id), connection]
+      ? [
+          ...(s.project?.connections ?? []).filter((existing) => existing.sourceItemId !== item.id),
+          ...(joints.length > 0 ? joints : [connection]),
+        ]
       : s.project?.connections ?? []
     const preview = s.project
       ? {

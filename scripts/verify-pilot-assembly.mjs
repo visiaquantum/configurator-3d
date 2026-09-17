@@ -71,6 +71,11 @@ const catalog = {
   xds40231km02: { id: 'xds40231km02', label: 'Orizzontale XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307] },
   ptbm31: { id: 'ptbm31', label: 'Accessorio PTBM-31', glbUrl: '/models/ACCESSORI/PTBM-31.glb', size: [0.31, 0.14, 0.09] },
   kit01: { id: 'kit01', label: 'Kit 01', glbUrl: '/models/KIT/KIT01.glb', size: [0.36, 0.864, 1.014] },
+  // Kit-01 members: this script asserts the manifest never names a product the
+  // catalogue lacks, so they belong here too. Their joint geometry is covered
+  // by verify-kit01-composition.mjs.
+  xds40236km02: { id: 'xds40236km02', label: 'Orizzontale XDS 40236 KM02', glbUrl: '/models/ORIZZONTALI/XDS40236KM02.glb', size: [1.013, 0.07117, 0.357] },
+  xha40100: { id: 'xha40100', label: 'Traversa XHA 40100', glbUrl: '/models/ORIZZONTALI/XHA40100.glb', size: [0.05, 0.035, 1.00588] },
 }
 
 console.log('\n[pilot assembly] real YSI12836 + XDS40231KM02 assets')

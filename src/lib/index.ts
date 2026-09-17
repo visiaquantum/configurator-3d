@@ -14,6 +14,7 @@ export {
   parseAssemblyManifest,
   loadAssemblyManifest,
   inferLegacyConnections,
+  connectionsAtPose,
   connectorForSnap,
   connectorsCanMate,
 } from './assembly/manifest'

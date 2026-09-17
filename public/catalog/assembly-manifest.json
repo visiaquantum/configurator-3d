@@ -12,6 +12,22 @@
           "insertionDepth": 0.04,
           "insertionAxis": [0, 0, 1],
           "clearance": [{ "id": "hole-seat", "center": [0, 0, 0], "size": [0.08, 0.12, 0.08] }]
+        },
+        {
+          "id": "upright-shelf-seat",
+          "snapKind": "laterale",
+          "compatibleWith": ["shelf-end"],
+          "capacity": 1,
+          "insertionDepth": 0.035,
+          "clearance": [{ "id": "shelf-slot", "center": [0, 0, -0.015], "size": [0.37, 0.09, 0.04] }]
+        },
+        {
+          "id": "upright-rail-hook",
+          "snapKind": "frontale",
+          "compatibleWith": ["rail-end"],
+          "capacity": 1,
+          "insertionDepth": 0.03,
+          "clearance": [{ "id": "rail-slot", "center": [0, 0, -0.0132], "size": [0.06, 0.045, 0.032] }]
         }
       ],
       "colliders": [{ "id": "upright-body", "center": [0, 0, 0], "size": [0.36, 1.008, 0.03] }],
@@ -54,6 +70,34 @@
       "connectors": [],
       "colliders": [{ "id": "kit-body", "center": [0, 0, 0], "size": [0.36, 0.864, 1.014] }],
       "bom": { "code": "KIT01", "label": "Kit 01" }
+    },
+    {
+      "catalogId": "xds40236km02",
+      "connectors": [
+        {
+          "id": "shelf-end",
+          "snapKind": "laterale",
+          "compatibleWith": ["upright-shelf-seat"],
+          "capacity": 1,
+          "insertionDepth": 0.035
+        }
+      ],
+      "colliders": [{ "id": "shelf-body", "center": [0, 0, 0], "size": [1.013, 0.07117, 0.357] }],
+      "bom": { "code": "XDS40236KM02", "label": "Orizzontale XDS 40236 KM02" }
+    },
+    {
+      "catalogId": "xha40100",
+      "connectors": [
+        {
+          "id": "rail-end",
+          "snapKind": "frontale",
+          "compatibleWith": ["upright-rail-hook"],
+          "capacity": 1,
+          "insertionDepth": 0.03
+        }
+      ],
+      "colliders": [{ "id": "rail-body", "center": [0, 0, 0], "size": [0.05, 0.035, 1.00588] }],
+      "bom": { "code": "XHA40100", "label": "Traversa XHA 40100" }
     }
   ]
 }

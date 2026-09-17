@@ -2,6 +2,9 @@ import { z } from 'zod'
 import type {
   AssemblyManifest,
   Connection,
+  Euler,
+  PlacedItem,
+  Vec3,
   ConnectorDefinition,
   ItemRule,
   ItemSnapPoint,
@@ -137,6 +140,82 @@ export function connectorsCanMate(
   if (sourceAllowed && !sourceAllowed.includes(target.id) && !sourceAllowed.includes(targetPoint.kind)) return false
   if (targetAllowed && !targetAllowed.includes(source.id) && !targetAllowed.includes(sourcePoint.kind)) return false
   return canMate(sourcePoint.kind, targetPoint.kind)
+}
+
+function worldPointOf(item: PlacedItem, local: Vec3, height: number): Vec3 {
+  const cos = Math.cos(item.rotation[1])
+  const sin = Math.sin(item.rotation[1])
+  return [
+    item.position[0] + local[0] * cos + local[2] * sin,
+    item.position[1] + height / 2 + local[1],
+    item.position[2] - local[0] * sin + local[2] * cos,
+  ]
+}
+
+/**
+ * Every joint an item forms at the given pose.
+ *
+ * A part set down in a frame is bolted wherever its points line up, not only
+ * at the single contact the drag happened to be nearest to: a shelf sits in
+ * both uprights, and the upright that closes a frame meets every horizontal at
+ * once. Recording one joint and ignoring the rest leaves them as bare
+ * interpenetrations, which `validateConfiguration` reports as collisions — so
+ * the closing part could never be put down at all.
+ *
+ * Points are bound only when they already coincide within the connectors' own
+ * `snapTolerance`, so this never invents a joint the validator would reject.
+ */
+export function connectionsAtPose(
+  item: PlacedItem,
+  pose: { position: Vec3; rotation: Euler },
+  context: {
+    items: PlacedItem[]
+    itemSnaps: Record<string, ItemSnapPoint[]>
+    itemRules?: Record<string, ItemRule[]>
+    manifest?: AssemblyManifest | null
+    /** Collider height: the datum a snap point's Y is measured from. */
+    heightOf: (item: PlacedItem) => number
+  },
+): Connection[] {
+  const definition = definitionFor(context.manifest, item.catalogId)
+  if (!definition) return []
+  const rules = context.itemRules ?? {}
+  const posed: PlacedItem = { ...item, position: pose.position, rotation: pose.rotation }
+  const height = context.heightOf(posed)
+  const others = context.items.filter((other) => other.id !== item.id)
+  // One target point takes one joint; capacity is checked again on validation.
+  const taken = new Set<string>()
+  const connections: Connection[] = []
+  for (const mine of snapsForItem(posed, context.itemSnaps, rules)) {
+    const connector = connectorForSnap(definition, mine)
+    if (!connector) continue
+    const world = worldPointOf(posed, mine.position, height)
+    for (const other of others) {
+      const otherDefinition = definitionFor(context.manifest, other.catalogId)
+      if (!otherDefinition) continue
+      const match = snapsForItem(other, context.itemSnaps, rules).find((theirs) => {
+        if (taken.has(`${other.id}:${theirs.id}`)) return false
+        const otherConnector = connectorForSnap(otherDefinition, theirs)
+        if (!otherConnector || !connectorsCanMate(connector, mine, otherConnector, theirs)) return false
+        const limit = Math.min(connector.snapTolerance ?? 0.002, otherConnector.snapTolerance ?? 0.002)
+        const there = worldPointOf(other, theirs.position, context.heightOf(other))
+        return Math.hypot(there[0] - world[0], there[1] - world[1], there[2] - world[2]) <= limit
+      })
+      if (!match) continue
+      taken.add(`${other.id}:${match.id}`)
+      connections.push({
+        sourceItemId: item.id,
+        sourceConnectorId: connector.id,
+        sourcePointId: mine.id,
+        targetItemId: other.id,
+        targetConnectorId: connectorForSnap(otherDefinition, match)!.id,
+        targetPointId: match.id,
+        resolvedTransform: { position: pose.position, rotation: pose.rotation },
+      })
+      break
+    }
+  }
+  return connections
 }
 
 /** Converts existing `snapToItem` constraints after their GLB points hydrate. */

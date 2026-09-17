@@ -28,7 +28,7 @@ import { useConfiguratorStore } from '../state/store'
 import { hydrateItemRulesAndHide } from '../io/rules'
 import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSnapGrid'
 import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
-import { buildLocalCorners, getItem, registerItem, unregisterItem } from './itemRegistry'
+import { colliderSizeOf, buildLocalCorners, getItem, registerItem, unregisterItem } from './itemRegistry'
 import {
   computePartnerPlacement,
   MIRROR_PAIR_RULE,
@@ -55,7 +55,7 @@ import {
   worldSnapPosition,
   yawToMate,
 } from './mating'
-import { connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
 import { validateConfiguration } from '../assembly/validation'
 
 interface Props {
@@ -154,6 +154,8 @@ interface ConnectionPreview {
   position: Vec3
   rotation: EulerTuple
   connection: Connection
+  /** Every joint this pose makes; `connection` is the one the drag resolved. */
+  connections: Connection[]
   valid: boolean
   reason?: string
 }
@@ -500,7 +502,7 @@ function ItemInner({
    */
   const linkedTo = (id: string): ReadonlySet<string> | undefined => {
     const s = useConfiguratorStore.getState()
-    return s.project ? linkedPartners(id, s.project.items) : undefined
+    return s.project ? linkedPartners(id, s.project.items, s.project.connections ?? []) : undefined
   }
 
   /**
@@ -621,6 +623,15 @@ function ItemInner({
       targetPointId: best.target.point.id,
       resolvedTransform: { position, rotation },
     }
+    // Every contact this pose makes, not just the one the drag was nearest to.
+    const joints = connectionsAtPose(item, { position, rotation }, {
+      items: s.project.items,
+      itemSnaps: s.itemSnaps,
+      itemRules: s.itemRules,
+      manifest: s.assemblyManifest,
+      heightOf: (placed) => colliderSizeOf(placed.id)?.[1] ?? 0,
+    })
+    const connections = joints.length > 0 ? joints : [connection]
     const retained = (s.project.connections ?? []).filter((existing) => existing.sourceItemId !== item.id)
     const constraints = [
       ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
@@ -628,7 +639,7 @@ function ItemInner({
     ]
     const previewProject = {
       ...s.project,
-      connections: [...retained, connection],
+      connections: [...retained, ...connections],
       items: s.project.items.map((placed) => placed.id === item.id ? { ...placed, position, rotation, constraints } : placed),
     }
     const issues = validateConfiguration(previewProject, s.catalog, s.assemblyManifest, {
@@ -637,7 +648,7 @@ function ItemInner({
       enclosureBounds: s.interiorBBox,
     })
     const blocking = issues.find((issue) => issue.level === 'error' && issue.itemIds.includes(item.id))
-    return { position, rotation, connection, valid: !blocking, reason: blocking?.message }
+    return { position, rotation, connection, connections, valid: !blocking, reason: blocking?.message }
   }
 
   const snapConstraint = item.constraints?.find((c) => c.type === 'snapToAnchor')
@@ -893,10 +904,18 @@ function ItemInner({
       }
     }
 
-    // Hard collision constraints: separate from other products and keep the
-    // collider inside the van/interior bounds before any live pair sync.
-    pushOutOverlaps(item.id, 8, linkedTo(item.id))
-    clampItemToBounds(item.id, collisionBounds)
+    // Resolve the joint first: a part on its way into a valid seat must not be
+    // shoved back out by the collision push-out, or it can never get close
+    // enough for the snap to engage. A valid preview has already been through
+    // `validateConfiguration`, bounds included, so it needs neither guard.
+    const preview = resolveConnectionPreview()
+    updateConnectionPreview(preview)
+    if (!preview?.valid) {
+      // Hard collision constraints: separate from other products and keep the
+      // collider inside the van/interior bounds before any live pair sync.
+      pushOutOverlaps(item.id, 8, linkedTo(item.id))
+      clampItemToBounds(item.id, collisionBounds)
+    }
 
     // Keep the mirror-pair partner glued to us while dragging. Commit-time
     // store updates happen in pointerup; here we only move its live group.
@@ -938,8 +957,6 @@ function ItemInner({
         assemblyContext(store.project.items, store.itemSnaps, store.itemRules),
       )
     }
-
-    updateConnectionPreview(resolveConnectionPreview())
 
     // Live clearance from enclosure walls (item AABB ↔ enclosure AABB).
     const bbox = store.enclosureBBox
@@ -1025,7 +1042,7 @@ function ItemInner({
       ]
       const connections = [
         ...(s.project?.connections ?? []).filter((connection) => connection.sourceItemId !== item.id),
-        preview.connection,
+        ...preview.connections,
       ]
       s.commitAssembly([
         { id: item.id, patch: { position: preview.position, rotation: preview.rotation, constraints } },

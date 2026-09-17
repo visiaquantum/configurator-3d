@@ -1,5 +1,5 @@
 import { Vector3 } from 'three'
-import type { Euler, ItemConstraint, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
+import type { Connection, Euler, ItemConstraint, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
 import { colliderSizeOf, getItem } from './itemRegistry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
@@ -53,7 +53,11 @@ export function snapPointLabel(p: ItemSnapPoint): string {
     if (m) return `${base} r${m[1]} c${m[2]}`
   }
   const suffix = p.id.startsWith(`${p.kind}-`) ? p.id.slice(p.kind.length + 1) : null
-  return suffix ? `${base} ${suffix}` : base
+  if (suffix) return `${base} ${suffix}`
+  // An id the extractor would never generate was authored by the catalogue
+  // (`shelf-top`, `end-a`). Show it: otherwise every declared point of a kind
+  // reads as the same bare label and the join picker cannot tell them apart.
+  return p.id === p.kind ? base : `${base} · ${p.id}`
 }
 
 /** True when the two kinds are declared compatible (order-insensitive). */
@@ -336,14 +340,23 @@ export function yawToMate(
  * Interlocking parts share material by design, so the overlap push-out and the
  * red "collision" tint must skip these pairs; otherwise the collision system
  * would fight the assembly apart the moment anything moves.
+ *
+ * `connections` matter as much as the constraint: a part is positioned by one
+ * parent but bolted at several points, so an upright joined to three
+ * horizontals has one `snapToItem` target and three real joints. Reading only
+ * the constraint would leave the other two pairs to be prised apart.
  */
-export function linkedPartners(id: string, items: PlacedItem[]): Set<string> {
+export function linkedPartners(id: string, items: PlacedItem[], connections: Connection[] = []): Set<string> {
   const out = new Set<string>()
   const self = items.find((it) => it.id === id)
   const parent = self ? itemSnapConstraint(self)?.target : undefined
   if (parent) out.add(parent)
   for (const it of items) {
     if (itemSnapConstraint(it)?.target === id) out.add(it.id)
+  }
+  for (const connection of connections) {
+    if (connection.sourceItemId === id) out.add(connection.targetItemId)
+    else if (connection.targetItemId === id) out.add(connection.sourceItemId)
   }
   return out
 }

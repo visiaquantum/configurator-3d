@@ -33,6 +33,7 @@
     "verify:snaps": "node scripts/verify-snaps.mjs",
     "verify:assembly": "node scripts/verify-assembly.mjs",
     "verify:pilot": "node scripts/verify-pilot-assembly.mjs",
+    "verify:kit01": "node scripts/verify-kit01-composition.mjs",
     "preview": "vite preview",
     "prepublishOnly": "npm run build:lib"
   },
