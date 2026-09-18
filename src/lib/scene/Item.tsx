@@ -788,15 +788,33 @@ function ItemInner({
     return out
   }
 
-  /** Put the followers where the dragged item's own step has taken them. */
-  const dragFollowers = (followers: Array<{ id: string; start: Vector3 }>, from: Vector3) => {
-    if (!group) return
-    for (const follower of followers) {
-      const reg = getItem(follower.id)
-      if (!reg) continue
-      reg.group.position.copy(follower.start).add(group.position).sub(from)
-      reg.group.updateWorldMatrix(true, false)
-    }
+  /**
+   * Live feedback mid-gesture: the rest of the frame put where this item's
+   * current pose — turned as well as moved — has taken it. `true` when there
+   * was a frame to move, which also means the single-part guards do not apply:
+   * pushing this one member out or clamping it to the van would slide it off
+   * the joints the others hold it by.
+   *
+   * Without this a turn showed the grabbed part swinging alone while the rest
+   * stood still, and only the release put the frame back together.
+   */
+  const followLive = (): boolean => {
+    if (!group) return false
+    const s = useConfiguratorStore.getState()
+    const members = assemblyGroup(item.id, s.project?.items ?? [], s.project?.connections ?? [])
+    if (members.size < 2) return false
+    // A frame turns about the upright axis only. Tipping it would lift half its
+    // members off the floor, and the commit keeps each one's own pitch anyway —
+    // so a pitch shown here would be a pitch taken back on release.
+    /* eslint-disable react-hooks/immutability -- holding the live scene-graph node upright is the point */
+    group.rotation.x = item.rotation[0]
+    group.rotation.z = item.rotation[2]
+    /* eslint-enable react-hooks/immutability */
+    groupFollowPatches(
+      [group.position.x, group.position.y - colliderSize[1] / 2, group.position.z],
+      group.rotation.y,
+    )
+    return true
   }
 
   /**
@@ -911,6 +929,7 @@ function ItemInner({
       group.position.copy(d.startPos)
       group.rotation.y = snapAngle(d.startRotY + dx * ROTATION_SENSITIVITY)
       group.rotation.x = snapAngle(d.startRotX + dy * ROTATION_SENSITIVITY)
+      if (followLive()) return
       pushOutOverlaps(item.id, 8, linkedTo(item.id))
       clampItemToBounds(item.id, collisionBounds)
       return
@@ -974,7 +993,7 @@ function ItemInner({
 
     // Live: the whole assembly takes the same step — the mirrored half and
     // everything bolted on, however far down the chain.
-    dragFollowers(d.followers, d.startPos)
+    followLive()
 
     // Live clearance from enclosure walls (item AABB ↔ enclosure AABB).
     const bbox = store.enclosureBBox
@@ -1178,10 +1197,14 @@ function ItemInner({
           onMouseDown={() => {
             transformLockPosRef.current = gizmoMode === 'rotate' ? group.position.clone() : null
           }}
+          // eslint-disable-next-line react-hooks/immutability -- handler drives group transforms imperatively (three.js scene-graph)
           onObjectChange={() => {
             if (gizmoMode === 'rotate' && transformLockPosRef.current) {
               group.position.copy(transformLockPosRef.current)
             }
+            // The gizmo drags one object; the frame it belongs to comes along
+            // every frame, or it only catches up on release.
+            if (followLive()) return
             pushOutOverlaps(item.id, 8, linkedTo(item.id))
             clampItemToBounds(item.id, collisionBounds)
           }}
