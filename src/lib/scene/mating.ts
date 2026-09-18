@@ -376,6 +376,34 @@ export function linkedPartners(id: string, items: PlacedItem[], connections: Con
 }
 
 /**
+ * Every item that travels with `id`: what it is bolted to, what is bolted to
+ * it, what carries it, the other half of a mirror pair — followed all the way
+ * out. A frame is one object to the person moving it, whichever member they
+ * happen to grab, and a member left behind is a joint prised open.
+ */
+export function assemblyGroup(
+  id: string,
+  items: PlacedItem[],
+  connections: Connection[] = [],
+): Set<string> {
+  const group = new Set<string>([id])
+  const byId = new Map(items.map((it) => [it.id, it]))
+  const queue = [id]
+  while (queue.length > 0) {
+    const current = queue.pop() as string
+    const partners = linkedPartners(current, items, connections)
+    const twin = byId.get(current)?.constraints?.find((c) => c.type === 'mirrorPair')?.target
+    if (twin) partners.add(twin)
+    for (const partner of partners) {
+      if (group.has(partner)) continue
+      group.add(partner)
+      queue.push(partner)
+    }
+  }
+  return group
+}
+
+/**
  * The joints a move leaves intact. A joint survives when both its ends travel
  * together: dragging a montante carries the piani seated on it and its mirror
  * twin, and none of those seats move apart. Only a joint with one end left

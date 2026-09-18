@@ -33,6 +33,38 @@ interface Props {
   readOnly?: boolean
 }
 
+/** A seat this item could be attached to, and how far its point is from it. */
+interface Seat {
+  myPoint: ItemSnapPoint
+  targetItem: PlacedItem
+  point: ItemSnapPoint
+  distance: number
+}
+
+/**
+ * How close a seat has to be to read as "this is the joint I mean". Wide enough
+ * to reach the next seat up or down — the montante's are 25 cm apart — so the
+ * level is a choice between buttons rather than a matter of aiming.
+ */
+const NEARBY_SEAT_RANGE = 0.3
+
+/**
+ * The points worth offering for a product. Where the catalogue names points of
+ * a kind, they are the certified interface for that kind and the GLB's own
+ * markers of it are duplicates or leftovers: the montante carries one at its
+ * foot, and a piano attached there lands on the floor. Kinds the catalogue says
+ * nothing about — the drilled holes — keep their markers.
+ */
+function certifiedPoints(
+  points: ItemSnapPoint[],
+  declared: ItemSnapPoint[] | undefined,
+): ItemSnapPoint[] {
+  if (!declared?.length) return points
+  const ids = new Set(declared.map((p) => p.id))
+  const kinds = new Set(declared.map((p) => p.kind))
+  return points.filter((p) => ids.has(p.id) || !kinds.has(p.kind))
+}
+
 /**
  * Points bucketed by mating family, in first-seen order. A perforated upright
  * carries 40 generated hole centres next to its 5 named points, so a flat list
@@ -133,7 +165,7 @@ export function Inspector({ readOnly }: Props) {
   if (pairRule) {
     for (const part of Object.values(catalog)) {
       if (part.id === item.catalogId || !matesWithMe(part.id)) continue
-      const points = itemSnaps[part.id] ?? part.snapPoints ?? []
+      const points = certifiedPoints(itemSnaps[part.id] ?? part.snapPoints ?? [], part.snapPoints)
       for (const seat of pairSeats) {
         for (const a of points) {
           for (const b of points) {
@@ -162,6 +194,48 @@ export function Inspector({ readOnly }: Props) {
     return []
   }
 
+  // Seats already within reach of one of this item's points. Carrying a piano
+  // up to a montante is the natural gesture, and it leaves the two faces a
+  // couple of centimetres apart — close enough to say which joint is meant, so
+  // it is offered as one button instead of three pickers.
+  const nearbySeats = (): Seat[] => {
+    const myDefinition = definitionFor(assemblyManifest, item.catalogId)
+    const out: Seat[] = []
+    for (const mine of certifiedPoints(myPoints, cat?.snapPoints)) {
+      const sourceConnector = connectorForSnap(myDefinition, mine)
+      if (assemblyManifest && !sourceConnector) continue
+      const from = worldSnapPosition(item.id, mine.position)
+      if (!from) continue
+      for (const entry of targetItems) {
+        const theirDefinition = definitionFor(assemblyManifest, entry.item.catalogId)
+        for (const point of certifiedPoints(entry.points, catalog[entry.item.catalogId]?.snapPoints)) {
+          if (!canMate(mine.kind, point.kind)) continue
+          const targetConnector = connectorForSnap(theirDefinition, point)
+          if (
+            assemblyManifest &&
+            (!sourceConnector ||
+              !targetConnector ||
+              !connectorsCanMate(sourceConnector, mine, targetConnector, point))
+          ) continue
+          const to = worldSnapPosition(entry.item.id, point.position)
+          if (!to) continue
+          const distance = Math.hypot(to[0] - from[0], to[1] - from[1], to[2] - from[2])
+          if (distance > NEARBY_SEAT_RANGE) continue
+          out.push({ myPoint: mine, targetItem: entry.item, point, distance })
+        }
+      }
+    }
+    // One row per seat, reached by whichever of my points is nearest: two ends
+    // of the same piano can both be in range, and six buttons for one joint is
+    // not a choice. Two seats on the same montante are, so they stay.
+    const bySeat = new Map<string, Seat>()
+    for (const seat of out.sort((a, b) => a.distance - b.distance)) {
+      const key = `${seat.targetItem.id}|${seat.point.id}`
+      if (!bySeat.has(key)) bySeat.set(key, seat)
+    }
+    return [...bySeat.values()].slice(0, 6)
+  }
+
   // Existing product-to-product join, resolved to readable labels.
   const joined = itemSnapConstraint(item)
   const joinedTarget = joined?.target
@@ -177,6 +251,33 @@ export function Inspector({ readOnly }: Props) {
         joinedTargetPoint ? snapPointLabel(joinedTargetPoint) : (joined?.targetPoint ?? '?')
       }`
     : (joined?.target ?? '?')
+
+  const pointLabelOf = (points: ItemSnapPoint[], id: string) => {
+    const point = points.find((p) => p.id === id)
+    return point ? snapPointLabel(point) : id
+  }
+
+  // Every joint this part has, not only the one that carries it. A piano laid
+  // across a mirrored pair is bolted at both ends — the panel showed the first
+  // alone, so the second looked like it had never taken.
+  const joints = (project?.connections ?? [])
+    .filter((c) => c.sourceItemId === item.id || c.targetItemId === item.id)
+    .map((c) => {
+      const onMe = c.sourceItemId === item.id ? c.sourcePointId : c.targetPointId
+      const otherId = c.sourceItemId === item.id ? c.targetItemId : c.sourceItemId
+      const onThem = c.sourceItemId === item.id ? c.targetPointId : c.sourcePointId
+      const other = project?.items.find((it) => it.id === otherId)
+      const theirLabel = other
+        ? `${catalog[other.catalogId]?.label ?? other.catalogId}${other.mirrored ? ' (specchiato)' : ''} · ${
+            pointLabelOf(snapsForItem(other, itemSnaps, itemRules), onThem)
+          }`
+        : otherId
+      return {
+        key: `${otherId}|${onThem}`,
+        label: `${pointLabelOf(myPoints, onMe)} → ${theirLabel}`,
+      }
+    })
+  const jointedSeats = new Set(joints.map((j) => j.key))
 
   const handleSnap = (anchorId: string | null) => {
     updateItem(item.id, {
@@ -219,31 +320,33 @@ export function Inspector({ readOnly }: Props) {
    * the chosen point of the target, record the link, then drag along anything
    * already joined to this item.
    */
-  const handleJoinToItem = () => {
-    if (!myPoint || !targetItemId || !targetPointId) return
-    const targetPoint = targetEntry?.points.find((p) => p.id === targetPointId)
+  const handleJoinToItem = (choice?: Seat) => {
+    const sourcePoint = choice ? choice.myPoint : myPoint
+    const toItemId = choice ? choice.targetItem.id : targetItemId
+    const targetPoint = choice ? choice.point : targetEntry?.points.find((p) => p.id === targetPointId)
+    if (!sourcePoint || !toItemId || !targetPoint) return
     const size = colliderSizeOf(item.id)
-    if (!targetPoint || !size) return
-    const world = worldSnapPosition(targetItemId, targetPoint.position)
+    if (!size) return
+    const world = worldSnapPosition(toItemId, targetPoint.position)
     if (!world) return
 
     // Turn the item so its mating face presses against the target's, then
     // translate. Faces that point up or down cannot be aligned by yaw, so
     // there the item keeps its current rotation.
-    const targetItem = targetEntry?.item
+    const targetItem = choice ? choice.targetItem : targetEntry?.item
     if (!targetItem) return
-    const yaw = yawToMate(myPoint.normal, targetPoint.normal, targetItem?.rotation[1] ?? 0)
+    const yaw = yawToMate(sourcePoint.normal, targetPoint.normal, targetItem.rotation[1])
     const rotation: Euler =
       yaw === null ? item.rotation : [item.rotation[0], yaw, item.rotation[2]]
 
-    const position = positionForItemSnap(myPoint.position, rotation[1], size[1], world)
-    const link = itemSnapConstraintFor(targetItemId, myPoint.id, targetPoint.id)
+    const position = positionForItemSnap(sourcePoint.position, rotation[1], size[1], world)
+    const link = itemSnapConstraintFor(toItemId, sourcePoint.id, targetPoint.id)
     const kept = item.constraints?.filter((c) => c.type === 'mirrorPair') ?? []
     const s = useConfiguratorStore.getState()
     const targetDefinition = definitionFor(assemblyManifest, targetItem.catalogId)
-    const sourceConnector = connectorForSnap(definitionFor(assemblyManifest, item.catalogId), myPoint)
-    const targetConnector = targetPoint ? connectorForSnap(targetDefinition, targetPoint) : undefined
-    if (assemblyManifest && (!sourceConnector || !targetConnector || !connectorsCanMate(sourceConnector, myPoint, targetConnector, targetPoint))) {
+    const sourceConnector = connectorForSnap(definitionFor(assemblyManifest, item.catalogId), sourcePoint)
+    const targetConnector = connectorForSnap(targetDefinition, targetPoint)
+    if (assemblyManifest && (!sourceConnector || !targetConnector || !connectorsCanMate(sourceConnector, sourcePoint, targetConnector, targetPoint))) {
       setJoinError('Questi connettori non sono autorizzati dal manifest tecnico')
       return
     }
@@ -251,8 +354,8 @@ export function Inspector({ readOnly }: Props) {
       ? {
           sourceItemId: item.id,
           sourceConnectorId: sourceConnector.id,
-          sourcePointId: myPoint.id,
-          targetItemId,
+          sourcePointId: sourcePoint.id,
+          targetItemId: toItemId,
           targetConnectorId: targetConnector.id,
           targetPointId: targetPoint.id,
           resolvedTransform: { position, rotation },
@@ -454,11 +557,43 @@ export function Inspector({ readOnly }: Props) {
           <div style={{ marginTop: 8 }}>
             <div style={{ ...labelStyle, marginBottom: 4 }}>aggancia a pezzo</div>
 
+            {/* Seats still free stay on offer even once the part is joined: a
+                piano reaches a montante at each end, and the second joint is
+                only a press away. */}
+            {nearbySeats()
+              .filter((seat) => !jointedSeats.has(`${seat.targetItem.id}|${seat.point.id}`))
+              .map((seat) => (
+                  <button
+                    key={`${seat.myPoint.id}|${seat.targetItem.id}|${seat.point.id}`}
+                    type="button"
+                    disabled={readOnly}
+                    onClick={() => handleJoinToItem(seat)}
+                    style={{
+                      ...pairBtnStyle,
+                      width: '100%',
+                      marginBottom: 4,
+                      display: 'flex',
+                      gap: 6,
+                      justifyContent: 'space-between',
+                      textAlign: 'left',
+                      background: '#24384a',
+                      color: '#cfe6ff',
+                    }}
+                  >
+                    <span>
+                      Attacca · {snapPointLabel(seat.myPoint)} →{' '}
+                      {catalog[seat.targetItem.catalogId]?.label ?? seat.targetItem.catalogId}
+                      {seat.targetItem.mirrored ? ' (specchiato)' : ''} · {snapPointLabel(seat.point)}
+                    </span>
+                    <span style={{ flexShrink: 0, opacity: 0.7 }}>{formatCm(seat.distance)} cm</span>
+                  </button>
+              ))}
+
             {joined ? (
               <div style={joinedBoxStyle}>
-                <div>
-                  {joinedFromLabel} → {joinedTargetLabel}
-                </div>
+                {joints.length > 0
+                  ? joints.map((joint) => <div key={joint.key}>{joint.label}</div>)
+                  : <div>{joinedFromLabel} → {joinedTargetLabel}</div>}
                 <button
                   type="button"
                   disabled={readOnly}
@@ -543,7 +678,7 @@ export function Inspector({ readOnly }: Props) {
                 <button
                   type="button"
                   disabled={readOnly || !myPoint || !targetPointId}
-                  onClick={handleJoinToItem}
+                  onClick={() => handleJoinToItem()}
                   style={{
                     ...pairBtnStyle,
                     width: '100%',

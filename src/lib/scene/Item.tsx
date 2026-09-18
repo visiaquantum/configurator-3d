@@ -45,6 +45,7 @@ import {
 } from './snapping'
 import {
   assemblyContext,
+  assemblyGroup,
   dedupeJoints,
   itemSnapConstraint,
   itemSnapConstraintFor,
@@ -151,6 +152,8 @@ interface DragCtx {
    * between candidates each frame (visible as jitter).
    */
   snapLock: SnapLock | null
+  /** The rest of the assembly, with the group positions it started from. */
+  followers: Array<{ id: string; start: Vector3 }>
 }
 
 interface ConnectionPreview {
@@ -811,12 +814,76 @@ function ItemInner({
       group.position.y - colliderSize[1] / 2,
       group.position.z,
     ]
-    const constraints = withSnapConstraint(item, hit ? snapHitConstraint(hit) : null)
+    // Same as the pointer drag: the assembly takes one step, and the joins hold.
+    const constraints = hit ? withSnapConstraint(item, snapHitConstraint(hit)) : item.constraints
     updateItems([
       { id: item.id, patch: { position: finalPos, rotation: newRot, constraints } },
-      ...pairSyncPatches(finalPos, newRot),
-      ...childSyncPatches(),
+      ...groupStepPatches([
+        finalPos[0] - item.position[0],
+        finalPos[1] - item.position[1],
+        finalPos[2] - item.position[2],
+      ]),
     ])
+  }
+
+  /**
+   * The rest of this item's assembly, with the live positions it starts from.
+   * A translate moves them all by the same step: re-deriving each pose from its
+   * seat would reach the same place more slowly, and only rigid motion is sure
+   * to leave every joint exactly as tight as it was.
+   */
+  const assemblyFollowers = (): Array<{ id: string; start: Vector3 }> => {
+    const s = useConfiguratorStore.getState()
+    const members = assemblyGroup(item.id, s.project?.items ?? [], s.project?.connections ?? [])
+    const out: Array<{ id: string; start: Vector3 }> = []
+    for (const id of members) {
+      if (id === item.id) continue
+      const reg = getItem(id)
+      if (reg) out.push({ id, start: reg.group.position.clone() })
+    }
+    return out
+  }
+
+  /** Put the followers where the dragged item's own step has taken them. */
+  const dragFollowers = (followers: Array<{ id: string; start: Vector3 }>, from: Vector3) => {
+    if (!group) return
+    for (const follower of followers) {
+      const reg = getItem(follower.id)
+      if (!reg) continue
+      reg.group.position.copy(follower.start).add(group.position).sub(from)
+      reg.group.updateWorldMatrix(true, false)
+    }
+  }
+
+  /**
+   * The same step for the rest of the assembly, as patches, with their live
+   * groups moved to match. Used by both ways of translating — the drag and the
+   * gizmo — so a frame behaves the same whichever one moves it.
+   */
+  const groupStepPatches = (delta: Vec3): Array<{ id: string; patch: Partial<PlacedItem> }> => {
+    const s = useConfiguratorStore.getState()
+    const items = s.project?.items ?? []
+    const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
+    const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = []
+    for (const placed of items) {
+      if (placed.id === item.id || !members.has(placed.id)) continue
+      const position: Vec3 = [
+        placed.position[0] + delta[0],
+        placed.position[1] + delta[1],
+        placed.position[2] + delta[2],
+      ]
+      const reg = getItem(placed.id)
+      if (reg) {
+        reg.group.position.set(
+          position[0],
+          position[1] + (colliderSizeOf(placed.id)?.[1] ?? 0) / 2,
+          position[2],
+        )
+        reg.group.updateWorldMatrix(true, false)
+      }
+      patches.push({ id: placed.id, patch: { position } })
+    }
+    return patches
   }
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
@@ -845,6 +912,7 @@ function ItemInner({
       grabOffset,
       started: false,
       snapLock: null,
+      followers: assemblyFollowers(),
     }
   }
 
@@ -922,51 +990,15 @@ function ItemInner({
     updateConnectionPreview(preview)
     if (!preview?.valid) {
       // Hard collision constraints: separate from other products and keep the
-      // collider inside the van/interior bounds before any live pair sync.
-      pushOutOverlaps(item.id, 8, linkedTo(item.id))
+      // collider inside the van/interior bounds. The rest of the assembly is
+      // exempt: those parts share material with this one by design.
+      pushOutOverlaps(item.id, 8, new Set(d.followers.map((f) => f.id)))
       clampItemToBounds(item.id, collisionBounds)
     }
 
-    // Keep the mirror-pair partner glued to us while dragging. Commit-time
-    // store updates happen in pointerup; here we only move its live group.
-    const pair = mirrorPairConstraint(item)
-    if (pair?.target && pair.distance != null) {
-      const rule = store.itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
-      const partner = getItem(pair.target)
-      if (rule && partner) {
-        const basePos: Vec3 = [
-          group.position.x,
-          group.position.y - colliderSize[1] / 2,
-          group.position.z,
-        ]
-        const placement = computePartnerPlacement(
-          {
-            position: basePos,
-            rotation: [group.rotation.x, group.rotation.y, group.rotation.z],
-            mirrored: item.mirrored,
-          },
-          rule,
-          pair.distance,
-        )
-        partner.group.position.set(
-          placement.position[0],
-          placement.position[1] + colliderSize[1] / 2,
-          placement.position[2],
-        )
-        pushOutOverlaps(pair.target, 8, linkedTo(pair.target))
-        clampItemToBounds(pair.target, collisionBounds)
-      }
-    }
-
-    // Live: drag the joined products along. `resolveSnappedChildren` moves
-    // their groups; the returned patches are only needed at commit time, so
-    // they are discarded here.
-    if (store.project) {
-      resolveSnappedChildren(
-        item.id,
-        assemblyContext(store.project.items, store.itemSnaps, store.itemRules),
-      )
-    }
+    // Live: the whole assembly takes the same step — the mirrored half and
+    // everything bolted on, however far down the chain.
+    dragFollowers(d.followers, d.startPos)
 
     // Live clearance from enclosure walls (item AABB ↔ enclosure AABB).
     const bbox = store.enclosureBBox
@@ -1067,7 +1099,8 @@ function ItemInner({
     // of X/Z), keep inside the van/interior bounds, then check for anchor snap.
     // The live vertex-snap has already aligned to a neighbour's corner if one
     // was close enough.
-    pushOutOverlaps(item.id, 8, linkedTo(item.id))
+    const exempt = new Set(d.followers.map((f) => f.id))
+    pushOutOverlaps(item.id, 8, exempt)
     clampItemToBounds(item.id, collisionBounds)
     const newPos: Vec3 = [
       group.position.x,
@@ -1083,7 +1116,7 @@ function ItemInner({
     )
     if (hit) {
       group.position.set(hit.position[0], hit.position[1] + colliderSize[1] / 2, hit.position[2])
-      const pushed = pushOutOverlaps(item.id, 8, linkedTo(item.id))
+      const pushed = pushOutOverlaps(item.id, 8, exempt)
       const clamped = clampItemToBounds(item.id, collisionBounds)
       if (pushed || clamped) hit = null
     }
@@ -1092,11 +1125,16 @@ function ItemInner({
       group.position.y - colliderSize[1] / 2,
       group.position.z,
     ]
-    const constraints = withSnapConstraint(item, hit ? snapHitConstraint(hit) : null)
+    // The join survives a translate: nothing slid off its seat, the seat came
+    // along. Only an anchor snap replaces it.
+    const constraints = hit ? withSnapConstraint(item, snapHitConstraint(hit)) : item.constraints
     const patches = [
       { id: item.id, patch: { position: finalPos, constraints } },
-      ...pairSyncPatches(finalPos, item.rotation),
-      ...childSyncPatches(),
+      ...groupStepPatches([
+        finalPos[0] - item.position[0],
+        finalPos[1] - item.position[1],
+        finalPos[2] - item.position[2],
+      ]),
     ]
     const s = useConfiguratorStore.getState()
     const kept = jointsSurvivingMove(patches, s.project?.connections ?? [])

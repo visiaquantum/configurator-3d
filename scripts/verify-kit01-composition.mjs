@@ -16,6 +16,7 @@ import {
   connectionsAtPose,
   extractAutoSnapGridFromObject,
   extractRulesFromObject,
+  assemblyGroup,
   hasBlockingIssues,
   jointsSurvivingMove,
   linkedPartners,
@@ -267,6 +268,16 @@ const mirroredLate = {
   connections: [...pairJoints.filter((c) => c.targetItemId === pairA.id), ...twinJoints],
 }
 check('mirroring after the shelf is joined still validates', !hasBlockingIssues(validateConfiguration(mirroredLate, catalog, manifest, pairContext)))
+
+// Whichever member is grabbed, the frame moves as one: the mirrored half is
+// reached through the pair, the piano through its joints, and the far montante
+// through the piano. A member left behind is a joint prised open.
+const frame = [pairA, pairB, pairShelf]
+const groupOf = (id) => [...assemblyGroup(id, frame, mirroredLate.connections)].sort().join(',')
+const wholeFrame = frame.map((it) => it.id).sort().join(',')
+check('grabbing the piano moves the whole frame', groupOf(pairShelf.id) === wholeFrame, groupOf(pairShelf.id))
+check('grabbing the mirrored montante moves the whole frame', groupOf(pairB.id) === wholeFrame, groupOf(pairB.id))
+check('an unjoined part moves alone', groupOf('loose') === 'loose', groupOf('loose'))
 
 // Dragging the montante carries the piano seated on it and the mirrored half
 // with it: the joints between them must not be dropped just because the

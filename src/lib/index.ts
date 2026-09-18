@@ -29,6 +29,7 @@ export {
 } from './io/catalog'
 export type { CatalogIssue } from './io/catalog'
 export {
+  assemblyGroup,
   canMate,
   dedupeJoints,
   itemSnapConstraint,
