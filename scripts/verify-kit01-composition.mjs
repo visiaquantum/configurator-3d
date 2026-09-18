@@ -17,6 +17,7 @@ import {
   extractAutoSnapGridFromObject,
   extractRulesFromObject,
   hasBlockingIssues,
+  jointsSurvivingMove,
   linkedPartners,
   hydrateItemSnapsAndHide,
   computePartnerPlacement,
@@ -254,6 +255,30 @@ const pairContext = { itemSnaps, itemRules: { ysi12836: [pairRule] } }
 const pairIssues = validateConfiguration(pairProject, catalog, manifest, pairContext)
 if (hasBlockingIssues(pairIssues)) console.log('  detail', pairIssues.filter((i) => i.level === 'error').map((i) => i.message).join(' | '))
 check('the mirrored pair validates with the shelf in place', !hasBlockingIssues(pairIssues))
+
+// The order the panel is used in: the shelf is joined to one upright, then that
+// upright is mirrored. The twin lands on the shelf's free end, and that joint
+// has to be recorded from the twin's own side — nothing else moves, so without
+// it the insertion overlap at that seat reads as interference.
+const twinJoints = connectionsAtPose(pairB, pairB, { items: [pairA, pairShelf], itemSnaps, itemRules: { ysi12836: [pairRule] }, manifest, heightOf: pairHeight })
+check('the new twin records the joint it lands on', twinJoints.length === 1, `got ${twinJoints.length}`)
+const mirroredLate = {
+  ...pairProject,
+  connections: [...pairJoints.filter((c) => c.targetItemId === pairA.id), ...twinJoints],
+}
+check('mirroring after the shelf is joined still validates', !hasBlockingIssues(validateConfiguration(mirroredLate, catalog, manifest, pairContext)))
+
+// Dragging the montante carries the piano seated on it and the mirrored half
+// with it: the joints between them must not be dropped just because the
+// montante is the side that happened to record them.
+check(
+  'joints whose ends travel together survive the move',
+  jointsSurvivingMove([pairA, pairB, pairShelf], mirroredLate.connections).length === mirroredLate.connections.length,
+)
+check(
+  'a joint with one end left behind is dropped',
+  jointsSurvivingMove([pairA], mirroredLate.connections).length === 1,
+)
 
 const offSpacing = computePartnerPlacement(pairA, pairRule, spacing + 0.02)
 const strayPair = { ...pairProject, items: [pairA, { ...pairB, ...offSpacing }, pairShelf] }

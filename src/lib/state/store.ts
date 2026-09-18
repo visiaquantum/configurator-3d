@@ -158,7 +158,13 @@ interface ConfiguratorState {
    * Add `twin` and link it to `sourceId` with reciprocal mirrorPair
    * constraints at `distance` (single undo step).
    */
-  createMirrorPair: (sourceId: string, twin: PlacedItem, distance: number) => void
+  createMirrorPair: (
+    sourceId: string,
+    twin: PlacedItem,
+    distance: number,
+    /** Joints the twin makes where it lands; omit to keep the current ones. */
+    connections?: Connection[],
+  ) => void
   /** Unlink a mirror pair, removing the auto-created mirrored twin. */
   removeMirrorPair: (id: string) => void
   select: (id: string | null) => void
@@ -363,7 +369,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
       })
     },
 
-    createMirrorPair: (sourceId, twin, distance) => {
+    createMirrorPair: (sourceId, twin, distance, connections) => {
       const s = get()
       if (!s.project) return
       const source = s.project.items.find((it) => it.id === sourceId)
@@ -393,6 +399,7 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
               ],
             },
           ],
+          connections: connections ?? s.project.connections,
         },
       })
     },

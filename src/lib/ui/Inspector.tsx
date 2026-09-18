@@ -12,7 +12,9 @@ import {
 import {
   assemblyContext,
   canMate,
+  dedupeJoints,
   itemSnapConstraint,
+  jointsSurvivingMove,
   itemSnapConstraintFor,
   positionForItemSnap,
   resolveSnappedChildren,
@@ -186,6 +188,33 @@ export function Inspector({ readOnly }: Props) {
   }
 
   /**
+   * The connection list after the panel itself moves parts — a mirror twin
+   * placed at a new spacing, a quarter turn. Only the drag and the explicit
+   * join used to record joints, so a twin that landed on a shelf's free end
+   * was seated but unconnected: validation then read the insertion overlap at
+   * that seat as a collision and the whole pair went red.
+   */
+  const connectionsAfterMove = (moved: PlacedItem[]): Connection[] => {
+    const s = useConfiguratorStore.getState()
+    if (!s.project) return []
+    const byId = new Map(moved.map((it) => [it.id, it]))
+    // Joints that straddle the move are broken by it; the rest stand, and what
+    // the moved parts touch now is recomputed from their new poses.
+    const kept = jointsSurvivingMove(moved, s.project.connections ?? [])
+    const context = {
+      items: s.project.items.map((it) => byId.get(it.id) ?? it),
+      itemSnaps: s.itemSnaps,
+      itemRules: s.itemRules,
+      manifest: assemblyManifest,
+      // A twin that was only just created has no live group yet, so its
+      // collider is not registered: the catalogue size is the same box.
+      heightOf: (placed: PlacedItem) =>
+        colliderSizeOf(placed.id)?.[1] ?? s.catalog[placed.catalogId]?.size?.[1] ?? 0,
+    }
+    return dedupeJoints([...kept, ...moved.flatMap((it) => connectionsAtPose(it, it, context))])
+  }
+
+  /**
    * Join this item to another product: move it so `myPointId` lands exactly on
    * the chosen point of the target, record the link, then drag along anything
    * already joined to this item.
@@ -323,14 +352,36 @@ export function Inspector({ readOnly }: Props) {
     }
     // Turning in place moves the mating face away from whatever it was seated
     // on, so the join goes with it — the same rule the rotate gizmo follows.
+    // What is seated on *this* item goes the other way: it turns along, or a
+    // frame would come apart on the very turn that makes it fit the van.
+    const turned: PlacedItem = { ...item, rotation }
+    const children = resolveSnappedChildren(
+      item.id,
+      assemblyContext(
+        (project?.items ?? []).map((it) => (it.id === item.id ? turned : it)),
+        itemSnaps,
+        itemRules,
+      ),
+    )
     const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = [
       { id: item.id, patch: { rotation, constraints: withSnapConstraint(item, null) } },
+      ...children,
+    ]
+    const byId = new Map((project?.items ?? []).map((it) => [it.id, it]))
+    const moved: PlacedItem[] = [
+      turned,
+      ...children.flatMap((c) => {
+        const child = byId.get(c.id)
+        return child ? [{ ...child, ...c.patch }] : []
+      }),
     ]
     if (pair?.target && pairRule) {
-      const placement = computePartnerPlacement({ ...item, rotation }, pairRule, pair.distance ?? 0)
+      const placement = computePartnerPlacement(turned, pairRule, pair.distance ?? 0)
       patches.push({ id: pair.target, patch: { position: placement.position, rotation: placement.rotation } })
+      const partner = byId.get(pair.target)
+      if (partner) moved.push({ ...partner, position: placement.position, rotation: placement.rotation })
     }
-    updateItems(patches)
+    commitAssembly(patches, connectionsAfterMove(moved))
   }
 
   const handlePairDistance = (distance: number) => {
@@ -342,29 +393,27 @@ export function Inspector({ readOnly }: Props) {
         it.constraints?.map((c) => (c.type === 'mirrorPair' ? { ...c, distance } : c))
       const partner = project?.items.find((it) => it.id === pair.target)
       if (!partner) return
-      updateItems([
-        { id: item.id, patch: { constraints: setDistance(item) } },
-        {
-          id: partner.id,
-          patch: {
-            position: placement.position,
-            rotation: placement.rotation,
-            constraints: setDistance(partner),
-          },
-        },
-      ])
-    } else {
-      createMirrorPair(
-        item.id,
-        {
-          id: nanoid(8),
-          catalogId: item.catalogId,
-          position: placement.position,
-          rotation: placement.rotation,
-          mirrored: placement.mirrored,
-        },
-        distance,
+      const patch = {
+        position: placement.position,
+        rotation: placement.rotation,
+        constraints: setDistance(partner),
+      }
+      commitAssembly(
+        [
+          { id: item.id, patch: { constraints: setDistance(item) } },
+          { id: partner.id, patch },
+        ],
+        connectionsAfterMove([{ ...partner, ...patch }]),
       )
+    } else {
+      const twin: PlacedItem = {
+        id: nanoid(8),
+        catalogId: item.catalogId,
+        position: placement.position,
+        rotation: placement.rotation,
+        mirrored: placement.mirrored,
+      }
+      createMirrorPair(item.id, twin, distance, connectionsAfterMove([twin]))
     }
   }
 

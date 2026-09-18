@@ -45,8 +45,10 @@ import {
 } from './snapping'
 import {
   assemblyContext,
+  dedupeJoints,
   itemSnapConstraint,
   itemSnapConstraintFor,
+  jointsSurvivingMove,
   linkedPartners,
   listMatingTargets,
   mirrorSnapPoints,
@@ -717,12 +719,13 @@ function ItemInner({
   // as soon as bounds exist so it never starts below the floor or outside the van.
   useLayoutEffect(() => {
     if (!group || !collisionBounds) return
-    // A joined part is held by its joint, not by the van. Clamping it slides it
-    // off its seat, and the patch below then drops the joint as well — so an
+    // A joined part is held by its joint, not by the van, and so is the twin of
+    // a mirror pair: both are placed by something else. Clamping either slides
+    // it off its seat, and the patch below then drops the joint as well — so an
     // assembly that reaches past the van could never be built, however it was
     // oriented afterwards. Validation still reports it, and moving the whole
     // assembly clears it.
-    if (itemSnapConstraint(item)) return
+    if (itemSnapConstraint(item) || mirrorPairConstraint(item)) return
     const moved = clampItemToBounds(item.id, collisionBounds)
     if (!moved) return
     const nextPos: Vec3 = [
@@ -1047,15 +1050,16 @@ function ItemInner({
         ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
         itemSnapConstraintFor(preview.connection.targetItemId, preview.connection.sourcePointId, preview.connection.targetPointId),
       ]
-      const connections = [
-        ...(s.project?.connections ?? []).filter((connection) => connection.sourceItemId !== item.id),
-        ...preview.connections,
-      ]
-      s.commitAssembly([
+      const patches = [
         { id: item.id, patch: { position: preview.position, rotation: preview.rotation, constraints } },
         ...pairSyncPatches(preview.position, preview.rotation),
         ...childSyncPatches(),
-      ], connections)
+      ]
+      const connections = dedupeJoints([
+        ...jointsSurvivingMove(patches, s.project?.connections ?? []),
+        ...preview.connections,
+      ])
+      s.commitAssembly(patches, connections)
       updateConnectionPreview(null)
       return
     }
@@ -1095,8 +1099,8 @@ function ItemInner({
       ...childSyncPatches(),
     ]
     const s = useConfiguratorStore.getState()
-    const detached = (s.project?.connections ?? []).filter((connection) => connection.sourceItemId !== item.id)
-    if (detached.length !== (s.project?.connections ?? []).length) s.commitAssembly(patches, detached)
+    const kept = jointsSurvivingMove(patches, s.project?.connections ?? [])
+    if (kept.length !== (s.project?.connections ?? []).length) s.commitAssembly(patches, kept)
     else updateItems(patches)
     updateConnectionPreview(null)
   }

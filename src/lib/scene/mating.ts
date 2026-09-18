@@ -374,3 +374,35 @@ export function linkedPartners(id: string, items: PlacedItem[], connections: Con
   }
   return out
 }
+
+/**
+ * The joints a move leaves intact. A joint survives when both its ends travel
+ * together: dragging a montante carries the piani seated on it and its mirror
+ * twin, and none of those seats move apart. Only a joint with one end left
+ * behind is broken by the move — which way round it was recorded says nothing
+ * about which end was dragged.
+ */
+export function jointsSurvivingMove(
+  moved: Array<{ id: string }>,
+  connections: Connection[],
+): Connection[] {
+  const ids = new Set(moved.map((m) => m.id))
+  return connections.filter((c) => ids.has(c.sourceItemId) === ids.has(c.targetItemId))
+}
+
+/**
+ * One joint per pair of points, whichever side reported it. When both halves of
+ * a joint move, each finds it, and two records of the same seat read as a point
+ * used twice — and as a cycle.
+ */
+export function dedupeJoints(connections: Connection[]): Connection[] {
+  const seen = new Set<string>()
+  return connections.filter((c) => {
+    const key = [`${c.sourceItemId}:${c.sourcePointId}`, `${c.targetItemId}:${c.targetPointId}`]
+      .sort()
+      .join('|')
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}

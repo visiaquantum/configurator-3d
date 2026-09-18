@@ -30,7 +30,9 @@ export {
 export type { CatalogIssue } from './io/catalog'
 export {
   canMate,
+  dedupeJoints,
   itemSnapConstraint,
+  jointsSurvivingMove,
   itemSnapConstraintFor,
   listMatingTargets,
   MATING_RULES,
