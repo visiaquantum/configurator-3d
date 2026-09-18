@@ -404,6 +404,39 @@ export function assemblyGroup(
 }
 
 /**
+ * Turning a whole assembly: every member swung by `step` about the vertical
+ * axis through `pivot`, position and heading together.
+ *
+ * Rigid, like the translate — re-deriving each pose from its seat cannot turn a
+ * frame, because a seat says where a part sits, not which way the frame faces.
+ * The pivot is the part the person acted on, so that one stays where it is and
+ * the rest swings around it.
+ */
+export function rotateGroupPatches(
+  items: PlacedItem[],
+  group: Set<string>,
+  pivot: Vec3,
+  step: number,
+): Array<{ id: string; patch: Partial<PlacedItem> }> {
+  const cos = Math.cos(step)
+  const sin = Math.sin(step)
+  return items
+    .filter((item) => group.has(item.id))
+    .map((item) => {
+      const dx = item.position[0] - pivot[0]
+      const dz = item.position[2] - pivot[2]
+      return {
+        id: item.id,
+        patch: {
+          // Same yaw convention as positionForItemSnap.
+          position: [pivot[0] + dx * cos + dz * sin, item.position[1], pivot[2] - dx * sin + dz * cos] as Vec3,
+          rotation: [item.rotation[0], item.rotation[1] + step, item.rotation[2]] as Euler,
+        },
+      }
+    })
+}
+
+/**
  * The joints a move leaves intact. A joint survives when both its ends travel
  * together: dragging a montante carries the piani seated on it and its mirror
  * twin, and none of those seats move apart. Only a joint with one end left

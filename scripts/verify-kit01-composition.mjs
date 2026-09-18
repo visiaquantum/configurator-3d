@@ -17,6 +17,7 @@ import {
   extractAutoSnapGridFromObject,
   extractRulesFromObject,
   assemblyGroup,
+  rotateGroupPatches,
   hasBlockingIssues,
   jointsSurvivingMove,
   linkedPartners,
@@ -278,6 +279,21 @@ const wholeFrame = frame.map((it) => it.id).sort().join(',')
 check('grabbing the piano moves the whole frame', groupOf(pairShelf.id) === wholeFrame, groupOf(pairShelf.id))
 check('grabbing the mirrored montante moves the whole frame', groupOf(pairB.id) === wholeFrame, groupOf(pairB.id))
 check('an unjoined part moves alone', groupOf('loose') === 'loose', groupOf('loose'))
+
+// A quarter turn of the frame is rigid: the part acted on stays put, the rest
+// swings around it, and every seat travels with the part it holds — so the
+// joints are exactly as tight after the turn as before it.
+const turned = rotateGroupPatches(frame, assemblyGroup(pairShelf.id, frame, mirroredLate.connections), pairShelf.position, Math.PI / 2)
+const turnedFrame = frame.map((it) => ({ ...it, ...turned.find((t) => t.id === it.id).patch }))
+const spanBefore = Math.hypot(pairA.position[0] - pairB.position[0], pairA.position[2] - pairB.position[2])
+const turnedA = turnedFrame.find((it) => it.id === pairA.id)
+const turnedB = turnedFrame.find((it) => it.id === pairB.id)
+const spanAfter = Math.hypot(turnedA.position[0] - turnedB.position[0], turnedA.position[2] - turnedB.position[2])
+check('a quarter turn keeps the frame rigid', near(spanBefore, spanAfter, 1e-9), `${spanBefore} -> ${spanAfter}`)
+check('the part turned about stays put', near(turnedFrame.find((it) => it.id === pairShelf.id).position[2], pairShelf.position[2], 1e-9))
+check('every member turns by the same quarter', turnedFrame.every((it) => near(it.rotation[1], frame.find((f) => f.id === it.id).rotation[1] + Math.PI / 2, 1e-9)))
+const turnedJoints = connectionsAtPose(turnedFrame[2], turnedFrame[2], { items: turnedFrame, itemSnaps, itemRules: { ysi12836: [pairRule] }, manifest, heightOf: pairHeight })
+check('the piano still reaches both montanti after the turn', turnedJoints.length === 2, `got ${turnedJoints.length}`)
 
 // Dragging the montante carries the piano seated on it and the mirrored half
 // with it: the joints between them must not be dropped just because the

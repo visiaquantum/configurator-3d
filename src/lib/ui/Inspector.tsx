@@ -11,6 +11,7 @@ import {
 } from '../scene/mirrorPair'
 import {
   assemblyContext,
+  assemblyGroup,
   canMate,
   dedupeJoints,
   itemSnapConstraint,
@@ -18,6 +19,7 @@ import {
   itemSnapConstraintFor,
   positionForItemSnap,
   resolveSnappedChildren,
+  rotateGroupPatches,
   snapKindLabel,
   snapPointLabel,
   snapsForItem,
@@ -441,50 +443,35 @@ export function Inspector({ readOnly }: Props) {
   }
 
   /**
-   * Quarter turn about Y. The gizmo already snaps to 90°, but reaching an exact
-   * quarter turn by dragging is fiddly, and a frame is often wider than the van
-   * across and only fits along its length — so the turn is a prerequisite for
-   * assembling anything long, not a convenience.
+   * Quarter turn about Y, for the whole assembly. The gizmo snaps to 90° but
+   * landing on it by dragging is fiddly, and a frame is often wider than the
+   * van across and only fits along its length — so the turn is a prerequisite
+   * for building anything long, not a convenience.
+   *
+   * The selected part is the pivot: it stays where it is and the rest swings
+   * around it. Rigid, so every joint keeps the fit it had.
    */
   const handleRotate = (step: number) => {
-    const rotation: Euler = [item.rotation[0], item.rotation[1] + step, item.rotation[2]]
-    const reg = getItem(item.id)
-    if (reg) {
+    const s = useConfiguratorStore.getState()
+    const items = s.project?.items ?? []
+    const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
+    const patches = rotateGroupPatches(items, members, item.position, step)
+    for (const patch of patches) {
+      const reg = getItem(patch.id)
+      const position = patch.patch.position
+      const rotation = patch.patch.rotation
+      if (!reg || !position || !rotation) continue
+      reg.group.position.set(
+        position[0],
+        position[1] + (colliderSizeOf(patch.id)?.[1] ?? 0) / 2,
+        position[2],
+      )
       reg.group.rotation.set(rotation[0], rotation[1], rotation[2])
       reg.group.updateWorldMatrix(true, false)
     }
-    // Turning in place moves the mating face away from whatever it was seated
-    // on, so the join goes with it — the same rule the rotate gizmo follows.
-    // What is seated on *this* item goes the other way: it turns along, or a
-    // frame would come apart on the very turn that makes it fit the van.
-    const turned: PlacedItem = { ...item, rotation }
-    const children = resolveSnappedChildren(
-      item.id,
-      assemblyContext(
-        (project?.items ?? []).map((it) => (it.id === item.id ? turned : it)),
-        itemSnaps,
-        itemRules,
-      ),
-    )
-    const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = [
-      { id: item.id, patch: { rotation, constraints: withSnapConstraint(item, null) } },
-      ...children,
-    ]
-    const byId = new Map((project?.items ?? []).map((it) => [it.id, it]))
-    const moved: PlacedItem[] = [
-      turned,
-      ...children.flatMap((c) => {
-        const child = byId.get(c.id)
-        return child ? [{ ...child, ...c.patch }] : []
-      }),
-    ]
-    if (pair?.target && pairRule) {
-      const placement = computePartnerPlacement(turned, pairRule, pair.distance ?? 0)
-      patches.push({ id: pair.target, patch: { position: placement.position, rotation: placement.rotation } })
-      const partner = byId.get(pair.target)
-      if (partner) moved.push({ ...partner, position: placement.position, rotation: placement.rotation })
-    }
-    commitAssembly(patches, connectionsAfterMove(moved))
+    // The group is closed under its joints, so turning all of it changes none
+    // of them: every seat swings with the part it holds.
+    updateItems(patches)
   }
 
   const handlePairDistance = (distance: number) => {

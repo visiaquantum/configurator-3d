@@ -39,6 +39,7 @@ export {
   MATING_RULES,
   positionForItemSnap,
   resolveSnappedChildren,
+  rotateGroupPatches,
   snapKindLabel,
   snapPointLabel,
   snapsForItem,

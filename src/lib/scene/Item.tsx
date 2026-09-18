@@ -30,7 +30,6 @@ import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSn
 import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
 import { colliderSizeOf, buildLocalCorners, getItem, registerItem, unregisterItem } from './itemRegistry'
 import {
-  computePartnerPlacement,
   MIRROR_PAIR_RULE,
   mirrorAxisOf,
   mirrorPairConstraint,
@@ -44,7 +43,6 @@ import {
   VERTEX_SNAP_RELEASE_RADIUS,
 } from './snapping'
 import {
-  assemblyContext,
   assemblyGroup,
   dedupeJoints,
   itemSnapConstraint,
@@ -54,7 +52,7 @@ import {
   listMatingTargets,
   mirrorSnapPoints,
   positionForItemSnap,
-  resolveSnappedChildren,
+  rotateGroupPatches,
   snapsForItem,
   worldSnapPosition,
   yawToMate,
@@ -511,73 +509,20 @@ function ItemInner({
     return s.project ? linkedPartners(id, s.project.items, s.project.connections ?? []) : undefined
   }
 
-  /**
-   * Patch that keeps the mirror-pair partner glued to this item after a
-   * translate commit at `pos`/`rot`. Empty when the item isn't paired.
-   */
-  const pairSyncPatches = (
-    pos: Vec3,
-    rot: EulerTuple,
-  ): Array<{ id: string; patch: Partial<PlacedItem> }> => {
-    const pair = mirrorPairConstraint(item)
-    if (!pair?.target || pair.distance == null) return []
-    const rule = useConfiguratorStore
-      .getState()
-      .itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
-    if (!rule) return []
-    const placement = computePartnerPlacement(
-      { position: pos, rotation: rot, mirrored: item.mirrored },
-      rule,
-      pair.distance,
-    )
-    let partnerPos = placement.position
-    const partner = getItem(pair.target)
-    if (partner) {
-      partner.group.position.set(
-        placement.position[0],
-        placement.position[1] + colliderSize[1] / 2,
-        placement.position[2],
-      )
-      partner.group.rotation.set(
-        placement.rotation[0],
-        placement.rotation[1],
-        placement.rotation[2],
-      )
-      pushOutOverlaps(pair.target, 8, linkedTo(pair.target))
-      clampItemToBounds(pair.target, collisionBounds)
-      partnerPos = [
-        partner.group.position.x,
-        partner.group.position.y - colliderSize[1] / 2,
-        partner.group.position.z,
-      ]
-    }
-    return [
-      { id: pair.target, patch: { position: partnerPos, rotation: placement.rotation } },
-    ]
-  }
-
-  /**
-   * Patches that drag every product joined to this one (and their own
-   * children) along with it. Also moves their live groups, so a chain
-   * montante → orizzontale → accessorio follows in one pass.
-   */
-  const childSyncPatches = (): Array<{ id: string; patch: Partial<PlacedItem> }> => {
-    const s = useConfiguratorStore.getState()
-    if (!s.project) return []
-    return resolveSnappedChildren(
-      item.id,
-      assemblyContext(s.project.items, s.itemSnaps, s.itemRules),
-    )
-  }
-
   /** Nearest manifest-approved mating candidate for the current live drag pose. */
   const resolveConnectionPreview = (): ConnectionPreview | null => {
     const s = useConfiguratorStore.getState()
     if (!s.project || !s.assemblyManifest || !group) return null
     const sourceDefinition = definitionFor(s.assemblyManifest, item.catalogId)
     if (!sourceDefinition) return null
+    // A part cannot be joined to what is travelling with it. Its own seat moves
+    // with the drag, so it stays within snapping range for the whole gesture:
+    // the preview kept resolving back onto it, the ghost flicked between the
+    // two places, and the release put the part back where it started.
+    const travelling = assemblyGroup(item.id, s.project.items, s.project.connections ?? [])
     const snapsByItem = new Map<string, ItemSnapPoint[]>()
     for (const placed of s.project.items) {
+      if (travelling.has(placed.id) && placed.id !== item.id) continue
       snapsByItem.set(placed.id, snapsForItem(placed, s.itemSnaps, s.itemRules))
     }
     let best: { source: ItemSnapPoint; target: ReturnType<typeof listMatingTargets>[number]; distance: number } | null = null
@@ -764,6 +709,11 @@ function ItemInner({
     if (useConfiguratorStore.getState().gizmoMode === 'rotate') {
       if (transformLockPosRef.current) group.position.copy(transformLockPosRef.current)
       transformLockPosRef.current = null
+      const swung = turnAssembly(newRot[1] - item.rotation[1])
+      if (swung) {
+        updateItems(swung)
+        return
+      }
       const pushed = pushOutOverlaps(item.id, 8, linkedTo(item.id))
       const clamped = clampItemToBounds(item.id, collisionBounds)
       const keepSnap =
@@ -782,8 +732,6 @@ function ItemInner({
             ...(keepSnap ? {} : { position: finalPos, constraints: withSnapConstraint(item, null) }),
           },
         },
-        ...pairSyncPatches(keepSnap ? (snappedAnchor?.position ?? finalPos) : finalPos, newRot),
-        ...childSyncPatches(),
       ])
       return
     }
@@ -818,11 +766,7 @@ function ItemInner({
     const constraints = hit ? withSnapConstraint(item, snapHitConstraint(hit)) : item.constraints
     updateItems([
       { id: item.id, patch: { position: finalPos, rotation: newRot, constraints } },
-      ...groupStepPatches([
-        finalPos[0] - item.position[0],
-        finalPos[1] - item.position[1],
-        finalPos[2] - item.position[2],
-      ]),
+      ...groupFollowPatches(finalPos, newRot[1]),
     ])
   }
 
@@ -856,32 +800,64 @@ function ItemInner({
   }
 
   /**
-   * The same step for the rest of the assembly, as patches, with their live
-   * groups moved to match. Used by both ways of translating — the drag and the
-   * gizmo — so a frame behaves the same whichever one moves it.
+   * A frame swung by `step` about this item, live groups included. `null` when
+   * the item stands alone, which leaves the single-part rules — anchor snap
+   * kept or dropped, push-out, clamp — exactly as they were.
+   *
+   * An assembly is exempt from those: pushing one member out or clamping it to
+   * the van would move it away from the others, and the turn is what makes a
+   * long frame fit in the first place. Validation still reports the result.
    */
-  const groupStepPatches = (delta: Vec3): Array<{ id: string; patch: Partial<PlacedItem> }> => {
+  const turnAssembly = (step: number): Array<{ id: string; patch: Partial<PlacedItem> }> | null => {
     const s = useConfiguratorStore.getState()
     const items = s.project?.items ?? []
     const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
+    if (members.size < 2) return null
+    const patches = rotateGroupPatches(items, members, item.position, step)
+    for (const { id, patch } of patches) {
+      const reg = getItem(id)
+      if (!reg || !patch.position || !patch.rotation) continue
+      reg.group.position.set(
+        patch.position[0],
+        patch.position[1] + (colliderSizeOf(id)?.[1] ?? 0) / 2,
+        patch.position[2],
+      )
+      reg.group.rotation.set(patch.rotation[0], patch.rotation[1], patch.rotation[2])
+      reg.group.updateWorldMatrix(true, false)
+    }
+    return patches
+  }
+
+  /**
+   * The rest of the assembly brought along to the pose this item is committing
+   * to, as patches, with their live groups moved to match. One rigid motion —
+   * swung about this item, then carried to its new place — so a frame behaves
+   * the same whether it was dragged, nudged by the gizmo, or snapped into a
+   * seat, and no joint is stretched on the way.
+   */
+  const groupFollowPatches = (
+    position: Vec3,
+    yaw: number,
+  ): Array<{ id: string; patch: Partial<PlacedItem> }> => {
+    const s = useConfiguratorStore.getState()
+    const items = s.project?.items ?? []
+    const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
+    const swung = rotateGroupPatches(items, members, item.position, yaw - item.rotation[1])
     const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = []
-    for (const placed of items) {
-      if (placed.id === item.id || !members.has(placed.id)) continue
-      const position: Vec3 = [
-        placed.position[0] + delta[0],
-        placed.position[1] + delta[1],
-        placed.position[2] + delta[2],
+    for (const { id, patch } of swung) {
+      if (id === item.id || !patch.position) continue
+      const moved: Vec3 = [
+        patch.position[0] + position[0] - item.position[0],
+        patch.position[1] + position[1] - item.position[1],
+        patch.position[2] + position[2] - item.position[2],
       ]
-      const reg = getItem(placed.id)
+      const reg = getItem(id)
       if (reg) {
-        reg.group.position.set(
-          position[0],
-          position[1] + (colliderSizeOf(placed.id)?.[1] ?? 0) / 2,
-          position[2],
-        )
+        reg.group.position.set(moved[0], moved[1] + (colliderSizeOf(id)?.[1] ?? 0) / 2, moved[2])
+        if (patch.rotation) reg.group.rotation.set(patch.rotation[0], patch.rotation[1], patch.rotation[2])
         reg.group.updateWorldMatrix(true, false)
       }
-      patches.push({ id: placed.id, patch: { position } })
+      patches.push({ id, patch: { position: moved, rotation: patch.rotation } })
     }
     return patches
   }
@@ -1040,6 +1016,11 @@ function ItemInner({
       group.rotation.x = rx
       group.rotation.y = ry
       const newRot: EulerTuple = [rx, ry, item.rotation[2]]
+      const swung = turnAssembly(ry - item.rotation[1])
+      if (swung) {
+        updateItems(swung)
+        return
+      }
       const pushed = pushOutOverlaps(item.id, 8, linkedTo(item.id))
       const clamped = clampItemToBounds(item.id, collisionBounds)
       // In-place rotation: a corner/point snap would make the item orbit the
@@ -1061,11 +1042,6 @@ function ItemInner({
               : { position: basePos, constraints: withSnapConstraint(item, null) }),
           },
         },
-        ...pairSyncPatches(
-          snapConstraint && keepSnap ? (snappedAnchor?.position ?? basePos) : basePos,
-          newRot,
-        ),
-        ...childSyncPatches(),
       ])
       return
     }
@@ -1084,8 +1060,7 @@ function ItemInner({
       ]
       const patches = [
         { id: item.id, patch: { position: preview.position, rotation: preview.rotation, constraints } },
-        ...pairSyncPatches(preview.position, preview.rotation),
-        ...childSyncPatches(),
+        ...groupFollowPatches(preview.position, preview.rotation[1]),
       ]
       const connections = dedupeJoints([
         ...jointsSurvivingMove(patches, s.project?.connections ?? []),
@@ -1130,11 +1105,7 @@ function ItemInner({
     const constraints = hit ? withSnapConstraint(item, snapHitConstraint(hit)) : item.constraints
     const patches = [
       { id: item.id, patch: { position: finalPos, constraints } },
-      ...groupStepPatches([
-        finalPos[0] - item.position[0],
-        finalPos[1] - item.position[1],
-        finalPos[2] - item.position[2],
-      ]),
+      ...groupFollowPatches(finalPos, item.rotation[1]),
     ]
     const s = useConfiguratorStore.getState()
     const kept = jointsSurvivingMove(patches, s.project?.connections ?? [])
