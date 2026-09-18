@@ -4,6 +4,7 @@ import type {
   Connection,
   ConnectorClearanceBox,
   ConnectorDefinition,
+  ItemRule,
   ItemSnapPoint,
   PlacedItem,
   ProjectData,
@@ -12,7 +13,7 @@ import type {
   Vec3,
 } from '../types'
 import { connectorsCanMate, definitionFor } from './manifest'
-import { snapsForItem } from '../scene/mating'
+import { mirrorScaleFor, snapsForItem } from '../scene/mating'
 
 interface Bounds {
   min: Vec3
@@ -121,17 +122,22 @@ function clearanceBounds(
   connector: ConnectorDefinition | undefined,
   catalog: Record<string, CatalogItem>,
   manifest?: AssemblyManifest | null,
+  itemRules: Record<string, ItemRule[]> = {},
 ): Bounds[] {
   if (!point || !connector?.clearance?.length) return []
   const bodyHeight = productSize(item, catalog, manifest)[1]
   const scale = catalog[item.catalogId]?.scale ?? 1
+  // The box is offset from the point in the catalogue's frame, so the mirrored
+  // half needs it flipped too — otherwise the void sits on the far side of the
+  // face and the joint its twin accepts reads as a collision here.
+  const mirror = mirrorScaleFor(item, itemRules) ?? [1, 1, 1]
   return connector.clearance.map((clearance: ConnectorClearanceBox) => transformBounds(
     item,
     bodyHeight,
     [
-      point.position[0] + clearance.center[0],
-      point.position[1] + clearance.center[1],
-      point.position[2] + clearance.center[2],
+      point.position[0] + clearance.center[0] * mirror[0],
+      point.position[1] + clearance.center[1] * mirror[1],
+      point.position[2] + clearance.center[2] * mirror[2],
     ],
     clearance.size,
     scale,
@@ -157,6 +163,7 @@ function allowedJointOverlap(
   targetPoint: ItemSnapPoint | undefined,
   catalog: Record<string, CatalogItem>,
   manifest?: AssemblyManifest | null,
+  itemRules: Record<string, ItemRule[]> = {},
 ): boolean {
   const sourceDefinition = definitionFor(manifest, source.catalogId)
   const targetDefinition = definitionFor(manifest, target.catalogId)
@@ -178,8 +185,8 @@ function allowedJointOverlap(
     : Math.abs(worldAxis[1]) >= Math.abs(worldAxis[2]) ? 1 : 2
   if (overlapSize[dominant] > depth + EPSILON) return false
   const clearance = [
-    ...clearanceBounds(source, sourcePoint, sourceConnector, catalog, manifest),
-    ...clearanceBounds(target, targetPoint, targetConnector, catalog, manifest),
+    ...clearanceBounds(source, sourcePoint, sourceConnector, catalog, manifest, itemRules),
+    ...clearanceBounds(target, targetPoint, targetConnector, catalog, manifest, itemRules),
   ]
   // New manifests must explicitly state the permitted void. Omitting it keeps
   // the connection valid only where no collider intersects, never by blanket
@@ -298,7 +305,7 @@ export function validateConfiguration(
           const intersection = overlap(aBounds, bBounds)
           const area = intersectionBounds(aBounds, bBounds)
           if (!intersection || !area) continue
-          if (connection && allowedJointOverlap(connection, source, target, intersection, area, sourcePoint, targetPoint, catalog, manifest)) continue
+          if (connection && allowedJointOverlap(connection, source, target, intersection, area, sourcePoint, targetPoint, catalog, manifest, context.itemRules ?? {})) continue
           invalid = true
           break
         }

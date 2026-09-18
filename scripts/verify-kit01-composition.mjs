@@ -19,6 +19,8 @@ import {
   hasBlockingIssues,
   linkedPartners,
   hydrateItemSnapsAndHide,
+  computePartnerPlacement,
+  pairDistanceForSpan,
   parseAssemblyManifest,
   positionForItemSnap,
   validateConfiguration,
@@ -74,6 +76,25 @@ async function snapsFor(product) {
     })),
     ...(product.snapPoints ?? []),
   ]
+}
+
+/** The product's mirror-pair rule, moved to the collider frame like Item.tsx. */
+async function mirrorRuleOf(product) {
+  const gltf = await loadGlb(`public${product.glbUrl}`)
+  const root = gltf.scene.clone()
+  hydrateItemSnapsAndHide(root)
+  const bounds = visibleBounds(root)
+  const center = bounds.getCenter(new Vector3())
+  const rule = extractRulesFromObject(root).map((entry) => entry.extracted).find((r) => r.rule === 'mirror-pair')
+  if (!rule) return null
+  return {
+    ...rule,
+    position: [
+      rule.position[0] - center.x,
+      rule.position[1] - product.size[1] / 2 - bounds.min.y,
+      rule.position[2] - center.z,
+    ],
+  }
 }
 
 // Mirrors the `Orizzontali` / `Montanti` entries of src/App.tsx.
@@ -201,6 +222,42 @@ check('a shelf pushed 2 cm out of line is rejected', hasBlockingIssues(validateC
 // why it could never be put down.
 const halfJoined = { ...project, connections: [...firstPass, closing[0]] }
 check('dropping the far-end joints is reported as a collision', validateConfiguration(halfJoined, catalog, manifest, context).some((issue) => issue.code === 'collision'))
+
+// The same frame built the way the editor offers it: one upright, the mirrored
+// twin from the pair picker. The spacing the picker offers is worked out from
+// the shelf itself — its end-to-end span less the insertion margin each upright
+// swallows — so the shelf must reach both seats with nothing left over.
+console.log('\n[mirror pair] the offered spacing seats the shelf')
+const pairRule = await mirrorRuleOf(catalog.ysi12836)
+check('the upright declares a mirror-pair rule', Boolean(pairRule))
+const shelfSeat = pointOf('ysi12836', 'shelf-top')
+const shelfSpan = Math.hypot(
+  ...[0, 1, 2].map((i) => pointOf('xds40236km02', 'end-a').position[i] - pointOf('xds40236km02', 'end-b').position[i]),
+)
+const spacing = pairDistanceForSpan(pairRule, shelfSpan, shelfSeat.position)
+check('the spacing is the shelf less both insertion margins', near(spacing, 0.953, 1e-3), `got ${spacing.toFixed(4)}`)
+
+const pairA = { id: 'pair-a', catalogId: 'ysi12836', position: [0, 0, 0], rotation: [0, 0, 0] }
+const placement = computePartnerPlacement(pairA, pairRule, spacing)
+const pairB = { id: 'pair-b', catalogId: 'ysi12836', ...placement }
+const pairShelf = mate('pair-shelf', 'xds40236km02', 'end-a', pairA, 'shelf-top')
+const pairItems = [pairA, pairB, pairShelf]
+const pairHeight = (placed) => catalog[placed.catalogId].size[1]
+const pairJoints = connectionsAtPose(pairShelf, pairShelf, { items: pairItems, itemSnaps, itemRules: { ysi12836: [pairRule] }, manifest, heightOf: pairHeight })
+check('the shelf reaches a seat on each half of the pair', pairJoints.length === 2, `got ${pairJoints.length}`)
+
+// The clearance box is declared once, in the catalogue frame. The mirrored half
+// has to flip it too, or the void ends up behind the face and the joint its
+// twin accepts reads here as interference.
+const pairProject = { id: 'kit01-pair', version: 1, enclosure: { glbUrl: '/enclosure.glb' }, items: pairItems, connections: pairJoints }
+const pairContext = { itemSnaps, itemRules: { ysi12836: [pairRule] } }
+const pairIssues = validateConfiguration(pairProject, catalog, manifest, pairContext)
+if (hasBlockingIssues(pairIssues)) console.log('  detail', pairIssues.filter((i) => i.level === 'error').map((i) => i.message).join(' | '))
+check('the mirrored pair validates with the shelf in place', !hasBlockingIssues(pairIssues))
+
+const offSpacing = computePartnerPlacement(pairA, pairRule, spacing + 0.02)
+const strayPair = { ...pairProject, items: [pairA, { ...pairB, ...offSpacing }, pairShelf] }
+check('a pair set 2 cm too wide no longer seats the shelf', connectionsAtPose(pairShelf, pairShelf, { items: strayPair.items, itemSnaps, itemRules: { ysi12836: [pairRule] }, manifest, heightOf: pairHeight }).length === 1)
 
 console.log(`\n=== ${pass} pass, ${fail} fail ===`)
 process.exit(fail ? 1 : 0)

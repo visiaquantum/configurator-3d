@@ -45,6 +45,7 @@ import {
 } from './snapping'
 import {
   assemblyContext,
+  itemSnapConstraint,
   itemSnapConstraintFor,
   linkedPartners,
   listMatingTargets,
@@ -716,6 +717,12 @@ function ItemInner({
   // as soon as bounds exist so it never starts below the floor or outside the van.
   useLayoutEffect(() => {
     if (!group || !collisionBounds) return
+    // A joined part is held by its joint, not by the van. Clamping it slides it
+    // off its seat, and the patch below then drops the joint as well — so an
+    // assembly that reaches past the van could never be built, however it was
+    // oriented afterwards. Validation still reports it, and moving the whole
+    // assembly clears it.
+    if (itemSnapConstraint(item)) return
     const moved = clampItemToBounds(item.id, collisionBounds)
     if (!moved) return
     const nextPos: Vec3 = [

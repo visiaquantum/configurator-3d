@@ -93,6 +93,23 @@ export function computePartnerPlacement(
   }
 }
 
+/**
+ * The pair spacing that seats a horizontal of `span` between the two halves.
+ *
+ * The spacing is measured between the rule reference points, which sit on the
+ * inner face. A horizontal is longer than that gap: each end runs into its
+ * upright and stops at `localPoint`, the seat. So the spacing is the part's
+ * end-to-end span minus the bite each half takes out of it — the insertion
+ * margin left and right.
+ */
+export function pairDistanceForSpan(rule: ItemRule, span: number, localPoint: Vec3): number {
+  const i = mirrorAxisOf(rule) === 'x' ? 0 : 2
+  // Margins count along -axis: the axis points at the partner, while the seat
+  // offset that swallows part of the horizontal points away from it.
+  const sign = rule.axis[i] >= 0 ? -1 : 1
+  return span - 2 * sign * (localPoint[i] - rule.position[i])
+}
+
 /** The mirrorPair constraint on an item, if any. */
 export function mirrorPairConstraint(item: PlacedItem) {
   return item.constraints?.find((c) => c.type === 'mirrorPair')

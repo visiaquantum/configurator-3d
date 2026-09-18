@@ -272,10 +272,24 @@ export function snapsForItem(
 ): ItemSnapPoint[] {
   const snaps = itemSnaps[item.catalogId]
   if (!snaps) return []
-  if (item.mirrored !== true) return snaps
+  const mirrorScale = mirrorScaleFor(item, itemRules)
+  return mirrorScale ? mirrorSnapPoints(snaps, mirrorScale) : snaps
+}
+
+/**
+ * The flip an item's own local frame carries when it is the mirrored half of
+ * a pair, or `null` when it is not. Everything read from the catalogue in that
+ * frame goes through this — points, and the clearance boxes that say where a
+ * joint may interpenetrate. Miss one and the mirrored half rejects the very
+ * joint its twin accepts.
+ */
+export function mirrorScaleFor(
+  item: PlacedItem,
+  itemRules: Record<string, ItemRule[]>,
+): Vec3 | null {
+  if (item.mirrored !== true) return null
   const rule = itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
-  const mirrorScale: Vec3 = rule && mirrorAxisOf(rule) === 'z' ? [1, 1, -1] : [-1, 1, 1]
-  return mirrorSnapPoints(snaps, mirrorScale)
+  return rule && mirrorAxisOf(rule) === 'z' ? [1, 1, -1] : [-1, 1, 1]
 }
 
 /** Assembly context built from the current store snapshot. */

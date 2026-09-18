@@ -6,6 +6,7 @@ import {
   MIRROR_PAIR_RULE,
   mirrorPairConstraint,
   mirrorPairDistances,
+  pairDistanceForSpan,
   withSnapConstraint,
 } from '../scene/mirrorPair'
 import {
@@ -108,6 +109,57 @@ export function Inspector({ readOnly }: Props) {
   const pairDistances = pairRule ? mirrorPairDistances(pairRule) : []
   const pair = mirrorPairConstraint(item)
 
+  // Spacings that actually take a horizontal, worked out from the parts
+  // themselves: a part seats when the gap equals its end-to-end span minus the
+  // insertion margin at each end. The GLB's own list is offered too, but on
+  // this catalogue none of its spacings seats anything — pick one and the
+  // horizontal stops short of both uprights.
+  const myConnectors = definitionFor(assemblyManifest, item.catalogId)?.connectors ?? []
+  const matesWithMe = (catalogId: string) =>
+    (definitionFor(assemblyManifest, catalogId)?.connectors ?? []).some((theirs) =>
+      myConnectors.some(
+        (mine) =>
+          (theirs.compatibleWith?.includes(mine.id) ?? false) ||
+          (mine.compatibleWith?.includes(theirs.id) ?? false),
+      ),
+    )
+
+  // Only the seats the catalogue declares: a perforated upright also carries
+  // dozens of generated hole centres, and pairing those off would be noise.
+  const pairSeats = cat?.snapPoints ?? []
+  const seating = new Map<number, string[]>()
+  if (pairRule) {
+    for (const part of Object.values(catalog)) {
+      if (part.id === item.catalogId || !matesWithMe(part.id)) continue
+      const points = itemSnaps[part.id] ?? part.snapPoints ?? []
+      for (const seat of pairSeats) {
+        for (const a of points) {
+          for (const b of points) {
+            if (a === b || !canMate(seat.kind, a.kind) || !canMate(seat.kind, b.kind)) continue
+            const span = Math.hypot(
+              a.position[0] - b.position[0],
+              a.position[1] - b.position[1],
+              a.position[2] - b.position[2],
+            )
+            const key = Math.round(pairDistanceForSpan(pairRule, span, seat.position) * 1000) / 1000
+            if (key <= 0) continue
+            const labels = seating.get(key) ?? []
+            if (!labels.includes(part.label)) seating.set(key, [...labels, part.label])
+          }
+        }
+      }
+    }
+  }
+
+  const offeredDistances = [...new Set([...pairDistances, ...seating.keys()])].sort((a, b) => a - b)
+  const fitsAt = (distance: number) => {
+    for (const [key, labels] of seating) {
+      // 2 mm, the manifest's default snap tolerance.
+      if (Math.abs(key - distance) <= 0.002) return labels
+    }
+    return []
+  }
+
   // Existing product-to-product join, resolved to readable labels.
   const joined = itemSnapConstraint(item)
   const joinedTarget = joined?.target
@@ -201,11 +253,18 @@ export function Inspector({ readOnly }: Props) {
           ),
         }
       : null
-    const issue = validateConfiguration(preview, s.catalog, assemblyManifest, {
+    const problems = validateConfiguration(preview, s.catalog, assemblyManifest, {
       itemSnaps: s.itemSnaps,
       itemRules: s.itemRules,
       enclosureBounds: interiorBBox,
-    }).find((candidate) => candidate.level === 'error' && candidate.itemIds.includes(item.id))
+    }).filter((candidate) => candidate.level === 'error' && candidate.itemIds.includes(item.id))
+    // Sticking out of the van does not make the joint wrong, and refusing over
+    // it makes whole assemblies impossible to build: a frame wider than the van
+    // is half the width across, and only fits once it is turned along the
+    // length — which cannot be done before the parts are joined. The panel
+    // still reports it, and moving the assembly clears it. Interference is
+    // different: no move fixes a joint that was never geometrically possible.
+    const issue = problems.find((candidate) => candidate.code !== 'out-of-bounds')
     if (issue) {
       setJoinError(issue.message)
       return
@@ -230,7 +289,9 @@ export function Inspector({ readOnly }: Props) {
     ]
     if (connection) commitAssembly(patches, connections)
     else updateItems(patches)
-    setJoinError(null)
+    // The joint is made; anything left is the out-of-bounds note, kept on
+    // screen so the move it asks for is not a surprise.
+    setJoinError(problems[0]?.message ?? null)
   }
 
   /** Break the link but leave the item where it is. */
@@ -245,6 +306,31 @@ export function Inspector({ readOnly }: Props) {
       updateItem(item.id, { constraints: item.constraints?.filter((c) => c.type !== 'snapToItem') })
     }
     setJoinError(null)
+  }
+
+  /**
+   * Quarter turn about Y. The gizmo already snaps to 90°, but reaching an exact
+   * quarter turn by dragging is fiddly, and a frame is often wider than the van
+   * across and only fits along its length — so the turn is a prerequisite for
+   * assembling anything long, not a convenience.
+   */
+  const handleRotate = (step: number) => {
+    const rotation: Euler = [item.rotation[0], item.rotation[1] + step, item.rotation[2]]
+    const reg = getItem(item.id)
+    if (reg) {
+      reg.group.rotation.set(rotation[0], rotation[1], rotation[2])
+      reg.group.updateWorldMatrix(true, false)
+    }
+    // Turning in place moves the mating face away from whatever it was seated
+    // on, so the join goes with it — the same rule the rotate gizmo follows.
+    const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = [
+      { id: item.id, patch: { rotation, constraints: withSnapConstraint(item, null) } },
+    ]
+    if (pair?.target && pairRule) {
+      const placement = computePartnerPlacement({ ...item, rotation }, pairRule, pair.distance ?? 0)
+      patches.push({ id: pair.target, patch: { position: placement.position, rotation: placement.rotation } })
+    }
+    updateItems(patches)
   }
 
   const handlePairDistance = (distance: number) => {
@@ -425,12 +511,25 @@ export function Inspector({ readOnly }: Props) {
           </div>
         )}
 
-        {pairDistances.length > 0 && (
+        <div style={{ marginTop: 8 }}>
+          <div style={{ ...labelStyle, marginBottom: 4 }}>rotazione</div>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <button type="button" disabled={readOnly} onClick={() => handleRotate(-Math.PI / 2)} style={pairBtnStyle}>
+              ⟲ 90°
+            </button>
+            <button type="button" disabled={readOnly} onClick={() => handleRotate(Math.PI / 2)} style={pairBtnStyle}>
+              ⟳ 90°
+            </button>
+          </div>
+        </div>
+
+        {offeredDistances.length > 0 && (
           <div style={{ marginTop: 8 }}>
             <div style={{ ...labelStyle, marginBottom: 4 }}>coppia specchiata</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {pairDistances.map((d) => {
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {offeredDistances.map((d) => {
                 const active = pair?.distance === d
+                const fits = fitsAt(d)
                 return (
                   <button
                     key={d}
@@ -439,12 +538,30 @@ export function Inspector({ readOnly }: Props) {
                     onClick={() => handlePairDistance(d)}
                     style={{
                       ...pairBtnStyle,
+                      flex: 'none',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'baseline',
+                      gap: 6,
+                      textAlign: 'left',
                       background: active ? '#3aa0ff' : '#1a1a25',
                       color: active ? '#fff' : '#ddd',
                       borderColor: active ? '#3aa0ff' : '#2a2a35',
                     }}
                   >
-                    {Math.round(d * 100)} cm
+                    <span style={{ flexShrink: 0 }}>{formatCm(d)} cm</span>
+                    <span
+                      style={{
+                        fontWeight: 400,
+                        color: active ? '#e8f4ff' : '#889',
+                        // Wraps rather than truncates: a spacing two parts fit
+                        // runs past the panel, and an elided second code is
+                        // exactly what the row exists to show.
+                        textAlign: 'right',
+                      }}
+                    >
+                      {fits.length > 0 ? fits.join(' · ') : '—'}
+                    </span>
                   </button>
                 )
               })}
@@ -514,6 +631,9 @@ const btnStyle: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
 }
+/** Centimetres, one decimal only when it carries information. */
+const formatCm = (metres: number) => (metres * 100).toFixed(1).replace(/\.0$/, '')
+
 const pairBtnStyle: React.CSSProperties = {
   flex: 1,
   padding: '5px 6px',

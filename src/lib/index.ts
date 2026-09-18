@@ -44,6 +44,7 @@ export {
   yawToMate,
 } from './scene/mating'
 export type { AssemblyContext, MatingTarget } from './scene/mating'
+export { computePartnerPlacement, mirrorPairDistances, pairDistanceForSpan } from './scene/mirrorPair'
 export {
   extractItemSnapsFromObject,
   hydrateItemSnapsAndHide,
