@@ -48,6 +48,7 @@ export function snapKindLabel(kind: string): string {
 
 /** Readable name for one point: "Foro r3 c2", "Facciata 2", "Base a terra". */
 export function snapPointLabel(p: ItemSnapPoint): string {
+  if (p.label) return p.label
   const base = snapKindLabel(p.kind)
   if (p.kind === AUTO_GRID_SNAP_KIND) {
     const m = p.id.match(/-r(\d+)-c(\d+)$/)

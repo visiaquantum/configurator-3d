@@ -1,10 +1,12 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid, Environment, Lightformer, GizmoHelper, GizmoViewport } from '@react-three/drei'
-import type { ProjectData } from '../types'
+import type { ConfiguratorTheme, ProjectData } from '../types'
+import { sceneColors } from '../ui/theme'
 import { AssetBoundary } from './AssetBoundary'
 import { Enclosure } from './Enclosure'
 import { Item } from './Item'
+import { AttachmentVisuals } from './AttachmentVisuals'
 import { AnchorMarkers } from './AnchorMarkers'
 import { SceneCaptureBridge } from './SceneCaptureBridge'
 import { CameraPresetBridge } from './CameraPresetBridge'
@@ -18,14 +20,17 @@ import { useConfiguratorStore } from '../state/store'
 interface Props {
   project: ProjectData
   environmentUrl?: string | null
+  theme?: ConfiguratorTheme
 }
 
-export function Scene({ project, environmentUrl }: Props) {
+export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
+  const colors = sceneColors[theme]
   const select = useConfiguratorStore((s) => s.select)
   const catalog = useConfiguratorStore((s) => s.catalog)
   const runtimeAnchors = useConfiguratorStore((s) => s.runtimeAnchors)
   const draggingItemId = useConfiguratorStore((s) => s.draggingItemId)
   const walkMode = useConfiguratorStore((s) => s.walkMode)
+  const attachment = useConfiguratorStore((s) => s.attachment)
   const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
   const effectiveAnchors =
     project.enclosure.anchors?.length ? project.enclosure.anchors : runtimeAnchors
@@ -51,7 +56,7 @@ export function Scene({ project, environmentUrl }: Props) {
     <Canvas
       camera={{ position: [5, 2.5, 5], fov: 45, near: 0.05, far: 150 }}
       shadows="percentage"
-      onPointerMissed={() => select(null)}
+      onPointerMissed={() => { if (!attachment) select(null) }}
     >
       <SceneCaptureBridge />
       <CameraPresetBridge />
@@ -59,7 +64,7 @@ export function Scene({ project, environmentUrl }: Props) {
       <OverlapDetector />
       <NeighborGapIndicator />
       <PerformanceTelemetry />
-      <color attach="background" args={['#101827']} />
+      <color attach="background" args={[colors.background]} />
       <ambientLight intensity={0.6} />
       <hemisphereLight args={['#f5f8ff', '#9aa9bd', 1.2]} />
       <directionalLight position={[5, 8, 5]} intensity={2.2} castShadow />
@@ -80,6 +85,7 @@ export function Scene({ project, environmentUrl }: Props) {
         </Suspense></AssetBoundary>
       ))}
       {effectiveAnchors.length > 0 && <AnchorMarkers anchors={effectiveAnchors} />}
+      <AttachmentVisuals />
       {/* Reflections and diffuse fill are separate from the visible background.
           Metallic materials need light from every direction, including inside
           the enclosure, rather than bright panels against a black environment. */}
@@ -103,17 +109,19 @@ export function Scene({ project, environmentUrl }: Props) {
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow>
         <planeGeometry args={[40, 40]} />
-        <meshBasicMaterial color="#111827" />
+        <meshBasicMaterial color={colors.background} />
       </mesh>
       <Grid
         position={[0, 0.003, 0]}
         args={[40, 40]}
         cellSize={0.1}
         cellThickness={0.5}
-        cellColor="#334155"
+        cellColor={colors.cell}
         sectionSize={1}
         sectionThickness={1}
-        sectionColor="#64748b"
+        sectionColor={colors.section}
+        fadeDistance={12}
+        fadeStrength={1.5}
       />
 
       <OrbitControls

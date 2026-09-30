@@ -2,6 +2,9 @@ import { useContext, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import { nanoid } from 'nanoid'
 import { Scene } from './scene/Scene'
 import { Inspector } from './ui/Inspector'
+import { AttachmentOverlay } from './ui/AttachmentOverlay'
+import { configuratorStyles } from './ui/styles'
+import { Icon } from './ui/Icon'
 import { ConfiguratorStoreContext, createConfiguratorStore, useConfiguratorStore, useConfiguratorStoreApi } from './state/store'
 import type { ConfiguratorStore } from './state/store'
 import { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
@@ -55,6 +58,7 @@ function ConfiguratorContent({
   className,
   style,
   environmentUrl,
+  theme = 'light',
 }: Configurator3DProps) {
   const storeApi = useConfiguratorStoreApi()
   const containerRef = useRef<HTMLDivElement>(null)
@@ -62,6 +66,8 @@ function ConfiguratorContent({
   const setCatalog = useConfiguratorStore((s) => s.setCatalog)
   const setReadOnly = useConfiguratorStore((s) => s.setReadOnly)
   const project = useConfiguratorStore((s) => s.project)
+  const attachment = useConfiguratorStore((s) => s.attachment)
+  const attachmentStage = attachment?.stage
   const manifest = useConfiguratorStore((s) => s.assemblyManifest)
   const validationIssues = useConfiguratorStore((s) => s.validationIssues)
   const itemSnaps = useConfiguratorStore((s) => s.itemSnaps)
@@ -76,6 +82,9 @@ function ConfiguratorContent({
   const catalogError = useConfiguratorStore((s) => s.catalogError)
   const assetErrors = useConfiguratorStore((s) => s.assetErrors)
   const listeners = useRef({ onChange, onValidationChange })
+  useEffect(() => {
+    if (attachmentStage && attachmentStage !== 'menu') containerRef.current?.focus({ preventScroll: true })
+  }, [attachmentStage])
   const validationReported = useRef(false)
   useEffect(() => { listeners.current = { onChange, onValidationChange } }, [onChange, onValidationChange])
 
@@ -237,6 +246,10 @@ function ConfiguratorContent({
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
       const s = storeApi.getState()
+      if (s.attachment) {
+        if (e.key === 'Escape') { e.preventDefault(); s.setAttachment(null) }
+        return
+      }
       // Walk mode owns the keyboard (WASD/Esc/Shift handled in WalkControls).
       if (s.walkMode) return
       const mod = e.metaKey || e.ctrlKey
@@ -308,15 +321,18 @@ function ConfiguratorContent({
         const element = event.target as HTMLElement
         if (!element.closest('input,textarea,select,button,[contenteditable]')) containerRef.current?.focus({ preventScroll: true })
       }}
-      className={className}
-      style={{ position: 'relative', width: '100%', height: '100%', ...style }}
+      className={`cfg-ui ${className ?? ''}`}
+      data-theme={theme}
+      style={{ position: 'relative', width: '100%', height: '100%', cursor: attachment ? attachment.hoveredItemId || attachment.hoveredPointId ? 'pointer' : 'crosshair' : 'grab', ...style }}
     >
-      <Scene project={project} environmentUrl={environmentUrl} />
-      <div style={inspectorColumnStyle}>
+      <style>{configuratorStyles}</style>
+      <Scene project={project} environmentUrl={environmentUrl} theme={theme} />
+      <AttachmentOverlay />
+      <div className="cfg-inspector-column" style={inspectorColumnStyle}>
         {showInspector && <Inspector readOnly={readOnly} />}
-        <ValidationPanel issues={validationIssues} />
+        {!attachment && <ValidationPanel issues={validationIssues} />}
       </div>
-      {showHints && <Hints />}
+      {showHints && !attachment && <Hints />}
       <ViewControls />
       <ClearanceOverlay />
       <WalkHint />
@@ -330,6 +346,7 @@ function ConfiguratorContent({
         <CatalogStatusBadge text={`Manifest: ${manifestError}`} tone="error" />
       )}
       {showToolbar && <Toolbar readOnly={readOnly} onSave={onSave} />}
+      {!attachment && !project.items.length && <div className="cfg-empty-hint">Aggiungi un componente dal catalogo per iniziare</div>}
     </div>
   )
 }
@@ -384,6 +401,7 @@ function exportSceneAsBlob(storeApi: ConfiguratorStore, kind: 'png' | 'glb' | 'p
 }
 
 async function performSceneExport(storeApi: ConfiguratorStore, kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
+  if (storeApi.getState().attachment) throw new Error('Completa o annulla l’aggancio prima di esportare')
   const startedAt = performance.now()
   const selectedId = storeApi.getState().selectedId
   const initialProject = storeApi.getState().project
@@ -454,14 +472,28 @@ function Toolbar({
 }) {
   const storeApi = useConfiguratorStoreApi()
   const [busy, setBusy] = useState(false)
+  const [exportsOpen, setExportsOpen] = useState(false)
+  const toolbarRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
   const state = useConfiguratorStore((s) => s)
+  useEffect(() => storeApi.subscribe((current, previous) => {
+    if (current.attachment && current.attachment !== previous.attachment) setExportsOpen(false)
+  }), [storeApi])
+  useEffect(() => {
+    if (!exportsOpen) return
+    const dismiss = (event: PointerEvent) => { if (!toolbarRef.current?.contains(event.target as Node)) setExportsOpen(false) }
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape' && toolbarRef.current?.contains(document.activeElement)) { event.stopPropagation(); setExportsOpen(false) } }
+    document.addEventListener('pointerdown', dismiss)
+    document.addEventListener('keydown', escape)
+    return () => { document.removeEventListener('pointerdown', dismiss); document.removeEventListener('keydown', escape) }
+  }, [exportsOpen])
   const status = configurationStatus(state)
   const projectId = useConfiguratorStore((s) => s.project?.id ?? 'scene')
   const validationIssues = useConfiguratorStore((s) => s.validationIssues)
   const canExportBom = status.ready && status.technical && !hasBlockingIssues(validationIssues)
   const download = async (kind: 'png' | 'glb' | 'pdf') => {
     setBusy(true)
+    setExportsOpen(false)
     setError(null)
     try {
       const blob = await exportSceneAsBlob(storeApi, kind)
@@ -474,30 +506,18 @@ function Toolbar({
   }
 
   return (
-    <div style={toolbarStyle}>
-      {error && <span role="alert" style={{ color: '#ff9090', maxWidth: 300 }}>{error}</span>}
-      {onSave && (
-        <button
-          type="button"
-          disabled={readOnly}
-          onClick={() => {
-            const current = storeApi.getState().project
-            if (current) onSave(structuredClone(current))
-          }}
-          style={primaryBtn}
-        >
-          Salva
-        </button>
-      )}
-      <button type="button" disabled={busy || !status.ready} onClick={() => download('png')} style={secondaryBtn} title="Esporta immagine PNG">
-        PNG
-      </button>
-      <button type="button" disabled={busy || !status.ready} onClick={() => download('glb')} style={secondaryBtn} title="Esporta scena GLB">
-        GLB
-      </button>
-      <button type="button" disabled={busy || !canExportBom} onClick={() => download('pdf')} style={secondaryBtn} title={canExportBom ? 'Esporta PDF con lista componenti' : 'Correggi gli errori di configurazione prima di esportare'}>
-        PDF
-      </button>
+    <div ref={toolbarRef} className="cfg-export-toolbar" style={toolbarStyle}>
+      {error && <span role="alert" style={{ color: 'var(--cfg-error)', maxWidth: 220, fontSize: 11 }}>{error}</span>}
+      {onSave && <button className="cfg-button cfg-primary" disabled={readOnly || !!state.attachment} onClick={() => { const current = storeApi.getState().project; if (current) onSave(structuredClone(current)) }}><Icon name="save" size={15} />Salva</button>}
+      <div style={{ position: 'relative' }}>
+        <button className="cfg-button" disabled={busy || !!state.attachment} aria-expanded={exportsOpen} onClick={() => setExportsOpen(!exportsOpen)}><Icon name="download" size={16} />{busy ? 'Esportazione…' : 'Esporta'}</button>
+        {exportsOpen && <div className="cfg-export-menu">
+          <button className="cfg-menu-action" disabled={!status.ready} onClick={() => void download('png')}><Icon name="eye" size={16} />Immagine PNG</button>
+          <button className="cfg-menu-action" disabled={!status.ready} onClick={() => void download('glb')}><Icon name="cube" size={16} />Modello 3D · GLB</button>
+          <button className="cfg-menu-action" disabled={!canExportBom} onClick={() => void download('pdf')} title={canExportBom ? 'Distinta componenti e configurazione' : 'Completa la validazione prima di esportare'}><Icon name="layers" size={16} />Distinta PDF</button>
+          <button className="cfg-menu-action" onClick={() => setExportsOpen(false)}><Icon name="close" size={16} />Chiudi</button>
+        </div>}
+      </div>
     </div>
   )
 }
@@ -511,11 +531,11 @@ function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
     return <div style={validationStyle}>{status.message}</div>
   }
   if (issues.length === 0) {
-    return <div style={{ ...validationStyle, borderColor: '#2c9b68', color: '#a8efc8' }}>Configurazione valida</div>
+    return <div style={{ ...validationStyle, borderColor: 'var(--cfg-success-line)', color: 'var(--cfg-success)', display: 'flex', alignItems: 'center', gap: 7 }}><Icon name="check" size={14} />Configurazione valida</div>
   }
   return (
-    <div style={{ ...validationStyle, borderColor: errors.length ? '#d04040' : '#c98a27' }}>
-      <div style={{ color: errors.length ? '#ff9090' : '#ffd080', fontWeight: 600, marginBottom: 4 }}>
+    <div style={{ ...validationStyle, borderColor: errors.length ? 'var(--cfg-error-line)' : 'var(--cfg-warning-line)' }}>
+      <div style={{ color: errors.length ? 'var(--cfg-error)' : 'var(--cfg-warning)', fontWeight: 600, marginBottom: 4 }}>
         {errors.length ? `${errors.length} errore${errors.length === 1 ? '' : 'i'} da correggere` : 'Avvisi configurazione'}
       </div>
       {issues.slice(0, 3).map((issue, index) => (
@@ -523,19 +543,20 @@ function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
           key={`${issue.code}-${index}`}
           type="button"
           onClick={() => select(issue.itemIds[0] ?? null)}
-          style={{ display: 'block', padding: 0, color: '#bbb', background: 'transparent', border: 0, cursor: issue.itemIds[0] ? 'pointer' : 'default', textAlign: 'left', font: 'inherit' }}
+          style={{ display: 'block', padding: 0, color: 'var(--cfg-text-muted)', background: 'transparent', border: 0, cursor: issue.itemIds[0] ? 'pointer' : 'default', textAlign: 'left', font: 'inherit' }}
           title={issue.itemIds[0] ? 'Seleziona il primo prodotto coinvolto' : undefined}
         >
           {issue.message}
         </button>
       ))}
-      {issues.length > 3 && <div style={{ color: '#778', marginTop: 2 }}>+{issues.length - 3} altri</div>}
+      {issues.length > 3 && <div style={{ color: 'var(--cfg-text-subtle)', marginTop: 2 }}>+{issues.length - 3} altri</div>}
     </div>
   )
 }
 
 function Hints() {
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
+  const setGizmoMode = useConfiguratorStore((s) => s.setGizmoMode)
   // Subscribe to lengths, not the arrays themselves, so Hints doesn't re-render
   // when undo/redo stacks mutate by reference but their lengths stay the same.
   const pastLen = useConfiguratorStore((s) => s.past.length)
@@ -547,16 +568,11 @@ function Hints() {
   const canRedo = !readOnly && futureLen > 0
   return (
     <div style={hintsStyle}>
-      <span style={{ pointerEvents: 'none' }}>
-        gizmo: <b style={{ color: gizmoMode === 'translate' ? '#3aa0ff' : '#666' }}>T</b> /{' '}
-        <b style={{ color: gizmoMode === 'rotate' ? '#3aa0ff' : '#666' }}>R</b>
-      </span>
-      <button type="button" disabled={!canUndo} onClick={undo} title="Cmd/Ctrl+Z" style={iconBtn(canUndo)}>
-        ↶ {pastLen}
-      </button>
-      <button type="button" disabled={!canRedo} onClick={redo} title="Cmd/Ctrl+Shift+Z" style={iconBtn(canRedo)}>
-        ↷ {futureLen}
-      </button>
+      <button type="button" disabled={readOnly} onClick={() => setGizmoMode('translate')} title="Sposta (T)" style={{ ...presetBtn, color: gizmoMode === 'translate' ? 'var(--cfg-accent)' : 'var(--cfg-text-muted)', background: gizmoMode === 'translate' ? 'var(--cfg-accent-soft)' : 'transparent', borderColor: 'transparent' }}>Sposta</button>
+      <button type="button" disabled={readOnly} onClick={() => setGizmoMode('rotate')} title="Ruota (R)" style={{ ...presetBtn, color: gizmoMode === 'rotate' ? 'var(--cfg-accent)' : 'var(--cfg-text-muted)', background: gizmoMode === 'rotate' ? 'var(--cfg-accent-soft)' : 'transparent', borderColor: 'transparent' }}>Ruota</button>
+      <span style={{ width: 1, height: 18, background: 'var(--cfg-line)', margin: '0 4px' }} />
+      <button type="button" disabled={!canUndo} onClick={undo} aria-label="Annulla modifica" title="Annulla (Cmd/Ctrl+Z)" style={iconBtn(canUndo)}><Icon name="undo" size={16} /></button>
+      <button type="button" disabled={!canRedo} onClick={redo} aria-label="Ripeti modifica" title="Ripeti (Cmd/Ctrl+Shift+Z)" style={iconBtn(canRedo)}><Icon name="redo" size={16} /></button>
     </div>
   )
 }
@@ -578,16 +594,17 @@ function ViewControls() {
   const setDoorsOpen = useConfiguratorStore((s) => s.setDoorsOpen)
 
   return (
-    <div style={viewControlsStyle}>
+    <div className="cfg-view-controls" style={viewControlsStyle}>
       <div style={viewRowStyle}>
         <span style={viewLabelStyle}>vista</span>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('top')} title="Vista dall'alto">⤓</button>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('front')} title="Vista frontale">F</button>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('side')} title="Vista laterale">S</button>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('iso')} title="Vista isometrica">◆</button>
+        <button type="button" style={presetBtn} onClick={() => setCameraPreset('top')} title="Vista dall'alto">Alto</button>
+        <button type="button" style={presetBtn} onClick={() => setCameraPreset('front')} title="Vista frontale">Fronte</button>
+        <button type="button" style={presetBtn} onClick={() => setCameraPreset('side')} title="Vista laterale">Lato</button>
+        <button type="button" style={presetBtn} onClick={() => setCameraPreset('iso')} title="Vista isometrica">3D</button>
         <button
           type="button"
           style={presetBtn}
+          aria-label="Centra componente"
           disabled={!selectedId || walkMode}
           onClick={requestFocusSelected}
           title={
@@ -596,20 +613,20 @@ function ViewControls() {
               : 'Seleziona un pezzo per centrarlo'
           }
         >
-          ⊙
+          <Icon name="focus" size={14} />
         </button>
         <button
           type="button"
-          style={{ ...presetBtn, background: walkMode ? '#3aa0ff' : presetBtn.background, color: walkMode ? '#fff' : presetBtn.color }}
+          style={{ ...presetBtn, background: walkMode ? 'var(--cfg-primary)' : presetBtn.background, color: walkMode ? 'var(--cfg-on-primary)' : presetBtn.color }}
           disabled={!bbox}
           onClick={() => setWalkMode(!walkMode)}
           title="POV camminata dentro il furgone (clicca canvas per attivare mouse-look, Esc per uscire)"
         >
-          Walk
+          Interno
         </button>
         <button
           type="button"
-          style={{ ...presetBtn, background: doorsOpen ? '#3aa0ff' : presetBtn.background, color: doorsOpen ? '#fff' : presetBtn.color }}
+          style={{ ...presetBtn, background: doorsOpen ? 'var(--cfg-primary)' : presetBtn.background, color: doorsOpen ? 'var(--cfg-on-primary)' : presetBtn.color }}
           onClick={() => setDoorsOpen(!doorsOpen)}
           title="Apri/chiudi le porte del furgone"
         >
@@ -631,7 +648,7 @@ function ViewControls() {
             checked={snapToGridEnabled}
             onChange={(e) => setGrid(e.target.checked)}
           />
-          Grid
+          Griglia
         </label>
         {snapToGridEnabled && (
           <select
@@ -667,12 +684,12 @@ function ClearanceOverlay() {
   if (!c) return null
   const fmt = (v: number) => {
     const cm = v * 100
-    const color = cm < 0 ? '#ff6060' : cm < 2 ? '#ffaa33' : '#9aa'
+    const color = cm < 0 ? 'var(--cfg-error)' : cm < 2 ? 'var(--cfg-warning)' : 'var(--cfg-text-muted)'
     return <span style={{ color, fontFamily: 'monospace' }}>{cm.toFixed(1)} cm</span>
   }
   return (
     <div style={clearanceStyle}>
-      <div style={{ color: '#778', marginBottom: 4 }}>Distanza pareti</div>
+      <div style={{ color: 'var(--cfg-text-subtle)', marginBottom: 4 }}>Distanza pareti</div>
       <div style={clearanceRow}><span style={clearanceLabel}>sx</span>{fmt(c.left)}</div>
       <div style={clearanceRow}><span style={clearanceLabel}>dx</span>{fmt(c.right)}</div>
       <div style={clearanceRow}><span style={clearanceLabel}>avanti</span>{fmt(c.front)}</div>
@@ -688,9 +705,9 @@ function CatalogStatusBadge({ text, tone }: { text: string; tone: 'info' | 'erro
     <div
       style={{
         ...badgeStyle,
-        background: tone === 'error' ? 'rgba(60,20,20,0.92)' : 'rgba(15,15,20,0.85)',
-        color: tone === 'error' ? '#ff9090' : '#9aa',
-        border: `1px solid ${tone === 'error' ? '#d04040' : '#2a2a35'}`,
+        background: tone === 'error' ? 'var(--cfg-error-surface)' : 'var(--cfg-surface)',
+        color: tone === 'error' ? 'var(--cfg-error)' : 'var(--cfg-text-muted)',
+        border: `1px solid ${tone === 'error' ? 'var(--cfg-error-line)' : 'var(--cfg-line)'}`,
       }}
     >
       {text}
@@ -704,80 +721,46 @@ function CatalogStatusBadge({ text, tone }: { text: string; tone: 'info' | 'erro
 
 const toolbarStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 12,
-  right: 12,
+  top: 16,
+  right: 16,
   display: 'flex',
-  gap: 6,
-}
-const primaryBtn: React.CSSProperties = {
-  padding: '8px 14px',
-  background: '#3aa0ff',
-  color: 'white',
-  border: 'none',
-  borderRadius: 6,
-  cursor: 'pointer',
-  fontWeight: 600,
-}
-const secondaryBtn: React.CSSProperties = {
-  padding: '8px 12px',
-  background: '#2a2a35',
-  color: '#ddd',
-  border: '1px solid #3a3a45',
-  borderRadius: 6,
-  cursor: 'pointer',
-  fontWeight: 600,
-  fontSize: 12,
+  alignItems: 'center',
+  gap: 8,
+  zIndex: 22,
 }
 const hintsStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 12,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  display: 'flex',
-  gap: 8,
-  alignItems: 'center',
-  padding: '6px 10px',
-  background: 'rgba(15,15,20,0.85)',
-  color: '#9aa',
-  border: '1px solid #2a2a35',
-  borderRadius: 6,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 11,
+  position: 'absolute', bottom: 16, right: 16, display: 'flex', gap: 2,
+  alignItems: 'center', padding: 5, background: 'var(--cfg-surface)',
+  border: '1px solid var(--cfg-line)', borderRadius: 8, fontSize: 11,
 }
 const badgeStyle: React.CSSProperties = {
   position: 'absolute',
   bottom: 12,
   right: 12,
   padding: '6px 10px',
-  borderRadius: 6,
+  borderRadius: 8,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 11,
   maxWidth: 320,
 }
 
 const iconBtn = (enabled: boolean): React.CSSProperties => ({
-  background: enabled ? '#2a2a35' : 'transparent',
-  color: enabled ? '#ddd' : '#555',
-  border: '1px solid #2a2a35',
-  borderRadius: 4,
-  padding: '2px 8px',
-  fontSize: 12,
-  cursor: enabled ? 'pointer' : 'not-allowed',
-  fontFamily: 'monospace',
+  display: 'flex', alignItems: 'center', justifyContent: 'center', width: 30, height: 30,
+  background: 'transparent', color: enabled ? 'var(--cfg-text-secondary)' : '#94a3b8', border: 0,
+  borderRadius: 7, cursor: enabled ? 'pointer' : 'not-allowed',
 })
-
 const viewControlsStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 12,
-  left: 12,
+  top: 16,
+  left: 16,
   display: 'flex',
   flexDirection: 'column',
   gap: 4,
   padding: 6,
-  background: 'rgba(15,15,20,0.85)',
-  color: '#ddd',
-  border: '1px solid #2a2a35',
-  borderRadius: 6,
+  background: 'var(--cfg-surface)',
+  color: 'var(--cfg-text-secondary)',
+  border: '1px solid var(--cfg-line)',
+  borderRadius: 8,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 11,
 }
@@ -787,35 +770,29 @@ const viewRowStyle: React.CSSProperties = {
   gap: 4,
 }
 const viewLabelStyle: React.CSSProperties = {
-  color: '#778',
+  color: 'var(--cfg-text-subtle)',
   fontSize: 10,
   textTransform: 'uppercase',
   letterSpacing: 0.4,
   marginRight: 4,
 }
 const presetBtn: React.CSSProperties = {
-  background: '#2a2a35',
-  color: '#ddd',
-  border: '1px solid #3a3a45',
-  borderRadius: 3,
-  padding: '2px 8px',
-  cursor: 'pointer',
-  fontFamily: 'monospace',
-  fontSize: 12,
-  minWidth: 24,
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+  background: 'var(--cfg-surface-muted)', color: 'var(--cfg-text-secondary)', border: '1px solid var(--cfg-line)',
+  borderRadius: 6, padding: '5px 8px', cursor: 'pointer', fontSize: 11, minHeight: 30,
 }
 const toggleLabel: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 3,
   cursor: 'pointer',
-  color: '#bbb',
+  color: 'var(--cfg-text-muted)',
   fontSize: 11,
 }
 const selectStyle: React.CSSProperties = {
-  background: '#1a1a25',
-  color: '#ddd',
-  border: '1px solid #2a2a35',
+  background: 'var(--cfg-surface)',
+  color: 'var(--cfg-text-secondary)',
+  border: '1px solid var(--cfg-line)',
   borderRadius: 3,
   padding: '1px 4px',
   fontFamily: 'monospace',
@@ -826,12 +803,12 @@ const clearanceStyle: React.CSSProperties = {
   top: 80,
   left: 12,
   padding: '6px 10px',
-  background: 'rgba(15,15,20,0.9)',
-  border: '1px solid #2a2a35',
-  borderRadius: 6,
+  background: 'var(--cfg-surface)',
+  border: '1px solid var(--cfg-line)',
+  borderRadius: 8,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 11,
-  color: '#ddd',
+  color: 'var(--cfg-text-secondary)',
   minWidth: 140,
 }
 const inspectorColumnStyle: React.CSSProperties = {
@@ -850,11 +827,11 @@ const validationStyle: React.CSSProperties = {
   maxWidth: 320,
   flexShrink: 0,
   pointerEvents: 'auto',
-  padding: '7px 10px',
-  background: 'rgba(15,15,20,0.92)',
+  padding: '10px 12px',
+  background: 'var(--cfg-surface)',
   borderWidth: 1,
   borderStyle: 'solid',
-  borderRadius: 6,
+  borderRadius: 8,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 11,
 }
@@ -865,7 +842,7 @@ const clearanceRow: React.CSSProperties = {
   padding: '1px 0',
 }
 const clearanceLabel: React.CSSProperties = {
-  color: '#778',
+  color: 'var(--cfg-text-subtle)',
   fontSize: 10,
 }
 const walkHintStyle: React.CSSProperties = {
@@ -874,12 +851,12 @@ const walkHintStyle: React.CSSProperties = {
   left: '50%',
   transform: 'translateX(-50%)',
   padding: '8px 14px',
-  background: 'rgba(15,15,20,0.92)',
-  border: '1px solid #3aa0ff',
-  borderRadius: 6,
+  background: 'var(--cfg-surface)',
+  border: '1px solid var(--cfg-accent)',
+  borderRadius: 8,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 11,
-  color: '#ddd',
+  color: 'var(--cfg-text-secondary)',
   pointerEvents: 'none',
   textAlign: 'center',
 }

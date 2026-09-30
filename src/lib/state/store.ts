@@ -20,6 +20,7 @@ import type {
   ValidationIssue,
 } from '../types'
 import type { NeighborGap } from '../scene/neighborGap'
+import type { AttachmentInteraction } from '../scene/attachment'
 
 export interface CaptureRefs {
   gl: WebGLRenderer
@@ -60,6 +61,9 @@ function canPatchItem(item: PlacedItem, patch: Partial<PlacedItem>): boolean {
 }
 
 export interface ConfiguratorState {
+  attachment: AttachmentInteraction | null
+  interactionNotice: string | null
+  setAttachment: (interaction: AttachmentInteraction | null) => void
   itemRegistry: ItemRegistry
   itemSizes: Record<string, [number, number, number]>
   assetErrors: Record<string, string>
@@ -209,6 +213,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
   const pushHistory = () => {
     const cur = get().project
     if (!cur) return
+    get().setAttachment(null)
     set((s) => ({
       past: [...s.past, cur].slice(-HISTORY_LIMIT),
       future: [],
@@ -216,6 +221,13 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
   }
 
   return {
+    attachment: null,
+    interactionNotice: null,
+    setAttachment: (attachment) => set((state) => {
+      if (attachment && state.readOnly) return {}
+      return { attachment, ...(!attachment && state.attachment && state.attachment.stage !== 'menu' && state.xrayEnabled
+        ? { xrayEnabled: state.attachment.previousXray } : {}) }
+    }),
     itemRegistry: createItemRegistry(),
     itemSizes: {},
     assetErrors: {},
@@ -266,12 +278,14 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
 
     setProject: (p) => {
       const project = parseProject(p).project
+      get().setAttachment(null)
       const previous = get().project?.enclosure
       const sameAsset = previous?.glbUrl === project.enclosure.glbUrl &&
         (previous?.scale ?? 1) === (project.enclosure.scale ?? 1) &&
         JSON.stringify(previous?.dimensions) === JSON.stringify(project.enclosure.dimensions)
       set({
         project,
+        interactionNotice: null,
         past: [], future: [], selectedId: null, draggingItemId: null,
         dragClearance: null, neighborGap: null, walkMode: false,
         validationIssues: [], overlappingIds: new Set<string>(),
@@ -283,6 +297,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       const catalog = Object.fromEntries(parseCatalog(items).map((item) => [item.id, item]))
       const previous = get()
       if (JSON.stringify(previous.catalog) === JSON.stringify(catalog)) return
+      get().setAttachment(null)
       const changed = new Set(Object.keys(previous.catalog).filter((id) =>
         JSON.stringify(previous.catalog[id]) !== JSON.stringify(catalog[id]),
       ))
@@ -293,7 +308,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
         itemSizes: keep(previous.itemSizes), assetEpoch: previous.assetEpoch + 1 })
     },
 
-    setAssemblyManifest: (manifest) => set({ assemblyManifest: manifest }),
+    setAssemblyManifest: (manifest) => { get().setAttachment(null); set({ assemblyManifest: manifest }) },
     setValidationIssues: (issues) => set({ validationIssues: issues }),
     setTelemetryListener: (listener) => set({ telemetryListener: listener }),
     reportTelemetry: (event) => {
@@ -320,7 +335,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
 
     setCaptureRefs: (refs) => set({ captureRefs: refs }),
 
-    setReadOnly: (v) => set({ readOnly: v }),
+    setReadOnly: (v) => { if (v) get().setAttachment(null); set({ readOnly: v }) },
 
     setXrayEnabled: (v) => set({ xrayEnabled: v }),
     setSnapToGridEnabled: (v) => set({ snapToGridEnabled: v }),
@@ -335,13 +350,13 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     setNeighborGap: (g) => set({ neighborGap: g }),
     setOverlappingIds: (ids) => set({ overlappingIds: ids }),
     setWalkMode: (v) =>
-      set({
+      { get().setAttachment(null); set({
         walkMode: v,
         selectedId: v ? null : get().selectedId,
         draggingItemId: null,
         dragClearance: null,
         neighborGap: null,
-      }),
+      }) },
 
     collectExportRoots: () => {
       const refs = get().captureRefs
@@ -477,9 +492,11 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     undo: () => {
       const { past, future, project } = get()
       if (get().readOnly || past.length === 0 || !project) return
+      get().setAttachment(null)
       const prev = past[past.length - 1]
       set({
         project: prev,
+        interactionNotice: null,
         past: past.slice(0, -1),
         future: [project, ...future].slice(0, HISTORY_LIMIT),
         selectedId: null,
@@ -489,9 +506,11 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     redo: () => {
       const { past, future, project } = get()
       if (get().readOnly || future.length === 0 || !project) return
+      get().setAttachment(null)
       const next = future[0]
       set({
         project: next,
+        interactionNotice: null,
         past: [...past, project].slice(-HISTORY_LIMIT),
         future: future.slice(1),
         selectedId: null,

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Configurator3D,
   parseProject,
@@ -7,10 +7,14 @@ import {
   useConfiguratorStore,
   useConfiguratorStoreApi,
 } from './lib'
+import { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget } from './lib/scene/attachment'
+import { Icon } from './lib/ui/Icon'
+import { themeStyles } from './lib/ui/theme'
 import { definitionFor } from './lib/assembly/manifest'
 import type {
   CatalogItem,
   ConfiguratorHandle,
+  ConfiguratorTheme,
   EnclosureData,
   ProjectIssue,
   ProjectMetadata,
@@ -45,10 +49,10 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
         // its head ends flush with the outer face, so an outward normal would
         // mate the shelf on the wrong side.
         snapPoints: [
-          { id: 'shelf-top', kind: 'laterale', position: [0, 0.108, 0.015], normal: [0, 0, -1] },
-          { id: 'shelf-bottom', kind: 'laterale', position: [0, -0.144, 0.015], normal: [0, 0, -1] },
-          { id: 'rail-xmax', kind: 'frontale', position: [0.155, -0.199, 0.0114], normal: [0, 0, -1] },
-          { id: 'rail-xmin', kind: 'frontale', position: [-0.155, -0.199, 0.0114], normal: [0, 0, -1] },
+          { id: 'shelf-top', label: 'Ripiano superiore', kind: 'laterale', position: [0, 0.108, 0.015], normal: [0, 0, -1] },
+          { id: 'shelf-bottom', label: 'Ripiano inferiore', kind: 'laterale', position: [0, -0.144, 0.015], normal: [0, 0, -1] },
+          { id: 'rail-xmax', label: 'Traversa destra', kind: 'frontale', position: [0.155, -0.199, 0.0114], normal: [0, 0, -1] },
+          { id: 'rail-xmin', label: 'Traversa sinistra', kind: 'frontale', position: [-0.155, -0.199, 0.0114], normal: [0, 0, -1] },
         ],
       },
     ],
@@ -71,8 +75,8 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
         size: [1.013, 0.07117, 0.357],
         scale: 1,
         snapPoints: [
-          { id: 'end-a', kind: 'laterale', position: [-0.5065, 0, 0], normal: [-1, 0, 0] },
-          { id: 'end-b', kind: 'laterale', position: [0.5065, 0, 0], normal: [1, 0, 0] },
+          { id: 'end-a', label: 'Estremità A', kind: 'laterale', position: [-0.5065, 0, 0], normal: [-1, 0, 0] },
+          { id: 'end-b', label: 'Estremità B', kind: 'laterale', position: [0.5065, 0, 0], normal: [1, 0, 0] },
         ],
       },
       {
@@ -82,8 +86,8 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
         size: [0.05, 0.035, 1.00588],
         scale: 1,
         snapPoints: [
-          { id: 'end-a', kind: 'frontale', position: [0, 0, 0.50294], normal: [0, 0, 1] },
-          { id: 'end-b', kind: 'frontale', position: [0, 0, -0.50294], normal: [0, 0, -1] },
+          { id: 'end-a', label: 'Estremità A', kind: 'frontale', position: [0, 0, 0.50294], normal: [0, 0, 1] },
+          { id: 'end-b', label: 'Estremità B', kind: 'frontale', position: [0, 0, -0.50294], normal: [0, 0, -1] },
         ],
       },
     ],
@@ -112,10 +116,25 @@ const ENCLOSURE: EnclosureData = {
 }
 const PROJECT_METADATA: ProjectMetadata = {
   name: 'Demo — host-driven catalog',
-  customer: 'Proarredi',
+  customer: 'Syncro',
+}
+
+const THEME_STORAGE_KEY = 'configurator-3d:theme'
+
+function initialTheme(): ConfiguratorTheme {
+  if (typeof window === 'undefined') return 'light'
+  try {
+    const saved = window.localStorage.getItem(THEME_STORAGE_KEY)
+    if (saved === 'light' || saved === 'dark') return saved
+  } catch { /* The switch also works when browser storage is unavailable. */ }
+  return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
 export default function App() {
+  const [theme, setTheme] = useState<ConfiguratorTheme>(initialTheme)
+  useEffect(() => {
+    try { window.localStorage.setItem(THEME_STORAGE_KEY, theme) } catch { /* Keep the current session usable without storage. */ }
+  }, [theme])
   const storeApi = useConfiguratorStoreApi()
   const cfg = useRef<ConfiguratorHandle>(null)
   const [savedJson, setSavedJson] = useState('')
@@ -125,6 +144,7 @@ export default function App() {
   const fileRef = useRef<HTMLInputElement>(null)
   const newProjectCount = useRef(0)
   const selectedId = useConfiguratorStore((s) => s.selectedId)
+  const attachment = useConfiguratorStore((s) => s.attachment)
   const project = useConfiguratorStore((s) => s.project)
   const assemblyManifest = useConfiguratorStore((s) => s.assemblyManifest)
   const selected = project?.items.find((item) => item.id === selectedId)
@@ -248,30 +268,23 @@ export default function App() {
       cursor.style.transform = 'translate(-50%,-50%) scale(1)'
       await wait(720)
     }
-    const choose = async (selectIndex: number, optionText: string, label: string) => {
-      const select = document.querySelectorAll<HTMLSelectElement>('select')[selectIndex]
-      if (!select) throw new Error(`Menu non trovato: ${label}`)
-      await moveTo(select, label)
-      const option = [...select.options].find((entry) => entry.text.trim() === optionText || entry.text.includes(optionText))
-      if (!option) throw new Error(`Opzione non trovata: ${optionText}`)
-      select.value = option.value
-      select.dispatchEvent(new Event('change', { bubbles: true }))
-      cursor.style.transform = 'translate(-50%,-50%) scale(.68)'
-      await wait(160)
-      cursor.style.transform = 'translate(-50%,-50%) scale(1)'
-      await wait(620)
-    }
-    const attach = async (targetPoint: string, label: string, setSource = true) => {
-      if (setSource) await choose(0, 'end-a', 'Scelgo il punto di contatto del componente')
-      const target = document.querySelectorAll<HTMLSelectElement>('select')[1]
-      const firstUpright = [...target.options].find((entry) => entry.text.includes('YSI 12836'))
-      if (!firstUpright) throw new Error('Montante di destinazione non trovato')
-      await moveTo(target, 'Seleziono il montante di destinazione')
-      target.value = firstUpright.value
-      target.dispatchEvent(new Event('change', { bubbles: true }))
-      await wait(650)
-      await choose(2, targetPoint, `Scelgo la sede ${label}`)
-      await click(button('Aggancia'), `Aggancio ${label}`)
+    const attach = async (targetPoint: string, label: string) => {
+      const state = storeApi.getState()
+      const sourceId = state.selectedId
+      const target = state.project?.items.find((item) => item.catalogId === 'ysi12836')
+      if (!sourceId || !target || !beginAttachment(storeApi, sourceId)) throw new Error('Componente di partenza non disponibile')
+      caption.textContent = 'Scelgo il punto iniziale nella scena'
+      await wait(800)
+      if (!chooseAttachmentPoint(storeApi, 'end-a')) throw new Error('Punto iniziale non disponibile')
+      caption.textContent = 'Scelgo il montante di destinazione'
+      await wait(800)
+      if (!chooseAttachmentTarget(storeApi, target.id)) throw new Error('Destinatario non disponibile')
+      const interaction = storeApi.getState().attachment
+      if (interaction) storeApi.getState().setAttachment({ ...interaction, hoveredPointId: targetPoint })
+      caption.textContent = `Anteprima dell’aggancio ${label}`
+      await wait(1000)
+      if (!chooseAttachmentPoint(storeApi, targetPoint)) throw new Error(storeApi.getState().attachment?.error ?? 'Aggancio non valido')
+      await wait(800)
     }
 
     recorder.start(250)
@@ -282,6 +295,7 @@ export default function App() {
       await click(button('Nuovo'), 'Parto da un progetto vuoto')
       await click(button('YSI 12836'), 'Inserisco il primo montante YSI 12836')
       await click(button('+90°'), 'Ruoto il montante nel vano')
+      document.querySelector<HTMLDetailsElement>('.cfg-inspector details')?.setAttribute('open', '')
       await click(button('95.3 cm'), 'Creo la coppia specchiata alla distanza corretta')
 
       await click(button('XDS 40236 KM02'), 'Aggiungo il ripiano superiore XDS 40236 KM02')
@@ -294,7 +308,7 @@ export default function App() {
       await click(button('XHA 40100'), 'Aggiungo la seconda traversa')
       await attach('rail-xmin', 'della seconda traversa')
 
-      await click(button('⊙'), 'Centro la vista sul KIT completo')
+      await click(document.querySelector<HTMLButtonElement>('[aria-label="Centra componente"]') ?? undefined, 'Centro la vista sul KIT completo')
       caption.textContent = 'KIT completo — configurazione valida e pronta per l’export'
       await wait(3000)
     } finally {
@@ -326,197 +340,55 @@ export default function App() {
     }
   }
 
+  const matches = catalogGroups.flatMap((group) => group.items.filter((product) => {
+    const query = catalogQuery.trim().toLowerCase()
+    return (!query || `${product.id} ${product.label}`.toLowerCase().includes(query)) && (!compatibleOnly || connectableToSelection(product))
+  }))
+
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', margin: 0 }}>
-      <div style={{ flex: 1, position: 'relative' }}>
-        <Configurator3D
-          ref={cfg}
-          enclosure={ENCLOSURE}
-          projectId="demo-010"
-          metadata={PROJECT_METADATA}
-          catalog={catalog}
-          assemblyManifest="/catalog/assembly-manifest.json"
-          environmentUrl="/hdr/empty_warehouse_01_4k.hdr"
-          onSave={(p) => setSavedJson(serializeProject(p))}
-        />
-      </div>
-      <aside style={sidebarStyle}>
-        <h3 style={{ marginTop: 0 }}>Catalogo</h3>
-        <p style={{ color: '#778', marginTop: 0, fontSize: 11 }}>
-          Cerca e aggiungi un prodotto. Con un pezzo selezionato, il badge indica i connettori compatibili nel manifest.
-        </p>
-
-        <input
-          value={catalogQuery}
-          onChange={(event) => setCatalogQuery(event.target.value)}
-          placeholder="Cerca codice o descrizione"
-          style={catalogSearchStyle}
-        />
-        {selected && (
-          <label style={{ display: 'flex', gap: 5, alignItems: 'center', color: '#aaa', fontSize: 11, marginBottom: 10 }}>
-            <input type="checkbox" checked={compatibleOnly} onChange={(event) => setCompatibleOnly(event.target.checked)} />
-            solo agganciabili al selezionato
-          </label>
-        )}
-
-        <div style={{ marginBottom: 16 }}>
-          {catalogGroups.map((g) => {
-            const matches = g.items.filter((product) => {
-              const query = catalogQuery.trim().toLowerCase()
-              const textualMatch = !query || `${product.id} ${product.label}`.toLowerCase().includes(query)
-              return textualMatch && (!compatibleOnly || connectableToSelection(product))
-            })
-            if (matches.length === 0) return null
-            return (
-            <details key={g.category} open style={{ marginBottom: 8 }}>
-              <summary style={summaryStyle}>
-                {g.category} <span style={{ color: '#778' }}>({matches.length})</span>
-              </summary>
-              <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0 0' }}>
-                {matches.map((p) => {
-                  const connectable = connectableToSelection(p)
-                  return (
-                  <li key={p.id} style={{ marginBottom: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() => handleAdd(p)}
-                      style={productBtnStyle}
-                    >
-                      <div style={{ fontWeight: 600 }}>{p.label}</div>
-                      <div style={{ color: '#778', fontSize: 10 }}>
-                        {p.size ? `${p.size.map((v) => Math.round(v * 1000)).join(' × ')} mm` : p.id}
-                      </div>
-                      {selected && (
-                        <div style={{ color: connectable ? '#77dca0' : '#778', fontSize: 10, marginTop: 2 }}>
-                          {connectable ? 'agganciabile al selezionato' : 'nessun connettore compatibile'}
-                        </div>
-                      )}
-                    </button>
-                  </li>
-                  )
-                })}
-              </ul>
-            </details>
-            )
-          })}
-        </div>
-
-        <h3 style={{ marginBottom: 6 }}>Progetto</h3>
-        <button type="button" onClick={handleRecordDemo} style={{ ...ghostBtn, width: '100%', marginBottom: 10 }}>
-          Registra demo KIT
-        </button>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          <button type="button" onClick={handleExportJson} style={ghostBtn}>
-            Export JSON
-          </button>
-          <button type="button" onClick={handleNewProject} style={ghostBtn}>
-            Nuovo
-          </button>
-        </div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          <button type="button" onClick={() => fileRef.current?.click()} style={ghostBtn}>
-            Import JSON
-          </button>
-          <input
-            ref={fileRef}
-            type="file"
-            accept="application/json,.json"
-            style={{ display: 'none' }}
-            onChange={(e) => {
-              const f = e.target.files?.[0]
-              if (f) handleImport(f)
-              e.target.value = ''
-            }}
-          />
-        </div>
-
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          <button type="button" onClick={() => cfg.current?.undo()} style={ghostBtn}>
-            Undo
-          </button>
-          <button type="button" onClick={() => cfg.current?.redo()} style={ghostBtn}>
-            Redo
-          </button>
-        </div>
-
-        {loadStatus && (
-          <div
-            style={{
-              padding: 8,
-              marginBottom: 10,
-              borderRadius: 4,
-              background: loadStatus.ok ? '#1a3a25' : '#3a1a1a',
-              border: `1px solid ${loadStatus.ok ? '#33ff88' : '#d04040'}`,
-              fontSize: 11,
-            }}
-          >
-            <div style={{ fontWeight: 600, marginBottom: 4 }}>{loadStatus.msg}</div>
-            {loadStatus.issues && loadStatus.issues.length > 0 && (
-              <ul style={{ margin: 0, paddingLeft: 16 }}>
-                {loadStatus.issues.map((i, k) => (
-                  <li key={k} style={{ color: i.level === 'error' ? '#ff8888' : '#ffcc66' }}>
-                    [{i.level}] {i.path}: {i.message}
-                  </li>
-                ))}
-              </ul>
-            )}
+    <div className="app-shell" data-theme={theme}>
+      <style>{themeStyles}</style>
+      <header className="app-header">
+        <div className="app-brand"><span className="app-brand-icon"><Icon name="cube" size={22} /></span><div><strong>Syncro</strong><small>Configuratore di allestimenti · 3D</small></div></div>
+        <div className="app-project-name"><span className="app-status-dot" />Allestimento furgone<span className="app-header-count">{project?.items.length ?? 0} {(project?.items.length ?? 0) === 1 ? 'componente' : 'componenti'}</span></div>
+        <div className="app-header-actions">
+          <div className="app-theme-switch" role="group" aria-label="Tema interfaccia">
+            <button aria-label="Tema chiaro" aria-pressed={theme === 'light'} onClick={() => setTheme('light')} title="Tema chiaro"><Icon name="sun" size={15} /><span>Chiaro</span></button>
+            <button aria-label="Tema scuro" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')} title="Tema scuro"><Icon name="moon" size={15} /><span>Scuro</span></button>
           </div>
-        )}
-
-        <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
-          {savedJson || '(premi Salva nel canvas o Export JSON)'}
-        </pre>
-      </aside>
+          <button aria-label="Apri progetto" onClick={() => fileRef.current?.click()}><Icon name="folder" size={16} /><span>Apri progetto</span></button><button className="app-primary-action" aria-label="Nuovo progetto" onClick={handleNewProject}><Icon name="plus" size={16} /><span>Nuovo progetto</span></button>
+        </div>
+        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleImport(file); event.target.value = '' }} />
+      </header>
+      <main className="app-workspace">
+        <div className="app-viewport">
+          <div className="app-viewport-heading"><span><Icon name="cube" size={15} />Area di progettazione</span><span>FIAT · NDC 40H2</span></div>
+          <div className="app-canvas"><Configurator3D ref={cfg} theme={theme} enclosure={ENCLOSURE} projectId="demo-010" metadata={PROJECT_METADATA} catalog={catalog} assemblyManifest="/catalog/assembly-manifest.json" environmentUrl="/hdr/empty_warehouse_01_4k.hdr" onSave={(value) => setSavedJson(serializeProject(value))} /></div>
+        </div>
+        <aside className="app-sidebar">
+          <div className="app-sidebar-heading"><div><span className="app-eyebrow">CATALOGO PRODOTTI</span><h2>Componenti</h2></div><span className="app-count-badge">{catalog.length}</span></div>
+          <p className="app-sidebar-intro">Seleziona un componente per aggiungerlo al progetto.</p>
+          <label className="app-search"><Icon name="search" size={17} /><input aria-label="Cerca componenti" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Cerca un componente…" /></label>
+          {selected && <label className="app-compatible-filter"><input type="checkbox" checked={compatibleOnly} onChange={(event) => setCompatibleOnly(event.target.checked)} />Compatibili con {catalog.find((product) => product.id === selected.catalogId)?.label ?? selected.catalogId}</label>}
+          <div className="app-catalog">
+            {catalogGroups.map((group) => {
+              const items = group.items.filter((product) => matches.includes(product))
+              if (!items.length) return null
+              return <details key={group.category} open className="app-category"><summary>{group.category}<span>{items.length}</span></summary><div className="app-product-list">
+                {items.map((product) => <button key={product.id} className="app-product-card" disabled={!!attachment} aria-label={`Aggiungi ${product.label}`} onClick={() => handleAdd(product)}>
+                  <span className="app-product-graphic"><img src={`/catalog/previews/${product.id}.png`} alt="" width={68} height={62} loading="lazy" /></span><span className="app-product-info"><strong>{product.label}</strong><small>{product.size?.map((value) => Math.round(value * 1000)).join(' × ')} mm</small>{selected && connectableToSelection(product) && <span className="app-compatible-badge">Compatibile</span>}</span><span className="app-add-icon"><Icon name="plus" size={16} /></span>
+                </button>)}
+              </div></details>
+            })}
+            {!matches.length && <div className="app-no-results"><Icon name="search" size={25} /><strong>Nessun componente trovato</strong><span>Prova un altro codice o disattiva il filtro.</span></div>}
+          </div>
+          {!!project?.items.length && <section className="app-scene-list"><div className="app-section-heading"><Icon name="layers" size={15} />Nella scena<span>{project.items.length}</span></div>{project.items.map((item, index) => <button key={item.id} className={selectedId === item.id ? 'selected' : ''} disabled={!!attachment && attachment.stage !== 'target'} onClick={() => attachment?.stage === 'target' ? chooseAttachmentTarget(storeApi, item.id) : cfg.current?.selectItem(item.id)}><span>{String(index + 1).padStart(2, '0')}</span>{catalog.find((product) => product.id === item.catalogId)?.label ?? item.catalogId}<Icon name="focus" size={13} /></button>)}</section>}
+          <div className="app-sidebar-footer"><span className="app-tip-icon"><Icon name="link" size={16} /></span><div><strong>Unisci i componenti</strong><span>Tasto destro su un pezzo → Aggancia.</span></div></div>
+          {loadStatus && <p className={`app-import-status ${loadStatus.ok ? '' : 'error'}`} role="status">{loadStatus.msg}</p>}
+          <details className="app-project-tools"><summary>Strumenti progetto</summary><div><button onClick={handleExportJson}><Icon name="download" size={14} />Scarica JSON</button><button onClick={() => { void handleRecordDemo().catch((error: Error) => setLoadStatus({ ok: false, msg: error.message })) }}>Registra demo KIT</button></div>{savedJson && <details><summary>Dati dell’ultimo salvataggio</summary><pre>{savedJson}</pre></details>}</details>
+        </aside>
+      </main>
+      <footer className="app-status-bar"><span><span>Trascina · Sposta</span><span>Rotellina · Zoom</span><span>Tasto destro · Aggancia</span></span><span>Scala reale · Coordinate in metri</span></footer>
     </div>
   )
-}
-
-const sidebarStyle: React.CSSProperties = {
-  width: 320,
-  padding: 16,
-  background: '#0f0f14',
-  color: '#ddd',
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 12,
-  overflow: 'auto',
-}
-const summaryStyle: React.CSSProperties = {
-  cursor: 'pointer',
-  fontWeight: 600,
-  fontSize: 11,
-  textTransform: 'uppercase',
-  letterSpacing: 0.5,
-  padding: '4px 0',
-  userSelect: 'none',
-}
-const productBtnStyle: React.CSSProperties = {
-  width: '100%',
-  textAlign: 'left',
-  padding: '8px 10px',
-  background: '#1a1a25',
-  color: '#ddd',
-  border: '1px solid #2a2a35',
-  borderRadius: 4,
-  cursor: 'pointer',
-}
-const catalogSearchStyle: React.CSSProperties = {
-  width: '100%',
-  boxSizing: 'border-box',
-  marginBottom: 8,
-  padding: '7px 9px',
-  border: '1px solid #2a2a35',
-  borderRadius: 4,
-  background: '#171720',
-  color: '#eee',
-  fontSize: 12,
-}
-const ghostBtn: React.CSSProperties = {
-  flex: 1,
-  padding: '6px 10px',
-  background: '#2a2a35',
-  color: '#ddd',
-  border: '1px solid #3a3a45',
-  borderRadius: 4,
-  cursor: 'pointer',
-  fontSize: 11,
 }

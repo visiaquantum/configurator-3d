@@ -14,6 +14,7 @@ const AutoSnapGridOptionsSchema = z.object({
 }).refine((value) => !value.minHoleSize || !value.maxHoleSize || value.minHoleSize <= value.maxHoleSize, { message: 'minHoleSize must not exceed maxHoleSize' })
 const SnapPointSchema = z.object({
   id: z.string().min(1),
+  label: z.string().min(1).optional(),
   kind: z.string().min(1),
   position: Vec3Schema,
   normal: Vec3Schema.optional(),

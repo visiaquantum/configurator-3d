@@ -19,6 +19,26 @@ Con il server locale attivo, `/tests/browser/index.html` permette di verificare 
 
 Il pacchetto è `UNLICENSED`, pubblicato come restricted sul registry npm di GitHub. Non contiene i modelli del cliente né l'HDR della demo. Non occorrono credenziali di pubblicazione per modificare o verificare il codice locale.
 
+## Aggancio visuale e controlli
+
+Il click sinistro seleziona un componente e apre le proprietà compatte. Per unirlo a un altro pezzo usare il tasto destro → **Aggancia nella scena**, oppure il pulsante nell'Inspector:
+
+1. Cliccare uno snap azzurro sul componente di partenza.
+2. Passare sui pezzi compatibili, che si evidenziano in azzurro, e cliccare il destinatario.
+3. Passare su uno snap del destinatario per vedere l'anteprima verde o rossa; cliccare per confermare un aggancio valido.
+
+Il pannello mostra il nome del punto e il motivo di un eventuale rifiuto. **Indietro** cambia la scelta; **Esc** annulla senza modificare il progetto. Gli elenchi espandibili di punti e destinatari consentono le stesse operazioni da tastiera. La vista resta orbitabile. Durante l'aggancio il vano diventa trasparente, poi torna all'impostazione precedente; esportazione, gizmo e trascinamento dei pezzi sono sospesi.
+
+L'anteprima considera l'intero assieme, i punti occupati, i connettori, gli item bloccati e le collisioni. La conferma crea un solo passo di undo. È possibile comporre un assieme temporaneamente fuori dal vano e poi ruotarlo o spostarlo: il messaggio di ingombro resta visibile e blocca la distinta PDF finché non viene risolto.
+
+Le sessioni di aggancio sono locali allo store e non entrano nel JSON. Per pannelli host sono disponibili `beginAttachment(store, itemId)`, `chooseAttachmentPoint`, `chooseAttachmentTarget` e `backAttachment`; `store.getState().setAttachment(null)` annulla la sessione. Un eventuale `label` nei punti `catalog.snapPoints` fornisce un nome leggibile senza cambiare l'ID persistente.
+
+Il menu **Esporta** raccoglie PNG, GLB e PDF. La demo offre ricerca e filtro di compatibilità nel catalogo, un elenco dei pezzi presenti e strumenti di progetto separati dai controlli quotidiani.
+
+L'interfaccia usa pannelli chiari o scuri, una scena neutra e accenti blu per le azioni principali. Le anteprime statiche in `public/catalog/previews/` provengono dai GLB del catalogo: non aggiungono canvas WebGL alla sidebar. La pagina locale `/scripts/catalog-previews.html` permette di rigenerarle mantenendo la stessa camera e illuminazione; mostra solo i corpi dei prodotti, con una finitura neutra per rendere leggibile la geometria. Le anteprime non modificano i materiali della scena né dei file esportati.
+
+Il selettore **Chiaro / Scuro** nella testata della demo aggiorna interfaccia, sfondo della scena e griglia senza azzerare il progetto. La scelta viene ricordata nel browser; al primo avvio si usa la preferenza del sistema. Con storage disabilitato il selettore continua a funzionare per la sessione corrente. Nella libreria il tema è controllato dall'host tramite `<Configurator3D theme="light" />` o `theme="dark"` (default `light`), con palette indipendenti per ciascuna istanza. Il tema non viene scritto nel JSON di progetto e non cambia le luci o i materiali dei prodotti.
+
 ## Integrazione
 
 ```tsx

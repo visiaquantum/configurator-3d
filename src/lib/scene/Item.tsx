@@ -15,7 +15,8 @@ import {
 } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { TransformControls, useGLTF } from '@react-three/drei'
-import type { ThreeEvent } from '@react-three/fiber'
+import { useFrame, type ThreeEvent } from '@react-three/fiber'
+import { attachmentPoints, attachmentTargetIds, beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget } from './attachment'
 import type {
   Anchor,
   CatalogItem,
@@ -301,6 +302,7 @@ function ItemInner({
   const select = useConfiguratorStore((s) => s.select)
   const updateItems = useConfiguratorStore((s) => s.updateItems)
   const selectedId = useConfiguratorStore((s) => s.selectedId)
+  const attachment = useConfiguratorStore((s) => s.attachment)
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
   const storeReadOnly = useConfiguratorStore((s) => s.readOnly)
@@ -310,6 +312,7 @@ function ItemInner({
   const collisionBounds = useConfiguratorStore((s) => s.interiorBBox ?? s.enclosureBBox)
   const isSelected = selectedId === item.id
   const isOverlapping = useConfiguratorStore((s) => s.overlappingIds.has(item.id))
+  const isAttachmentTarget = attachment?.hoveredItemId === item.id || attachment?.targetItemId === item.id
   const assetReportedRef = useRef(false)
 
   const [group, setGroup] = useState<Group | null>(null)
@@ -431,14 +434,16 @@ function ItemInner({
         if (!(m instanceof MeshStandardMaterial)) continue
         if (!originals.has(m)) { originals.set(m, m.color.clone()); m.userData.originalColor = m.color.getHex() }
         const orig = originals.get(m)!
-        if (isOverlapping) {
+        if (isAttachmentTarget) {
+          m.color.copy(orig).lerp(new Color('#22c9ed'), 0.45)
+        } else if (isOverlapping) {
           m.color.copy(orig).lerp(RED, 0.6)
         } else {
           m.color.copy(orig)
         }
       }
     })
-  }, [cloned, isOverlapping])
+  }, [cloned, isOverlapping, isAttachmentTarget])
 
   // Bounds of the VISIBLE geometry only — rule/snap marker meshes were just
   // hidden by the hydrate calls above and must not inflate the collider
@@ -964,8 +969,10 @@ function ItemInner({
   }
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (e.button !== 0) return
     if (storeApi.getState().walkMode) return
     e.stopPropagation()
+    if (storeApi.getState().attachment) return
     if (!isSelected) select(item.id)
     if (readOnly) return
     if (!group) return
@@ -1216,6 +1223,30 @@ function ItemInner({
     <>
       <group
         ref={setGroup}
+        onContextMenu={(event) => {
+          event.stopPropagation()
+          event.nativeEvent.preventDefault()
+          const rect = storeApi.getState().captureRefs?.gl.domElement.getBoundingClientRect()
+          if (rect) beginAttachment(storeApi, item.id, [Math.max(12, Math.min(event.clientX - rect.left, rect.width - 252)), Math.max(12, Math.min(event.clientY - rect.top, rect.height - 230))])
+        }}
+        onClick={(event) => {
+          const state = storeApi.getState()
+          if (state.attachment?.stage === 'target' && attachmentTargetIds(state).has(item.id)) {
+            event.stopPropagation()
+            chooseAttachmentTarget(storeApi, item.id)
+          }
+        }}
+        onPointerOver={(event) => {
+          const state = storeApi.getState()
+          if (state.attachment?.stage === 'target' && attachmentTargetIds(state).has(item.id)) {
+            event.stopPropagation()
+            state.setAttachment({ ...state.attachment, hoveredItemId: item.id })
+          }
+        }}
+        onPointerOut={() => {
+          const state = storeApi.getState()
+          if (state.attachment?.hoveredItemId === item.id) state.setAttachment({ ...state.attachment, hoveredItemId: undefined })
+        }}
         onPointerDown={handlePointerDown}
         // eslint-disable-next-line react-hooks/immutability -- handler mutates group.position imperatively (three.js scene-graph)
         onPointerMove={handlePointerMove}
@@ -1234,14 +1265,14 @@ function ItemInner({
             <primitive object={cloned} dispose={null} />
           </group>
         </group>
-        {isSelected && !readOnly && (
+        {(isSelected || isAttachmentTarget) && !readOnly && (
           <mesh userData={{ configuratorHelper: true }}>
             <boxGeometry
               args={[colliderSize[0] * 1.05, colliderSize[1] * 1.05, colliderSize[2] * 1.05]}
             />
             <meshBasicMaterial
               wireframe
-              color={isOverlapping ? '#ff4040' : snappedAnchor ? '#33ff88' : '#ffcc33'}
+              color={isAttachmentTarget ? '#36d6ff' : isOverlapping ? '#ff4040' : snappedAnchor ? '#33ff88' : '#ffcc33'}
             />
           </mesh>
         )}
@@ -1253,10 +1284,11 @@ function ItemInner({
             <meshBasicMaterial wireframe color="#ff4040" />
           </mesh>
         )}
-        {isSelected && <SnapPointMarkers points={effectiveCatalogSnaps} />}
+        {attachment?.stage === 'source' && attachment.sourceItemId === item.id && <SnapPointMarkers points={attachmentPoints(storeApi.getState(), item.id)} interactive />}
+        {attachment?.stage === 'point' && attachment.targetItemId === item.id && attachment.sourcePointId && <SnapPointMarkers points={attachmentPoints(storeApi.getState(), item.id, { itemId: attachment.sourceItemId, pointId: attachment.sourcePointId })} interactive />}
       </group>
 
-      {isSelected && group && !readOnly && (
+      {isSelected && group && !readOnly && !attachment && (
         <TransformControls
           object={group as Object3D}
           mode={gizmoMode}
@@ -1325,8 +1357,10 @@ function ItemInner({
  * each. The instance count is baked into the buffer at construction, so the
  * `key` forces a fresh mesh whenever it changes.
  */
-function SnapPointMarkers({ points }: { points: ItemSnapPoint[] }) {
+function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoint[]; interactive?: boolean }) {
+  const store = useConfiguratorStoreApi()
   const ref = useRef<InstancedMesh>(null)
+  const hovered = useConfiguratorStore((state) => state.attachment?.hoveredPointId)
 
   useLayoutEffect(() => {
     const mesh = ref.current
@@ -1335,9 +1369,26 @@ function SnapPointMarkers({ points }: { points: ItemSnapPoint[] }) {
     points.forEach((p, i) => {
       m.makeTranslation(p.position[0], p.position[1], p.position[2])
       mesh.setMatrixAt(i, m)
+      mesh.setColorAt(i, new Color(p.id === hovered ? '#ffffff' : '#25cef4'))
     })
     mesh.instanceMatrix.needsUpdate = true
-  }, [points])
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
+  }, [points, hovered])
+
+  useFrame(({ camera, size }) => {
+    const mesh = ref.current
+    if (!mesh || !interactive) return
+    const world = mesh.getWorldPosition(new Vector3())
+    const fov = 'fov' in camera ? camera.fov as number : 45
+    const radius = Math.max(0.007, camera.position.distanceTo(world) * 2 * Math.tan(fov * Math.PI / 360) / Math.max(size.height, 1) * 6)
+    const matrix = new Matrix4()
+    points.forEach((point, index) => {
+      matrix.makeScale(radius * (point.id === hovered ? 1.3 : 1), radius * (point.id === hovered ? 1.3 : 1), radius * (point.id === hovered ? 1.3 : 1))
+      matrix.setPosition(...point.position)
+      mesh.setMatrixAt(index, matrix)
+    })
+    mesh.instanceMatrix.needsUpdate = true
+  })
 
   if (points.length === 0) return null
   return (
@@ -1348,10 +1399,33 @@ function SnapPointMarkers({ points }: { points: ItemSnapPoint[] }) {
       args={[undefined, undefined, points.length]}
       renderOrder={1001}
       frustumCulled={false}
+      onPointerDown={interactive ? (event) => event.stopPropagation() : undefined}
+      onPointerOver={interactive ? (event) => {
+        event.stopPropagation()
+        const point = points[event.instanceId ?? -1]
+        const state = store.getState()
+        if (point && state.attachment) state.setAttachment({ ...state.attachment, hoveredPointId: point.id, error: undefined })
+      } : undefined}
+      onPointerMove={interactive ? (event) => {
+        event.stopPropagation()
+        const point = points[event.instanceId ?? -1]
+        const state = store.getState()
+        if (point && state.attachment && state.attachment.hoveredPointId !== point.id) state.setAttachment({ ...state.attachment, hoveredPointId: point.id, error: undefined })
+      } : undefined}
+      onPointerOut={interactive ? () => {
+        const state = store.getState()
+        if (state.attachment) state.setAttachment({ ...state.attachment, hoveredPointId: undefined })
+      } : undefined}
+      onClick={interactive ? (event) => {
+        event.stopPropagation()
+        if (event.button !== 0) return
+        const point = points[event.instanceId ?? -1]
+        if (point) chooseAttachmentPoint(store, point.id)
+      } : undefined}
     >
-      <sphereGeometry args={[SNAP_POINT_MARKER_RADIUS, 8, 8]} />
+      <sphereGeometry args={[interactive ? 1 : SNAP_POINT_MARKER_RADIUS, 12, 8]} />
       <meshBasicMaterial
-        color="#00d5ff"
+        color="#ffffff"
         transparent
         opacity={0.9}
         depthTest={false}

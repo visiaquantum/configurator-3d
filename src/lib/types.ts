@@ -85,6 +85,8 @@ export interface ItemConstraint {
 export interface ItemSnapPoint {
   /** Unique within the product. Bare `kind`, or `kind-N` when kind repeats. */
   id: string
+  /** Optional human-readable name shown during visual attachment. */
+  label?: string
   /** Mating family (`terra`, `frontale`, `laterale`, `foro`, ...). Decides
    * what this point may be joined to — see scene/mating.ts. */
   kind: string
@@ -228,7 +230,11 @@ export interface ProjectData {
   metadata?: ProjectMetadata
 }
 
+export type ConfiguratorTheme = 'light' | 'dark'
+
 export interface Configurator3DProps {
+  /** Palette for the built-in panels and scene background. Default: light. */
+  theme?: ConfiguratorTheme
   /** Optional store for host UI. Each configurator owns an isolated store by default. */
   store?: import('./state/store').ConfiguratorStore
   /** Optional HDR URL. Defaults to local procedural reflections; null disables reflections. */

@@ -7,6 +7,7 @@ import {
   connectorForSnap, connectorsCanMate, inferLegacyConnections,
   extractAutoSnapGridFromObject, AUTO_SNAP_GRID_RULE, configurationStatus,
   positionForItemSnap, assemblyPosePatches, exportProjectPDF, exportSceneGLB,
+  beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview,
 } from '../dist/configurator-3d.js'
 
 const item = (id, extra = {}) => ({ id, catalogId: 'part', position: [0, 0, 0], rotation: [0, 0, 0], ...extra })
@@ -343,4 +344,99 @@ test('assembly placement rotates and translates every member without mutating it
   assert.deepEqual(patches[1].patch.position.slice(1), [3, 3])
   assert.deepEqual(patches[1].patch.rotation, [0, Math.PI / 2, 0])
   assert.deepEqual(items, before)
+})
+
+function attachmentStore() {
+  const store = createConfiguratorStore()
+  const points = [
+    { id: 'left', kind: 'laterale', position: [-0.5, 0, 0], normal: [-1, 0, 0] },
+    { id: 'right', kind: 'laterale', position: [0.5, 0, 0], normal: [1, 0, 0] },
+  ]
+  store.getState().setCatalog([{ ...catalog.part, snapPoints: points }])
+  store.getState().setAssemblyManifest(parseAssemblyManifest({ version: 1, products: [{ catalogId: 'part', connectors: [
+    { id: 'left', snapId: 'left', compatibleWith: ['right'], capacity: 1 },
+    { id: 'right', snapId: 'right', compatibleWith: ['left'], capacity: 1 },
+  ] }] }))
+  store.getState().setProject(project([item('source', { position: [3, 0, 0] }), item('target')]))
+  store.getState().setItemSnaps('part', points)
+  store.getState().setItemSize('part', [1, 1, 1])
+  for (const id of ['source', 'target']) store.getState().itemRegistry.set(id, { id, group: new Group(), localCorners: [] })
+  return store
+}
+
+test('visual attachment preview does not mutate persisted or live poses', () => {
+  const store = attachmentStore(), state = store.getState()
+  const before = structuredClone(state.project)
+  const result = computeAttachmentPreview(state, 'source', 'left', 'target', 'right')
+  assert.equal(result.valid, true)
+  assert.deepEqual(result.patches[0].patch.position, [1, 0, 0])
+  assert.deepEqual(state.project, before)
+  assert.deepEqual(state.itemRegistry.get('source').group.position.toArray(), [0, 0, 0])
+  assert.equal(state.past.length, 0)
+})
+
+test('visual attachment steps, back and cancel preserve the project and original xray', () => {
+  const store = attachmentStore(), before = structuredClone(store.getState().project)
+  assert.equal(beginAttachment(store, 'source', [20, 30]), true)
+  assert.equal(store.getState().attachment.stage, 'menu')
+  assert.equal(store.getState().xrayEnabled, false)
+  backAttachment(store)
+  assert.equal(store.getState().attachment.stage, 'source')
+  assert.equal(store.getState().xrayEnabled, true)
+  assert.equal(chooseAttachmentPoint(store, 'left'), true)
+  assert.equal(chooseAttachmentTarget(store, 'source'), false)
+  assert.equal(chooseAttachmentTarget(store, 'target'), true)
+  backAttachment(store)
+  assert.equal(store.getState().attachment.stage, 'target')
+  backAttachment(store)
+  assert.equal(store.getState().attachment.sourcePointId, undefined)
+  store.getState().setAttachment(null)
+  assert.equal(store.getState().xrayEnabled, false)
+  assert.deepEqual(store.getState().project, before)
+})
+
+test('confirmed visual attachment creates one undo step and excludes occupied points', () => {
+  const store = attachmentStore()
+  beginAttachment(store, 'source')
+  chooseAttachmentPoint(store, 'left'); chooseAttachmentTarget(store, 'target')
+  assert.equal(chooseAttachmentPoint(store, 'right'), true)
+  assert.equal(store.getState().attachment, null)
+  assert.equal(store.getState().xrayEnabled, false)
+  assert.equal(store.getState().project.connections.length, 1)
+  assert.equal(store.getState().past.length, 1)
+  assert.deepEqual(store.getState().project.items[0].position, [1, 0, 0])
+  assert.ok(!attachmentPoints(store.getState(), 'target').some((point) => point.id === 'right'))
+  store.getState().undo()
+  assert.equal(store.getState().project.connections.length, 0)
+  assert.deepEqual(store.getState().project.items[0].position, [3, 0, 0])
+})
+
+test('incompatible, occupied, locked and readonly attachments never move components', () => {
+  const store = attachmentStore(), before = structuredClone(store.getState().project)
+  assert.equal(computeAttachmentPreview(store.getState(), 'source', 'left', 'target', 'left').valid, false)
+  beginAttachment(store, 'source'); chooseAttachmentPoint(store, 'left'); chooseAttachmentTarget(store, 'target')
+  assert.equal(chooseAttachmentPoint(store, 'missing'), false)
+  assert.deepEqual(store.getState().project, before)
+  assert.equal(store.getState().past.length, 0)
+  store.getState().setReadOnly(true)
+  assert.equal(store.getState().attachment, null)
+  assert.equal(beginAttachment(store, 'source'), false)
+  store.getState().setReadOnly(false)
+  store.getState().updateItem('source', { locked: true })
+  assert.equal(beginAttachment(store, 'source'), false)
+})
+
+test('attachment sessions are local to each configurator and reset with project changes', () => {
+  const a = attachmentStore(), b = attachmentStore()
+  beginAttachment(a, 'source')
+  assert.equal(b.getState().attachment, null)
+  a.getState().setProject(project())
+  assert.equal(a.getState().attachment, null)
+  assert.equal(a.getState().xrayEnabled, false)
+})
+
+test('catalog snap labels survive validation without changing stable IDs', () => {
+  const parsed = parseCatalog([{ ...catalog.part, snapPoints: [{ ...snap, label: 'Ripiano superiore' }] }])
+  assert.equal(parsed[0].snapPoints[0].id, 'face')
+  assert.equal(parsed[0].snapPoints[0].label, 'Ripiano superiore')
 })
