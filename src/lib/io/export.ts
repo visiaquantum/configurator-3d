@@ -75,7 +75,7 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
       if (!(object instanceof Mesh)) return
       const copy = (material: Material) => {
         const result = material.clone()
-        if (result instanceof MeshStandardMaterial && material.userData.originalColor) result.color.set(material.userData.originalColor)
+        if (result instanceof MeshStandardMaterial && typeof material.userData.originalColor === 'number') result.color.set(material.userData.originalColor)
         const original = material.userData.configuratorMaterial
         if (original) { result.transparent = original.transparent; result.opacity = original.opacity; result.depthWrite = original.depthWrite }
         materials.push(result)

@@ -50,7 +50,7 @@ export function Scene({ project, environmentUrl }: Props) {
   return (
     <Canvas
       camera={{ position: [5, 2.5, 5], fov: 45, near: 0.05, far: 150 }}
-      shadows
+      shadows="percentage"
       onPointerMissed={() => select(null)}
     >
       <SceneCaptureBridge />

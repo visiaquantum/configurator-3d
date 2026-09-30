@@ -121,6 +121,6 @@ export function mirrorPairConstraint(item: PlacedItem) {
  * this instead of overwriting `constraints` wholesale.
  */
 export function withSnapConstraint(item: PlacedItem, snap: ItemConstraint | null) {
-  const kept = item.constraints?.filter((c) => c.type === 'mirrorPair') ?? []
+  const kept = item.constraints?.filter((c) => c.type !== 'snapToAnchor' && c.type !== 'snapToItem') ?? []
   return snap ? [...kept, snap] : kept
 }

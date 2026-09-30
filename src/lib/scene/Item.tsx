@@ -98,7 +98,8 @@ const ITEM_CLEARCOAT_ROUGHNESS = 0.1
  * (transmission/thickness become undefined) and the mesh renders invisible.
  */
 function enhanceItemMaterials(root: Object3D) {
-  const upgrade = (m: Material): Material => {
+  const materials = new Map<Material, Material>()
+  const cloneMaterial = (m: Material): Material => {
     if (m instanceof MeshPhysicalMaterial) {
       const next = m.clone()
       next.envMapIntensity = Math.max(next.envMapIntensity, ITEM_ENV_INTENSITY)
@@ -114,6 +115,11 @@ function enhanceItemMaterials(root: Object3D) {
       return next
     }
     return m.clone()
+  }
+  const upgrade = (m: Material) => {
+    let cloned = materials.get(m)
+    if (!cloned) { cloned = cloneMaterial(m); materials.set(m, cloned) }
+    return cloned
   }
   root.traverse((obj) => {
     if (!(obj instanceof Mesh)) return
@@ -662,6 +668,7 @@ function ItemInner({
     }
     group.position.set(px, py + colliderSize[1] / 2, pz)
     group.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2])
+    if (snappedAnchor) storeApi.getState().hydrateItemPosition(item.id, [px, py, pz])
   }, [
     group,
     snappedAnchor,
@@ -671,6 +678,8 @@ function ItemInner({
     item.position,
     item.rotation,
     colliderSize,
+    item.id,
+    storeApi,
   ])
 
   // Register with the cross-item registry for vertex-snap and overlap push-out.

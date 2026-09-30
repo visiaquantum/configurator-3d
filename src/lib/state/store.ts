@@ -5,7 +5,7 @@ import { createItemRegistry } from '../scene/itemRegistry'
 import type { ItemRegistry } from '../scene/itemRegistry'
 import { parseProject } from '../io/serialize'
 import { parseCatalog } from '../io/catalog'
-import { removeProjectItems, reconcileConstraints } from './projectGraph'
+import { applyItemPatch, removeProjectItems, reconcileConstraints } from './projectGraph'
 import type { Camera, Object3D, Scene as ThreeScene, WebGLRenderer } from 'three'
 import type {
   Anchor,
@@ -68,6 +68,7 @@ export interface ConfiguratorState {
   loadingManifest: boolean
   catalogError: string | null
   manifestError: string | null
+  hydrateItemPosition: (id: string, position: [number, number, number]) => void
   setItemSize: (catalogId: string, size: [number, number, number]) => void
   setAssetError: (id: string, error: string | null) => void
   project: ProjectData | null
@@ -223,6 +224,11 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     loadingManifest: false,
     catalogError: null,
     manifestError: null,
+    hydrateItemPosition: (id, position) => set((s) => {
+      const item = s.project?.items.find((entry) => entry.id === id)
+      if (!s.project || !item || !position.every(Number.isFinite) || item.position.every((value, index) => Math.abs(value - position[index]) < 1e-6)) return {}
+      return { project: { ...s.project, items: s.project.items.map((entry) => entry.id === id ? { ...entry, position: [...position] } : entry) } }
+    }),
     setItemSize: (catalogId, size) => set((s) => ({ itemSizes: { ...s.itemSizes, [catalogId]: size } })),
     setAssetError: (id, error) => set((s) => {
       const next = { ...s.assetErrors }
@@ -359,7 +365,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       if (!s.project || s.readOnly) return
       const item = s.project.items.find((entry) => entry.id === id)
       if (!item || !canPatchItem(item, patch)) return
-      const project = parseProject({ ...s.project, items: s.project.items.map((it) => it.id === id ? { ...it, ...patch } : it) }).project
+      const project = parseProject({ ...s.project, items: s.project.items.map((it) => it.id === id ? applyItemPatch(it, patch) : it) }).project
       pushHistory()
       set({ project })
     },
@@ -372,7 +378,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
           ...s.project,
           items: s.project.items.map((it) => {
             const patch = byId.get(it.id)
-            return patch ? { ...it, ...patch } : it
+            return patch ? applyItemPatch(it, patch) : it
           }),
       }).project
       pushHistory()
@@ -387,7 +393,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
           ...s.project,
           items: reconcileConstraints(s.project.items.map((it) => {
             const patch = byId.get(it.id)
-            return patch ? { ...it, ...patch } : it
+            return patch ? applyItemPatch(it, patch) : it
           }), connections),
           connections: structuredClone(connections),
       }).project

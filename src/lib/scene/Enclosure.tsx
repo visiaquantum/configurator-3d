@@ -60,7 +60,9 @@ export function Enclosure({ data }: Props) {
   const storeApi = useConfiguratorStoreApi()
   const gltf = useGLTF(data.glbUrl)
   const scene = useMemo(() => cloneSkeleton(gltf.scene), [gltf.scene])
-  const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl)
+  const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl.split(/[?#]/)[0])
+  const fiatFactor = (data.scale ?? 1) / 10
+  const fiatAnchors = useMemo(() => FIAT_FLOOR_ANCHORS.map((anchor) => ({ ...anchor, position: anchor.position.map((value) => value * fiatFactor) as [number, number, number] })), [fiatFactor])
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
   const setInteriorBBox = useConfiguratorStore((s) => s.setInteriorBBox)
@@ -72,7 +74,7 @@ export function Enclosure({ data }: Props) {
   // Door nodes captured at scene-load and animated by the useFrame hook below.
   // basePos lets slide doors return to their original local position when closed.
   const doorsRef = useRef<
-    { node: Object3D; rig: DoorRig; basePos: [number, number, number] }[]
+    { node: Object3D; rig: DoorRig; basePos: [number, number, number]; baseRotation: number }[]
   >([])
   const targetOpenRef = useRef(0)
 
@@ -88,6 +90,7 @@ export function Enclosure({ data }: Props) {
 
     const createdPaints: MeshPhysicalMaterial[] = []
     const kept = new Set<Material>()
+    const clonedMaterials = new Map<Material, Material>()
     const replaced = new Map<Material, MeshPhysicalMaterial>()
 
     const makePaint = () =>
@@ -116,7 +119,10 @@ export function Enclosure({ data }: Props) {
       }
       if (hasGltfMaterials) {
         const apply = (m: Material) => {
+          const cached = clonedMaterials.get(m)
+          if (cached) return cached
           const clone = m.clone()
+          clonedMaterials.set(m, clone)
           clone.side = DoubleSide
           clone.userData.configuratorMaterial = { transparent: clone.transparent, opacity: clone.opacity, depthWrite: clone.depthWrite }
           clone.needsUpdate = true
@@ -164,7 +170,7 @@ export function Enclosure({ data }: Props) {
 
   // Find door nodes once per GLB load. They are animated via useFrame below.
   useEffect(() => {
-    const found: { node: Object3D; rig: DoorRig; basePos: [number, number, number] }[] = []
+    const found: { node: Object3D; rig: DoorRig; basePos: [number, number, number]; baseRotation: number }[] = []
     scene.traverse((obj) => {
       const rig = DOOR_RIG[obj.name]
       if (rig) {
@@ -172,6 +178,7 @@ export function Enclosure({ data }: Props) {
           node: obj,
           rig,
           basePos: [obj.position.x, obj.position.y, obj.position.z],
+          baseRotation: rig.kind === 'rotate' ? obj.rotation[rig.axis] : 0,
         })
       }
     })
@@ -201,9 +208,9 @@ export function Enclosure({ data }: Props) {
     // anchors are unusable (authored 20 cm above the floor), so only the two
     // hardcoded floor anchors are exposed.
     const anchors = hydrateAnchorsAndHide(scene)
-    const active = needsFiatFloor ? FIAT_FLOOR_ANCHORS : anchors
+    const active = needsFiatFloor ? fiatAnchors : anchors
     setRuntimeAnchors(active)
-  }, [scene, data.scale, needsFiatFloor, setRuntimeAnchors])
+  }, [scene, data.scale, needsFiatFloor, fiatAnchors, setRuntimeAnchors])
   /* eslint-enable react-hooks/immutability */
 
   // Compute and publish enclosure world-space AABB once per GLB. Also tries
@@ -226,8 +233,8 @@ export function Enclosure({ data }: Props) {
       // inner collision box: products stay above the wooden floor and inside
       // the van outline instead of clipping through the body mesh.
       setInteriorBBox({
-        min: [-FIAT_FLOOR_SIZE[0] / 2, FIAT_FLOOR_TOP_Y, -FIAT_FLOOR_SIZE[2] / 2],
-        max: [FIAT_FLOOR_SIZE[0] / 2, box.max.y, FIAT_FLOOR_SIZE[2] / 2],
+        min: [-FIAT_FLOOR_SIZE[0] * fiatFactor / 2, FIAT_FLOOR_TOP_Y * fiatFactor, -FIAT_FLOOR_SIZE[2] * fiatFactor / 2],
+        max: [FIAT_FLOOR_SIZE[0] * fiatFactor / 2, box.max.y, FIAT_FLOOR_SIZE[2] * fiatFactor / 2],
       })
     } else if (interior) {
       const ibox = new Box3().setFromObject(interior)
@@ -284,7 +291,7 @@ export function Enclosure({ data }: Props) {
       setEnclosureBBox(null)
       setInteriorBBox(null)
     }
-  }, [scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors, data.dimensions, storeApi])
+  }, [scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors, data.dimensions, fiatFactor, storeApi])
 
   // Target tracks `doorsOpen` as 0/1; the useFrame loop lerps the actual
   // rotation toward it so the swing is smooth and reversible mid-animation.
@@ -301,10 +308,10 @@ export function Enclosure({ data }: Props) {
     // Critically damped-ish lerp. dt is seconds; rate chosen for ~0.5s travel.
     const rate = Math.min(1, dt * 5)
     const t = targetOpenRef.current
-    for (const { node, rig, basePos } of doors) {
+    for (const { node, rig, basePos, baseRotation } of doors) {
       if (rig.kind === 'rotate') {
         const current = rig.axis === 'y' ? node.rotation.y : node.rotation.z
-        const target = t * rig.openAngle
+        const target = baseRotation + t * rig.openAngle
         const next = MathUtils.lerp(current, target, rate)
         if (rig.axis === 'y') node.rotation.y = next
         else node.rotation.z = next
@@ -326,7 +333,7 @@ export function Enclosure({ data }: Props) {
   return (
     <group userData={{ exportable: true }}>
       <primitive object={scene} dispose={null} />
-      {needsFiatFloor && <FiatNdc40H2Floor xrayEnabled={xrayEnabled} />}
+      {needsFiatFloor && <group scale={fiatFactor}><FiatNdc40H2Floor xrayEnabled={xrayEnabled} /></group>}
     </group>
   )
 }

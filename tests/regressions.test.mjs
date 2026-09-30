@@ -6,7 +6,7 @@ import {
   parseAssemblyManifest, validateConfiguration, connectionsAtPose,
   connectorForSnap, connectorsCanMate, inferLegacyConnections,
   extractAutoSnapGridFromObject, AUTO_SNAP_GRID_RULE, configurationStatus,
-  positionForItemSnap, exportProjectPDF, exportSceneGLB,
+  positionForItemSnap, assemblyPosePatches, exportProjectPDF, exportSceneGLB,
 } from '../dist/configurator-3d.js'
 
 const item = (id, extra = {}) => ({ id, catalogId: 'part', position: [0, 0, 0], rotation: [0, 0, 0], ...extra })
@@ -260,4 +260,87 @@ test('GLB export excludes descendant helpers and preserves world transforms and 
     assert.deepEqual(json.nodes.find((node) => node.name === 'product').matrix.slice(12, 15), [5, 0, 0])
     assert.equal(body.material.opacity, 0.5); assert.equal(root.children.length, 2)
   } finally { globalThis.FileReader = previous }
+})
+
+test('scale is applied once to clearance offsets, box sizes and insertion depths', () => {
+  const cats = { part: { ...catalog.part, scale: 2 } }
+  const m = parseAssemblyManifest({ version: 1, products: [{ catalogId: 'part', connectors: [
+    { id: 'right', snapId: 'right', compatibleWith: ['laterale'], insertionDepth: 0.06, clearance: [{ id: 'seat', center: [0, 0, 0], size: [0.06, 1.1, 1.1] }] },
+    { id: 'left', snapId: 'left', compatibleWith: ['laterale'], insertionDepth: 0.06, clearance: [{ id: 'seat', center: [0, 0, 0], size: [0.06, 1.1, 1.1] }] },
+  ] }] })
+  const p = project([item('a'), item('b', { position: [1.9, 0, 0] })], { connections: [{ ...connection(), sourceConnectorId: 'right', sourcePointId: 'right', targetConnectorId: 'left', targetPointId: 'left' }] })
+  const ctx = { enclosureBounds: bounds, itemSnaps: { part: [
+    { id: 'right', kind: 'laterale', position: [0.95, 0, 0], normal: [1, 0, 0] },
+    { id: 'left', kind: 'laterale', position: [-0.95, 0, 0], normal: [-1, 0, 0] },
+  ] } }
+  assert.deepEqual(errors(p, cats, m, ctx), [])
+})
+
+test('asymmetric collider centers follow the mirrored body', () => {
+  const m = parseAssemblyManifest({ version: 1, products: [{ catalogId: 'part', connectors: [], colliders: [{ id: 'offset', center: [0.5, 0, 0], size: [0.2, 0.2, 0.2] }] }] })
+  const p = project([item('a', { mirrored: true })])
+  assert.deepEqual(errors(p, catalog, m, { enclosureBounds: { min: [-0.7, 0, -1], max: [-0.3, 1, 1] } }), [])
+})
+
+test('import rejects dangling graph references and duplicate joints', () => {
+  assert.throws(() => parseProject(project([item('a')], { connections: [connection()] })))
+  assert.throws(() => parseProject(project([item('a'), item('b')], { connections: [connection(), connection()] })))
+})
+
+test('legacy migration never returns a partial graph before hydration completes', () => {
+  const p = project([
+    item('a'), item('b', { constraints: [{ type: 'snapToItem', target: 'a', point: 'face', targetPoint: 'face' }] }),
+    item('c', { catalogId: 'other', constraints: [{ type: 'snapToItem', target: 'a', point: 'face', targetPoint: 'face' }] }),
+  ], { connections: undefined })
+  assert.equal(inferLegacyConnections(p, pairManifest(), { part: [snap] }, {}).length, 0)
+  assert.equal(inferLegacyConnections(p, pairManifest(), pairContext.itemSnaps, {}).length, 2)
+})
+
+test('untrusted marker extras cannot crash snap extraction or inflate body bounds', async () => {
+  const { extractItemSnapsFromObject } = await import('../dist/configurator-3d.js')
+  const root = new Group(); root.add(new Mesh(new BoxGeometry(1, 1, 1)))
+  const marker = new Mesh(new BoxGeometry(10, 10, 10)); marker.name = 'marker'; marker.userData = { kind: 'snap', id: 42 }; marker.position.x = 0.5; root.add(marker)
+  assert.doesNotThrow(() => extractItemSnapsFromObject(root))
+  // Explicit direction and identity are stable and independent of the silhouette.
+  marker.userData = { kind: 'snap', id: 'stable-face', snapKind: 'frontale', normal: [1, 0, 0] }
+  const extracted = extractItemSnapsFromObject(root)[0].extracted
+  assert.equal(extracted.id, 'stable-face'); assert.equal(extracted.kind, 'frontale')
+  assert.deepEqual(extracted.normal, [1, 0, 0])
+})
+
+test('moving an anchored item releases its old anchor and undo restores it', () => {
+  const store = createConfiguratorStore()
+  const constraints = [{ type: 'snapToAnchor', target: 'floor', point: 'base' }]
+  store.getState().setProject(project([item('a', { constraints })]))
+  store.getState().updateItem('a', { position: [1, 0, 0] })
+  assert.deepEqual(store.getState().project.items[0].constraints, [])
+  store.getState().undo()
+  assert.deepEqual(store.getState().project.items[0].constraints, constraints)
+  store.getState().updateItem('a', { position: [2, 0, 0], constraints: [{ type: 'snapToAnchor', target: 'other', point: 'base' }] })
+  assert.equal(store.getState().project.items[0].constraints[0].target, 'other')
+})
+
+test('resolved anchor positions become serialized data without editing history', () => {
+  const store = createConfiguratorStore()
+  const constraints = [{ type: 'snapToAnchor', target: 'floor', point: 'base' }]
+  store.getState().setProject(project([item('a', { constraints })]))
+  store.getState().setReadOnly(true)
+  store.getState().hydrateItemPosition('a', [0, 0.038, 0])
+  assert.deepEqual(store.getState().exportProject().items[0].position, [0, 0.038, 0])
+  assert.deepEqual(store.getState().project.items[0].constraints, constraints)
+  assert.equal(store.getState().past.length, 0)
+  store.getState().hydrateItemPosition('a', [NaN, 0, 0])
+  assert.equal(store.getState().project.items[0].position[1], 0.038)
+})
+
+test('assembly placement rotates and translates every member without mutating its input', () => {
+  const items = [item('a'), item('b', { position: [1, 0, 0] }), item('outside')]
+  const before = structuredClone(items)
+  const patches = assemblyPosePatches(items, new Set(['a', 'b']), items[0], { position: [2, 3, 4], rotation: [0, Math.PI / 2, 0] })
+  assert.equal(patches.length, 2)
+  assert.deepEqual(patches[0].patch.position, [2, 3, 4])
+  assert.ok(Math.abs(patches[1].patch.position[0] - 2) < 1e-10)
+  assert.deepEqual(patches[1].patch.position.slice(1), [3, 3])
+  assert.deepEqual(patches[1].patch.rotation, [0, Math.PI / 2, 0])
+  assert.deepEqual(items, before)
 })

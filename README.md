@@ -15,6 +15,8 @@ npm run build:demo
 
 `npm test` compila la libreria, esegue i test di regressione con il test runner nativo di Node e i quattro script di verifica degli snap e degli assiemi sui GLB reali. La CI esegue lint, test e build della demo. `npm run build:lib` produce ESM, UMD e dichiarazioni in `dist/`; la demo viene compilata separatamente in `dist-demo/`. Entrambe le directory sono generate e ignorate da Git.
 
+Con il server locale attivo, `/tests/browser/index.html` permette di verificare due canvas indipendenti, scale del vano diverse, sola lettura, undo e recupero dopo un errore GLB. Il pulsante “Genera PDF” mostra il risultato dell'API di esportazione. Questo controllo è manuale e non fa parte della CI.
+
 Il pacchetto è `UNLICENSED`, pubblicato come restricted sul registry npm di GitHub. Non contiene i modelli del cliente né l'HDR della demo. Non occorrono credenziali di pubblicazione per modificare o verificare il codice locale.
 
 ## Integrazione
@@ -73,6 +75,8 @@ store.getState().undo()
 Gli oggetti `enclosure`, `initialItems` e `metadata` devono avere riferimenti stabili: un cambiamento dei dati iniziali ricrea il progetto e azzera la cronologia. Per cambiare il progetto durante una sessione usare `ref.current.setProject(project)`. Il reset dello stesso GLB conserva i limiti e gli anchor già estratti. Un cambio di URL, scala o dimensioni ricalcola i dati del vano.
 
 `getProject()`, `exportProject()` e `onChange` forniscono copie dei dati, per evitare modifiche accidentali dello stato o della cronologia da parte dell'host. `readOnly` impedisce modifiche, undo e redo; i caricamenti e la validazione continuano. Gli item `locked` e i vincoli `lockAxis` sono rispettati dai comandi dello store. Gli item con assi vincolati vengono resi fissi nei controlli della scena; i comandi dello store possono modificare le coordinate non vincolate.
+
+Le posizioni risolte degli agganci al vano vengono sincronizzate nel progetto esportato senza aggiungere passi alla cronologia. Spostare un pezzo libera il vecchio anchor; un nuovo aggancio deve essere dichiarato esplicitamente nel comando.
 
 ## Coordinate e dati tecnici
 

@@ -8,7 +8,6 @@ import {
   mirrorPairConstraint,
   mirrorPairDistances,
   pairDistanceForSpan,
-  withSnapConstraint,
 } from '../scene/mirrorPair'
 import {
   assemblyGroup,
@@ -286,12 +285,21 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   const jointedSeats = new Set(joints.map((j) => j.key))
 
   const handleSnap = (anchorId: string | null) => {
-    updateItem(item.id, {
-      constraints: withSnapConstraint(
-        item,
-        anchorId ? { type: 'snapToAnchor', target: anchorId } : null,
-      ),
-    })
+    if (!anchorId) {
+      updateItem(item.id, { constraints: item.constraints?.filter((constraint) => constraint.type !== 'snapToAnchor') })
+      return
+    }
+    const anchor = anchors.find((candidate) => candidate.id === anchorId)
+    const state = storeApi.getState()
+    if (!anchor || !state.project) return
+    const members = assemblyGroup(item.id, state.project.items, state.project.connections ?? [])
+    const patches = assemblyPosePatches(state.project.items, members, item, { position: anchor.position, rotation: item.rotation })
+      .map((entry) => entry.id === item.id ? { ...entry, patch: { ...entry.patch, constraints: [
+        ...(item.constraints?.filter((constraint) => constraint.type !== 'snapToAnchor') ?? []),
+        { type: 'snapToAnchor' as const, target: anchor.id },
+      ] } } : entry)
+    if (state.project.connections === undefined) updateItems(patches)
+    else commitAssembly(patches, state.project.connections)
   }
 
   /**
@@ -795,7 +803,9 @@ const formatCm = (metres: number) => (metres * 100).toFixed(1).replace(/\.0$/, '
 const pairBtnStyle: React.CSSProperties = {
   flex: 1,
   padding: '5px 6px',
-  border: '1px solid #2a2a35',
+  borderWidth: 1,
+  borderStyle: 'solid',
+  borderColor: '#2a2a35',
   borderRadius: 4,
   cursor: 'pointer',
   fontSize: 11,
