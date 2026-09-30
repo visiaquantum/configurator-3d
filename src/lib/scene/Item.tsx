@@ -755,6 +755,8 @@ function ItemInner({
     }
 
     transformLockPosRef.current = null
+    // The arrows put down a part in a seat the same way a drag does.
+    if (commitConnectionPreview()) return
     pushOutOverlaps(item.id, 8, linkedTo(item.id))
     clampItemToBounds(item.id, collisionBounds)
     const newPos: Vec3 = [
@@ -786,6 +788,7 @@ function ItemInner({
       { id: item.id, patch: { position: finalPos, rotation: newRot, constraints } },
       ...groupFollowPatches(finalPos, newRot[1]),
     ])
+    updateConnectionPreview(null)
   }
 
   /**
@@ -898,6 +901,57 @@ function ItemInner({
     return patches
   }
 
+  /**
+   * Magnet: a seat in range wins over the pointer. The part sits in it, turned
+   * the way the joint needs, so the join is something you see during the
+   * gesture instead of a jump on release. Out of range it goes back to
+   * `restRotation` — the turn the last seat asked for is not the user's.
+   *
+   * `false` means the part is on its own: the single-part guards apply.
+   */
+  const holdInPreview = (preview: ConnectionPreview | null, restRotation: EulerTuple): boolean => {
+    if (!group) return false
+    if (!preview?.valid) {
+      group.rotation.set(restRotation[0], restRotation[1], restRotation[2])
+      return false
+    }
+    group.position.set(
+      preview.position[0],
+      preview.position[1] + colliderSize[1] / 2,
+      preview.position[2],
+    )
+    group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
+    return true
+  }
+
+  /** Put down the part in the seat the magnet is holding it in. `false` when there is none. */
+  const commitConnectionPreview = (): boolean => {
+    const preview = connectionPreviewRef.current
+    if (!group || !preview?.valid) return false
+    group.position.set(
+      preview.position[0],
+      preview.position[1] + colliderSize[1] / 2,
+      preview.position[2],
+    )
+    group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
+    const s = useConfiguratorStore.getState()
+    const constraints = [
+      ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
+      itemSnapConstraintFor(preview.connection.targetItemId, preview.connection.sourcePointId, preview.connection.targetPointId),
+    ]
+    const patches = [
+      { id: item.id, patch: { position: preview.position, rotation: preview.rotation, constraints } },
+      ...groupFollowPatches(preview.position, preview.rotation[1]),
+    ]
+    const connections = dedupeJoints([
+      ...jointsSurvivingMove(patches, s.project?.connections ?? []),
+      ...preview.connections,
+    ])
+    s.commitAssembly(patches, connections)
+    updateConnectionPreview(null)
+    return true
+  }
+
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (useConfiguratorStore.getState().walkMode) return
     e.stopPropagation()
@@ -1001,21 +1055,9 @@ function ItemInner({
     // `validateConfiguration`, bounds included, so it needs neither guard.
     const preview = resolveConnectionPreview()
     updateConnectionPreview(preview)
-    if (preview?.valid) {
-      // Magnet: in range the part sits in the seat instead of under the
-      // pointer, so the join is something you see and feel during the drag
-      // rather than a jump on release. The pose is recomputed from the pointer
-      // at the top of every move, so pulling away lets go on its own.
-      group.position.set(
-        preview.position[0],
-        preview.position[1] + colliderSize[1] / 2,
-        preview.position[2],
-      )
-      group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
-    } else {
-      // Out of range: give back the orientation the drag started with, or the
-      // part keeps whatever turn the last seat asked of it.
-      group.rotation.set(d.startRotX, d.startRotY, item.rotation[2])
+    // The pose is worked out from the pointer at the top of every move, so the
+    // magnet lets go on its own as soon as the pointer leaves its range.
+    if (!holdInPreview(preview, [d.startRotX, d.startRotY, item.rotation[2]])) {
       // Hard collision constraints: separate from other products and keep the
       // collider inside the van/interior bounds. The rest of the assembly is
       // exempt: those parts share material with this one by design.
@@ -1096,31 +1138,7 @@ function ItemInner({
       ])
       return
     }
-    const preview = connectionPreviewRef.current
-    if (preview?.valid) {
-      group.position.set(
-        preview.position[0],
-        preview.position[1] + colliderSize[1] / 2,
-        preview.position[2],
-      )
-      group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
-      const s = useConfiguratorStore.getState()
-      const constraints = [
-        ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
-        itemSnapConstraintFor(preview.connection.targetItemId, preview.connection.sourcePointId, preview.connection.targetPointId),
-      ]
-      const patches = [
-        { id: item.id, patch: { position: preview.position, rotation: preview.rotation, constraints } },
-        ...groupFollowPatches(preview.position, preview.rotation[1]),
-      ]
-      const connections = dedupeJoints([
-        ...jointsSurvivingMove(patches, s.project?.connections ?? []),
-        ...preview.connections,
-      ])
-      s.commitAssembly(patches, connections)
-      updateConnectionPreview(null)
-      return
-    }
+    if (commitConnectionPreview()) return
     // Translate commit: resolve any residual AABB overlap (push along smaller
     // of X/Z), keep inside the van/interior bounds, then check for anchor snap.
     // The live vertex-snap has already aligned to a neighbour's corner if one
@@ -1233,6 +1251,17 @@ function ItemInner({
           onObjectChange={() => {
             if (gizmoMode === 'rotate' && transformLockPosRef.current) {
               group.position.copy(transformLockPosRef.current)
+            }
+            // Same magnet as the drag: the arrows carry the part to a seat in
+            // range instead of stopping wherever the axis ran out. A turn is a
+            // turn the user asked for, so the magnet stays out of that mode.
+            if (gizmoMode === 'translate') {
+              const preview = resolveConnectionPreview()
+              updateConnectionPreview(preview)
+              if (holdInPreview(preview, item.rotation)) {
+                followLive()
+                return
+              }
             }
             // The gizmo drags one object; the frame it belongs to comes along
             // every frame, or it only catches up on release.
