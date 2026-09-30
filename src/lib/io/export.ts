@@ -1,7 +1,41 @@
-import type { Camera, Object3D, Scene, WebGLRenderer } from 'three'
-import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
-import { jsPDF } from 'jspdf'
-import type { CatalogItem, ProjectData } from '../types'
+import { Mesh, MeshStandardMaterial } from 'three'
+import type { Camera, Material, Object3D, Scene, WebGLRenderer } from 'three'
+import type { AssemblyManifest, CatalogItem, ProjectData, ValidationIssue } from '../types'
+import { definitionFor } from '../assembly/manifest'
+
+export interface BomLine {
+  code: string
+  label: string
+  quantity: number
+}
+
+/** Build a technical BOM from placed products and connector-declared hardware. */
+export function buildProjectBom(
+  project: ProjectData,
+  catalog: CatalogItem[],
+  manifest?: AssemblyManifest | null,
+): BomLine[] {
+  const lines = new Map<string, BomLine>()
+  const add = (code: string, label: string, quantity: number) => {
+    const existing = lines.get(code)
+    if (existing) existing.quantity += quantity
+    else lines.set(code, { code, label, quantity })
+  }
+  for (const item of project.items) {
+    const definition = definitionFor(manifest, item.catalogId)
+    const catalogItem = catalog.find((candidate) => candidate.id === item.catalogId)
+    add(definition?.bom?.code ?? item.catalogId, definition?.bom?.label ?? catalogItem?.label ?? '—', 1)
+  }
+  for (const connection of project.connections ?? []) {
+    const source = project.items.find((item) => item.id === connection.sourceItemId)
+    if (!source) continue
+    const connector = definitionFor(manifest, source.catalogId)?.connectors.find(
+      (candidate) => candidate.id === connection.sourceConnectorId,
+    )
+    connector?.bomComponents?.forEach((component) => add(component.code, component.label, component.quantity))
+  }
+  return [...lines.values()].sort((a, b) => a.code.localeCompare(b.code))
+}
 
 /**
  * Render once and grab the canvas pixels as a PNG data URL.
@@ -25,23 +59,51 @@ export function captureCanvasImage(
  * `roots` should be the exportable geometry only (enclosure + placed items),
  * not the whole scene — otherwise grid/environment/gizmo helpers leak in.
  */
-export function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
+export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
+  // Export libraries are needed only when the user asks for an output. Lazy
+  // loading keeps the initial configurator bundle focused on the 3D editor.
+  const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js')
   const exporter = new GLTFExporter()
-  return new Promise((resolve, reject) => {
+  const materials: Material[] = []
+  const cleaned = roots.map((root) => {
+    root.updateWorldMatrix(true, true)
+    const clone = root.clone(true)
+    root.matrixWorld.decompose(clone.position, clone.quaternion, clone.scale)
+    const helpers: Object3D[] = []
+    clone.traverse((object) => {
+      if (object.userData.configuratorHelper) helpers.push(object)
+      if (!(object instanceof Mesh)) return
+      const copy = (material: Material) => {
+        const result = material.clone()
+        if (result instanceof MeshStandardMaterial && typeof material.userData.originalColor === 'number') result.color.set(material.userData.originalColor)
+        const original = material.userData.configuratorMaterial
+        if (original) { result.transparent = original.transparent; result.opacity = original.opacity; result.depthWrite = original.depthWrite }
+        materials.push(result)
+        return result
+      }
+      object.material = Array.isArray(object.material) ? object.material.map(copy) : copy(object.material)
+    })
+    helpers.forEach((helper) => helper.removeFromParent())
+    return clone
+  })
+  try {
+    return await new Promise<Blob>((resolve, reject) => {
     exporter.parse(
-      roots,
+      cleaned,
       (result) => {
         if (result instanceof ArrayBuffer) {
           resolve(new Blob([result], { type: 'model/gltf-binary' }))
         } else {
-          // Fallback: JSON glTF if binary couldn't be produced for some reason.
-          resolve(new Blob([JSON.stringify(result)], { type: 'application/json' }))
+          reject(new Error('Il formato di esportazione non è GLB binario'))
         }
       },
       (err) => reject(err),
       { binary: true, onlyVisible: true, embedImages: true },
     )
-  })
+    })
+  } finally {
+    materials.forEach((material) => material.dispose())
+  }
 }
 
 export interface ExportPdfOptions {
@@ -51,6 +113,10 @@ export interface ExportPdfOptions {
   imageDataUrl?: string
   /** Override the timestamp shown on the document. Defaults to `new Date()`. */
   date?: Date
+  manifest?: AssemblyManifest | null
+  validationIssues?: ValidationIssue[]
+  /** Set only after checking loaded assets, a complete manifest and current geometry. */
+  validated?: boolean
 }
 
 async function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -67,7 +133,11 @@ async function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }>
  * the scene screenshot, and a grouped component count (one row per catalog id).
  */
 export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
-  const { project, catalog, imageDataUrl, date = new Date() } = opts
+  const { project, catalog, imageDataUrl, date = new Date(), manifest, validationIssues = [] } = opts
+  if (validationIssues.some((issue) => issue.level === 'error')) {
+    throw new Error('Impossibile generare la BOM: correggi gli errori di configurazione')
+  }
+  const { jsPDF } = await import('jspdf')
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
   const PAGE_W = 210
@@ -75,15 +145,24 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   const CONTENT_W = PAGE_W - MARGIN * 2
   const MAX_IMG_H = 130 // mm — keeps room for the components table below
 
-  doc.setFontSize(16)
-  doc.text(project.metadata?.name ?? project.id, MARGIN, 20)
-  doc.setFontSize(10)
-  const customer = project.metadata?.customer
-  if (customer) doc.text(`Cliente: ${customer}`, MARGIN, 28)
-  doc.text(`Data: ${date.toLocaleDateString('it-IT')}`, MARGIN, customer ? 34 : 28)
-  doc.text(`Progetto: ${project.id}`, MARGIN, customer ? 40 : 34)
-
-  let y = customer ? 48 : 42
+  let y = 20
+  const textBlock = (text: string, fontSize = 10) => {
+    doc.setFontSize(fontSize)
+    const lines: string[] = doc.splitTextToSize(text, CONTENT_W)
+    for (const line of lines) {
+      if (y > 275) { doc.addPage(); y = 20 }
+      doc.text(line, MARGIN, y)
+      y += fontSize * 0.5
+    }
+    y += 2
+  }
+  textBlock(project.metadata?.name ?? project.id, 16)
+  if (project.metadata?.customer) textBlock(`Cliente: ${project.metadata.customer}`)
+  textBlock(`Data: ${date.toLocaleDateString('it-IT')}`)
+  textBlock(`Progetto: ${project.id}`)
+  textBlock(opts.validated && manifest ? (validationIssues.length ? `Stato: ${validationIssues.length} segnalazioni` : 'Stato: configurazione validata') : 'Stato: verifica tecnica non eseguita')
+  if (manifest) textBlock(`Manifest tecnico: v${manifest.version}`)
+  y += 3
 
   if (imageDataUrl) {
     // Preserve the screenshot's native aspect ratio: fit it inside CONTENT_W ×
@@ -96,11 +175,13 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
       imgH = MAX_IMG_H
       imgW = imgH * aspect
     }
+    if (y + imgH > 275) { doc.addPage(); y = 20 }
     const fmt = imageDataUrl.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG'
     doc.addImage(imageDataUrl, fmt, MARGIN, y, imgW, imgH, undefined, 'FAST')
     y += imgH + 8
   }
 
+  if (y > 250) { doc.addPage(); y = 20 }
   doc.setFontSize(12)
   doc.text('Componenti', MARGIN, y)
   y += 6
@@ -115,19 +196,35 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   doc.line(MARGIN, y, PAGE_W - MARGIN, y)
   y += 5
 
-  const counts = new Map<string, number>()
-  for (const it of project.items) counts.set(it.catalogId, (counts.get(it.catalogId) ?? 0) + 1)
+  const lines = buildProjectBom(project, catalog, manifest)
 
-  for (const [catalogId, qty] of counts) {
-    const cat = catalog.find((c) => c.id === catalogId)
-    doc.text(catalogId, MARGIN, y)
-    doc.text(cat?.label ?? '—', MARGIN + 40, y)
-    doc.text(String(qty), PAGE_W - MARGIN - 10, y, { align: 'right' })
+  const tableHeader = () => {
+    doc.setFontSize(10)
+    doc.text('Codice', MARGIN, y)
+    doc.text('Descrizione', MARGIN + 40, y)
+    doc.text('Q.tà', PAGE_W - MARGIN - 10, y, { align: 'right' })
     y += 5
-    if (y > 280) {
+    doc.line(MARGIN, y, PAGE_W - MARGIN, y)
+    y += 5
+  }
+  for (const line of lines) {
+    const codes: string[] = doc.splitTextToSize(line.code, 36)
+    const labels: string[] = doc.splitTextToSize(line.label, CONTENT_W - 58)
+    const height = Math.max(codes.length, labels.length) * 5
+    if (y + height > 280) {
       doc.addPage()
       y = 20
+      tableHeader()
     }
+    // Split unusually long rows across pages while preserving column alignment.
+    for (let index = 0; index < Math.max(codes.length, labels.length); index += 1) {
+      if (y > 275) { doc.addPage(); y = 20; tableHeader() }
+      if (codes[index]) doc.text(codes[index], MARGIN, y)
+      if (labels[index]) doc.text(labels[index], MARGIN + 40, y)
+      if (index === 0) doc.text(String(line.quantity), PAGE_W - MARGIN - 10, y, { align: 'right' })
+      y += 5
+    }
+    y += 2
   }
 
   if (project.items.length === 0) {
@@ -146,5 +243,5 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

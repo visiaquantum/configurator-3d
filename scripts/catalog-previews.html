@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <title>Anteprime dei componenti</title>
+  <style>
+    body { margin: 0; background: #f3f5f8; font: 14px system-ui; color: #334155; }
+    main { display: grid; grid-template-columns: repeat(2, 480px); width: 960px; }
+    figure { margin: 0; width: 480px; }
+    canvas { width: 480px; height: 300px; display: block; }
+    figcaption { padding: 12px 20px; }
+    header { padding: 16px 20px; }
+  </style>
+  <script type="importmap">{"imports":{"three":"/node_modules/three/build/three.module.js"}}</script>
+</head>
+<body>
+  <header>Anteprime del catalogo · caricamento…</header>
+  <main></main>
+  <script type="module">
+    import * as THREE from 'three'
+    import { GLTFLoader } from '/node_modules/three/examples/jsm/loaders/GLTFLoader.js'
+    const products = [
+      ['ysi12836', 'MONTANTI/YSI12836'],
+      ['xds40231km02', 'ORIZZONTALI/XDS40231KM02'],
+      ['xds40236km02', 'ORIZZONTALI/XDS40236KM02'],
+      ['xha40100', 'ORIZZONTALI/XHA40100'],
+      ['ptbm31', 'ACCESSORI/PTBM-31'],
+      ['kit01', 'KIT/KIT01'],
+    ]
+    const loader = new GLTFLoader()
+    for (const [id, path] of products) {
+      const figure = document.createElement('figure')
+      const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true })
+      renderer.setPixelRatio(1)
+      renderer.setSize(480, 300)
+      renderer.toneMapping = THREE.ACESFilmicToneMapping
+      renderer.toneMappingExposure = 1
+      renderer.domElement.dataset.product = id
+      figure.append(renderer.domElement)
+      const caption = document.createElement('figcaption')
+      caption.textContent = id
+      figure.append(caption)
+      document.querySelector('main').append(figure)
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color('#f3f5f8')
+      scene.add(new THREE.HemisphereLight('#ffffff', '#9ba4b1', 1.2))
+      const key = new THREE.DirectionalLight('#ffffff', 2)
+      key.position.set(4, 6, 5)
+      scene.add(key)
+      const fill = new THREE.DirectionalLight('#dce8ff', 0.8)
+      fill.position.set(-4, 3, -4)
+      scene.add(fill)
+      const { scene: model } = await loader.loadAsync(`/models/${path}.glb`)
+      model.traverse((node) => {
+        if (/snap|collider|collision/i.test(node.name)) node.visible = false
+        if (node.isMesh) {
+          const materials = Array.isArray(node.material) ? node.material : [node.material]
+          for (const material of materials) {
+            material.metalness = 0.25
+            material.roughness = 0.58
+            material.color?.set('#8796a8')
+          }
+        }
+      })
+      const box = new THREE.Box3()
+      model.updateMatrixWorld(true)
+      model.traverseVisible((node) => {
+        if (node.isMesh) box.union(new THREE.Box3().setFromObject(node))
+      })
+      const center = box.getCenter(new THREE.Vector3())
+      const size = box.getSize(new THREE.Vector3())
+      model.position.sub(center)
+      scene.add(model)
+      const camera = new THREE.PerspectiveCamera(32, 480 / 300, 0.001, 1000)
+      const direction = new THREE.Vector3(1.6, 1.05, 1.6).normalize()
+      camera.position.copy(direction)
+      camera.lookAt(0, 0, 0)
+      camera.updateMatrixWorld(true)
+      const view = camera.quaternion.clone().invert()
+      const viewBox = new THREE.Box3()
+      for (const x of [-size.x / 2, size.x / 2]) {
+        for (const y of [-size.y / 2, size.y / 2]) {
+          for (const z of [-size.z / 2, size.z / 2]) viewBox.expandByPoint(new THREE.Vector3(x, y, z).applyQuaternion(view))
+        }
+      }
+      const viewSize = viewBox.getSize(new THREE.Vector3())
+      const halfFov = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2))
+      const distance = Math.max(viewSize.y / (2 * halfFov), viewSize.x / (2 * halfFov * camera.aspect)) * 1.08 + viewSize.z / 2
+      camera.position.copy(direction.multiplyScalar(distance))
+      camera.lookAt(0, 0, 0)
+      renderer.render(scene, camera)
+    }
+    document.querySelector('header').textContent = 'Anteprime del catalogo · 6 modelli caricati'
+  </script>
+</body>
+</html>

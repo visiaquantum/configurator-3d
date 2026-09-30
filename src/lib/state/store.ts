@@ -1,14 +1,26 @@
-import { create } from 'zustand'
+import { createContext, useContext } from 'react'
+import { useStore } from 'zustand'
+import { createStore } from 'zustand/vanilla'
+import { createItemRegistry } from '../scene/itemRegistry'
+import type { ItemRegistry } from '../scene/itemRegistry'
+import { parseProject } from '../io/serialize'
+import { parseCatalog } from '../io/catalog'
+import { applyItemPatch, removeProjectItems, reconcileConstraints } from './projectGraph'
 import type { Camera, Object3D, Scene as ThreeScene, WebGLRenderer } from 'three'
 import type {
   Anchor,
+  AssemblyManifest,
   CatalogItem,
+  Connection,
   ItemRule,
   ItemSnapPoint,
   PlacedItem,
   ProjectData,
+  ConfiguratorTelemetryEvent,
+  ValidationIssue,
 } from '../types'
-import { PROJECT_SCHEMA_VERSION } from '../types'
+import type { NeighborGap } from '../scene/neighborGap'
+import type { AttachmentInteraction } from '../scene/attachment'
 
 export interface CaptureRefs {
   gl: WebGLRenderer
@@ -38,7 +50,31 @@ export interface DragClearance {
 
 const HISTORY_LIMIT = 50
 
-interface ConfiguratorState {
+function canPatchItem(item: PlacedItem, patch: Partial<PlacedItem>): boolean {
+  if (patch.id !== undefined && patch.id !== item.id) throw new Error('L’ID item non può cambiare')
+  if (item.locked && !(Object.keys(patch).length === 1 && patch.locked === false)) return false
+  return !(item.constraints ?? []).some((constraint) => {
+    if (constraint.type !== 'lockAxis' || !constraint.axis) return false
+    const index = constraint.axis === 'x' ? 0 : constraint.axis === 'y' ? 1 : 2
+    return (patch.position && patch.position[index] !== item.position[index]) || (patch.rotation && patch.rotation[index] !== item.rotation[index])
+  })
+}
+
+export interface ConfiguratorState {
+  attachment: AttachmentInteraction | null
+  interactionNotice: string | null
+  setAttachment: (interaction: AttachmentInteraction | null) => void
+  itemRegistry: ItemRegistry
+  itemSizes: Record<string, [number, number, number]>
+  assetErrors: Record<string, string>
+  assetEpoch: number
+  loadingCatalog: boolean
+  loadingManifest: boolean
+  catalogError: string | null
+  manifestError: string | null
+  hydrateItemPosition: (id: string, position: [number, number, number]) => void
+  setItemSize: (catalogId: string, size: [number, number, number]) => void
+  setAssetError: (id: string, error: string | null) => void
   project: ProjectData | null
   selectedId: string | null
   /**
@@ -47,6 +83,9 @@ interface ConfiguratorState {
    * Used by Item/Inspector to look up glbUrl, label, size by catalogId.
    */
   catalog: Record<string, CatalogItem>
+  assemblyManifest: AssemblyManifest | null
+  validationIssues: ValidationIssue[]
+  telemetryListener: ((event: ConfiguratorTelemetryEvent) => void) | null
   /** Current gizmo mode for the selected item (TransformControls). */
   gizmoMode: GizmoMode
   /** Anchors extracted at runtime from the enclosure GLB (takes priority over project.enclosure.anchors). */
@@ -79,6 +118,12 @@ interface ConfiguratorState {
   gridStep: number
   /** One-shot camera preset request. CameraPresetBridge resets to null after applying. */
   cameraPreset: CameraPreset | null
+  /**
+   * One-shot "center the orbit on the selected item" request, as a counter so
+   * repeated clicks re-fire. SelectedOrbitTarget consumes it; selecting an item
+   * does NOT move the camera on its own.
+   */
+  focusSelectedRequest: number
   /** AABB of the loaded enclosure GLB in world units, or null until it loads. */
   enclosureBBox: EnclosureBBox | null
   /** AABB of the inner cargo area (`Body_interior` node) in world units, if available. */
@@ -87,6 +132,12 @@ interface ConfiguratorState {
   doorsOpen: boolean
   /** Live clearance for the dragged item, or null when no drag is active. */
   dragClearance: DragClearance | null
+  /**
+   * Distance from the selected item to the nearest other product, on the
+   * nearest axis only. Maintained by scene/NeighborGapIndicator; null when
+   * nothing is selected, nothing is in range, or the two overlap.
+   */
+  neighborGap: NeighborGap | null
   /** Ids of items currently overlapping another item's AABB. */
   overlappingIds: Set<string>
   /** When true, switches to first-person POV inside the enclosure (WASD + mouse-look). */
@@ -94,6 +145,11 @@ interface ConfiguratorState {
 
   setProject: (p: ProjectData) => void
   setCatalog: (items: CatalogItem[]) => void
+  setAssemblyManifest: (manifest: AssemblyManifest | null) => void
+  setValidationIssues: (issues: ValidationIssue[]) => void
+  setTelemetryListener: (listener: ((event: ConfiguratorTelemetryEvent) => void) | null) => void
+  reportTelemetry: (event: ConfiguratorTelemetryEvent) => void
+  setConnections: (connections: Connection[]) => void
   addCatalogItem: (item: CatalogItem) => void
   setGizmoMode: (m: GizmoMode) => void
   setRuntimeAnchors: (anchors: Anchor[]) => void
@@ -106,10 +162,13 @@ interface ConfiguratorState {
   setSnapToGridEnabled: (v: boolean) => void
   setGridStep: (v: number) => void
   setCameraPreset: (p: CameraPreset | null) => void
+  /** Ask SelectedOrbitTarget to center the orbit on the selected item. */
+  requestFocusSelected: () => void
   setEnclosureBBox: (b: EnclosureBBox | null) => void
   setInteriorBBox: (b: EnclosureBBox | null) => void
   setDoorsOpen: (v: boolean) => void
   setDragClearance: (c: DragClearance | null) => void
+  setNeighborGap: (g: NeighborGap | null) => void
   setOverlappingIds: (ids: Set<string>) => void
   setWalkMode: (v: boolean) => void
   /** Walk the scene and return all Object3Ds tagged with userData.exportable === true. */
@@ -119,13 +178,24 @@ interface ConfiguratorState {
   updateItem: (id: string, patch: Partial<PlacedItem>) => void
   /** Patch several items atomically (single undo step). */
   updateItems: (patches: Array<{ id: string; patch: Partial<PlacedItem> }>) => void
+  /** Atomically commit item changes and the assembly graph as one undo entry. */
+  commitAssembly: (
+    patches: Array<{ id: string; patch: Partial<PlacedItem> }>,
+    connections: Connection[],
+  ) => void
   addItem: (item: PlacedItem) => void
   removeItem: (id: string) => void
   /**
    * Add `twin` and link it to `sourceId` with reciprocal mirrorPair
    * constraints at `distance` (single undo step).
    */
-  createMirrorPair: (sourceId: string, twin: PlacedItem, distance: number) => void
+  createMirrorPair: (
+    sourceId: string,
+    twin: PlacedItem,
+    distance: number,
+    /** Joints the twin makes where it lands; omit to keep the current ones. */
+    connections?: Connection[],
+  ) => void
   /** Unlink a mirror pair, removing the auto-created mirrored twin. */
   removeMirrorPair: (id: string) => void
   select: (id: string | null) => void
@@ -138,11 +208,12 @@ interface ConfiguratorState {
   canRedo: () => boolean
 }
 
-export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
+export const createConfiguratorStore = () => createStore<ConfiguratorState>((set, get) => {
   // Snapshot current project into past, clear future. Call BEFORE mutating.
   const pushHistory = () => {
     const cur = get().project
     if (!cur) return
+    get().setAttachment(null)
     set((s) => ({
       past: [...s.past, cur].slice(-HISTORY_LIMIT),
       future: [],
@@ -150,9 +221,39 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
   }
 
   return {
+    attachment: null,
+    interactionNotice: null,
+    setAttachment: (attachment) => set((state) => {
+      if (attachment && state.readOnly) return {}
+      return { attachment, ...(!attachment && state.attachment && state.attachment.stage !== 'menu' && state.xrayEnabled
+        ? { xrayEnabled: state.attachment.previousXray } : {}) }
+    }),
+    itemRegistry: createItemRegistry(),
+    itemSizes: {},
+    assetErrors: {},
+    assetEpoch: 0,
+    loadingCatalog: false,
+    loadingManifest: false,
+    catalogError: null,
+    manifestError: null,
+    hydrateItemPosition: (id, position) => set((s) => {
+      const item = s.project?.items.find((entry) => entry.id === id)
+      if (!s.project || !item || !position.every(Number.isFinite) || item.position.every((value, index) => Math.abs(value - position[index]) < 1e-6)) return {}
+      return { project: { ...s.project, items: s.project.items.map((entry) => entry.id === id ? { ...entry, position: [...position] } : entry) } }
+    }),
+    setItemSize: (catalogId, size) => set((s) => ({ itemSizes: { ...s.itemSizes, [catalogId]: size } })),
+    setAssetError: (id, error) => set((s) => {
+      const next = { ...s.assetErrors }
+      if (error) next[id] = error
+      else delete next[id]
+      return { assetErrors: next }
+    }),
     project: null,
     selectedId: null,
     catalog: {},
+    assemblyManifest: null,
+    validationIssues: [],
+    telemetryListener: null,
     gizmoMode: 'translate',
     runtimeAnchors: [],
     itemRules: {},
@@ -166,32 +267,59 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     snapToGridEnabled: false,
     gridStep: 0.05,
     cameraPreset: null,
+    focusSelectedRequest: 0,
     enclosureBBox: null,
     interiorBBox: null,
     doorsOpen: false,
     dragClearance: null,
+    neighborGap: null,
     overlappingIds: new Set<string>(),
     walkMode: false,
 
-    setProject: (p) =>
+    setProject: (p) => {
+      const project = parseProject(p).project
+      get().setAttachment(null)
+      const previous = get().project?.enclosure
+      const sameAsset = previous?.glbUrl === project.enclosure.glbUrl &&
+        (previous?.scale ?? 1) === (project.enclosure.scale ?? 1) &&
+        JSON.stringify(previous?.dimensions) === JSON.stringify(project.enclosure.dimensions)
       set({
-        project: { ...p, version: p.version ?? PROJECT_SCHEMA_VERSION },
-        past: [],
-        future: [],
-        runtimeAnchors: [],
-        selectedId: null,
-        draggingItemId: null,
-        enclosureBBox: null,
-        interiorBBox: null,
-        dragClearance: null,
-        overlappingIds: new Set<string>(),
-      }),
+        project,
+        interactionNotice: null,
+        past: [], future: [], selectedId: null, draggingItemId: null,
+        dragClearance: null, neighborGap: null, walkMode: false,
+        validationIssues: [], overlappingIds: new Set<string>(),
+        ...(sameAsset ? {} : { runtimeAnchors: [], enclosureBBox: null, interiorBBox: null }),
+      })
+    },
 
-    setCatalog: (items) =>
-      set({ catalog: Object.fromEntries(items.map((it) => [it.id, it])) }),
+    setCatalog: (items) => {
+      const catalog = Object.fromEntries(parseCatalog(items).map((item) => [item.id, item]))
+      const previous = get()
+      if (JSON.stringify(previous.catalog) === JSON.stringify(catalog)) return
+      get().setAttachment(null)
+      const changed = new Set(Object.keys(previous.catalog).filter((id) =>
+        JSON.stringify(previous.catalog[id]) !== JSON.stringify(catalog[id]),
+      ))
+      const keep = <T,>(values: Record<string, T>) => Object.fromEntries(
+        Object.entries(values).filter(([id]) => !changed.has(id)),
+      )
+      set({ catalog, itemRules: keep(previous.itemRules), itemSnaps: keep(previous.itemSnaps),
+        itemSizes: keep(previous.itemSizes), assetEpoch: previous.assetEpoch + 1 })
+    },
 
-    addCatalogItem: (item) =>
-      set((s) => ({ catalog: { ...s.catalog, [item.id]: item } })),
+    setAssemblyManifest: (manifest) => { get().setAttachment(null); set({ assemblyManifest: manifest }) },
+    setValidationIssues: (issues) => set({ validationIssues: issues }),
+    setTelemetryListener: (listener) => set({ telemetryListener: listener }),
+    reportTelemetry: (event) => {
+      try { get().telemetryListener?.(event) } catch { /* Host instrumentation must not interrupt editing. */ }
+    },
+    setConnections: (connections) => set((s) => s.project ? { project: { ...s.project, items: reconcileConstraints(s.project.items, connections), connections } } : {}),
+
+    addCatalogItem: (item) => {
+      const current = get().catalog
+      get().setCatalog([...Object.values(current).filter((entry) => entry.id !== item.id), item])
+    },
 
     setGizmoMode: (m) => set({ gizmoMode: m }),
 
@@ -207,24 +335,28 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
 
     setCaptureRefs: (refs) => set({ captureRefs: refs }),
 
-    setReadOnly: (v) => set({ readOnly: v }),
+    setReadOnly: (v) => { if (v) get().setAttachment(null); set({ readOnly: v }) },
 
     setXrayEnabled: (v) => set({ xrayEnabled: v }),
     setSnapToGridEnabled: (v) => set({ snapToGridEnabled: v }),
-    setGridStep: (v) => set({ gridStep: v }),
+    setGridStep: (v) => { if (Number.isFinite(v) && v > 0) set({ gridStep: v }) },
     setCameraPreset: (p) => set({ cameraPreset: p }),
+    requestFocusSelected: () =>
+      set((s) => ({ focusSelectedRequest: s.focusSelectedRequest + 1 })),
     setEnclosureBBox: (b) => set({ enclosureBBox: b }),
     setInteriorBBox: (b) => set({ interiorBBox: b }),
     setDoorsOpen: (v) => set({ doorsOpen: v }),
     setDragClearance: (c) => set({ dragClearance: c }),
+    setNeighborGap: (g) => set({ neighborGap: g }),
     setOverlappingIds: (ids) => set({ overlappingIds: ids }),
     setWalkMode: (v) =>
-      set({
+      { get().setAttachment(null); set({
         walkMode: v,
         selectedId: v ? null : get().selectedId,
         draggingItemId: null,
         dragClearance: null,
-      }),
+        neighborGap: null,
+      }) },
 
     collectExportRoots: () => {
       const refs = get().captureRefs
@@ -238,64 +370,79 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
 
     getEffectiveAnchors: () => {
       const s = get()
+      if (s.project?.enclosure.anchors?.length) return s.project.enclosure.anchors
       if (s.runtimeAnchors.length > 0) return s.runtimeAnchors
       return s.project?.enclosure.anchors ?? []
     },
 
     updateItem: (id, patch) => {
       const s = get()
-      if (!s.project) return
+      if (!s.project || s.readOnly) return
+      const item = s.project.items.find((entry) => entry.id === id)
+      if (!item || !canPatchItem(item, patch)) return
+      const project = parseProject({ ...s.project, items: s.project.items.map((it) => it.id === id ? applyItemPatch(it, patch) : it) }).project
       pushHistory()
-      set({
-        project: {
-          ...s.project,
-          items: s.project.items.map((it) => (it.id === id ? { ...it, ...patch } : it)),
-        },
-      })
+      set({ project })
     },
 
     updateItems: (patches) => {
       const s = get()
-      if (!s.project || patches.length === 0) return
-      pushHistory()
+      if (!s.project || s.readOnly || patches.length === 0 || patches.some(({ id, patch }) => { const item = s.project?.items.find((entry) => entry.id === id); return !item || !canPatchItem(item, patch) })) return
       const byId = new Map(patches.map((p) => [p.id, p.patch]))
-      set({
-        project: {
+      const project = parseProject({
           ...s.project,
           items: s.project.items.map((it) => {
             const patch = byId.get(it.id)
-            return patch ? { ...it, ...patch } : it
+            return patch ? applyItemPatch(it, patch) : it
           }),
-        },
-      })
+      }).project
+      pushHistory()
+      set({ project })
+    },
+
+    commitAssembly: (patches, connections) => {
+      const s = get()
+      if (!s.project || s.readOnly || patches.some(({ id, patch }) => { const item = s.project?.items.find((entry) => entry.id === id); return !item || !canPatchItem(item, patch) })) return
+      const byId = new Map(patches.map((p) => [p.id, p.patch]))
+      const project = parseProject({
+          ...s.project,
+          items: reconcileConstraints(s.project.items.map((it) => {
+            const patch = byId.get(it.id)
+            return patch ? applyItemPatch(it, patch) : it
+          }), connections),
+          connections: structuredClone(connections),
+      }).project
+      pushHistory()
+      set({ project })
     },
 
     addItem: (item) => {
       const s = get()
-      if (!s.project) return
+      if (!s.project || s.readOnly) return
+      if (s.project.items.some((existing) => existing.id === item.id)) throw new Error('ID item duplicato')
+      const validated = parseProject({ ...s.project, items: [...s.project.items, item] }).project
       pushHistory()
-      set({ project: { ...s.project, items: [...s.project.items, item] } })
+      set({ project: validated })
     },
 
     removeItem: (id) => {
       const s = get()
-      if (!s.project) return
-      pushHistory()
-      // A mirror pair is a single block: removing either half removes both.
-      const item = s.project.items.find((it) => it.id === id)
-      const partnerId = item?.constraints?.find((c) => c.type === 'mirrorPair')?.target
+      const item = s.project?.items.find((entry) => entry.id === id)
+      if (!s.project || s.readOnly || !item || item.locked) return
+      const partnerId = item.constraints?.find((c) => c.type === 'mirrorPair')?.target
+      if (s.project.items.find((entry) => entry.id === partnerId)?.locked) return
       const removed = new Set(partnerId ? [id, partnerId] : [id])
-      set({
-        project: { ...s.project, items: s.project.items.filter((it) => !removed.has(it.id)) },
-        selectedId: s.selectedId && removed.has(s.selectedId) ? null : s.selectedId,
-      })
+      pushHistory()
+      set({ project: removeProjectItems(s.project, removed),
+        selectedId: s.selectedId && removed.has(s.selectedId) ? null : s.selectedId })
     },
 
-    createMirrorPair: (sourceId, twin, distance) => {
+    createMirrorPair: (sourceId, twin, distance, connections) => {
       const s = get()
       if (!s.project) return
       const source = s.project.items.find((it) => it.id === sourceId)
-      if (!source) return
+      if (!source || source.locked || s.readOnly || source.constraints?.some((constraint) => constraint.type === 'mirrorPair') || s.project.items.some((item) => item.id === twin.id)) return
+      if (!Number.isFinite(distance) || distance <= 0) throw new Error('Distanza coppia non valida')
       pushHistory()
       const link = (target: string) => ({ type: 'mirrorPair' as const, target, distance })
       set({
@@ -321,45 +468,35 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
               ],
             },
           ],
+          connections: connections ?? s.project.connections,
         },
       })
     },
 
     removeMirrorPair: (id) => {
       const s = get()
-      if (!s.project) return
-      const item = s.project.items.find((it) => it.id === id)
+      const item = s.project?.items.find((entry) => entry.id === id)
       const partnerId = item?.constraints?.find((c) => c.type === 'mirrorPair')?.target
-      if (!item || !partnerId) return
-      const partner = s.project.items.find((it) => it.id === partnerId)
-      // Drop the auto-created (mirrored) half, keep the other as a free item.
-      const removeId = partner?.mirrored ? partnerId : item.mirrored ? id : partnerId
+      const partner = s.project?.items.find((entry) => entry.id === partnerId)
+      if (!s.project || s.readOnly || !item || !partner || item.locked || partner.locked) return
+      const removeId = partner.mirrored ? partner.id : item.mirrored ? item.id : partner.id
       pushHistory()
-      set({
-        project: {
-          ...s.project,
-          items: s.project.items
-            .filter((it) => it.id !== removeId)
-            .map((it) =>
-              it.id === id || it.id === partnerId
-                ? { ...it, constraints: it.constraints?.filter((c) => c.type !== 'mirrorPair') }
-                : it,
-            ),
-        },
-        selectedId: s.selectedId === removeId ? null : s.selectedId,
-      })
+      set({ project: removeProjectItems(s.project, new Set([removeId])),
+        selectedId: s.selectedId === removeId ? null : s.selectedId })
     },
 
     select: (id) => set({ selectedId: id }),
 
-    exportProject: () => get().project,
+    exportProject: () => get().project ? structuredClone(get().project) : null,
 
     undo: () => {
       const { past, future, project } = get()
-      if (past.length === 0 || !project) return
+      if (get().readOnly || past.length === 0 || !project) return
+      get().setAttachment(null)
       const prev = past[past.length - 1]
       set({
         project: prev,
+        interactionNotice: null,
         past: past.slice(0, -1),
         future: [project, ...future].slice(0, HISTORY_LIMIT),
         selectedId: null,
@@ -368,10 +505,12 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
 
     redo: () => {
       const { past, future, project } = get()
-      if (future.length === 0 || !project) return
+      if (get().readOnly || future.length === 0 || !project) return
+      get().setAttachment(null)
       const next = future[0]
       set({
         project: next,
+        interactionNotice: null,
         past: [...past, project].slice(-HISTORY_LIMIT),
         future: future.slice(1),
         selectedId: null,
@@ -382,3 +521,16 @@ export const useConfiguratorStore = create<ConfiguratorState>((set, get) => {
     canRedo: () => get().future.length > 0,
   }
 })
+
+
+export type ConfiguratorStore = ReturnType<typeof createConfiguratorStore>
+export const ConfiguratorStoreContext = createContext<ConfiguratorStore | null>(null)
+const legacyStore = createConfiguratorStore()
+export const useConfiguratorStoreApi = (): ConfiguratorStore => useContext(ConfiguratorStoreContext) ?? legacyStore
+
+/** Outside a provider, static methods and selectors use the legacy standalone store. */
+function useScopedConfiguratorStore<T>(selector: (state: ConfiguratorState) => T): T {
+  return useStore(useConfiguratorStoreApi(), selector)
+}
+
+export const useConfiguratorStore = Object.assign(useScopedConfiguratorStore, legacyStore)

@@ -4,12 +4,33 @@ import type { CatalogItem } from '../types'
 export const CATALOG_SCHEMA_VERSION = 1
 
 const Vec3Schema = z.tuple([z.number(), z.number(), z.number()])
+const AutoSnapGridOptionsSchema = z.object({
+  normals: z.array(Vec3Schema).min(1).optional(),
+  meshNameIncludes: z.array(z.string().min(1)).min(1).optional(),
+  minHoleSize: z.number().positive().optional(),
+  maxHoleSize: z.number().positive().optional(),
+  planeTolerance: z.number().positive().optional(),
+  vertexTolerance: z.number().positive().optional(),
+}).refine((value) => !value.minHoleSize || !value.maxHoleSize || value.minHoleSize <= value.maxHoleSize, { message: 'minHoleSize must not exceed maxHoleSize' })
+const SnapPointSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).optional(),
+  kind: z.string().min(1),
+  position: Vec3Schema,
+  normal: Vec3Schema.optional(),
+})
 
+// `scale`, `autoSnapGrid`, and `snapPoints` must be listed here: zod strips unknown keys, so
+// anything missing from the schema is silently dropped when a catalog is
+// loaded from JSON — a product exported at 0.1× would come back at 1×.
 const CatalogItemSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
   glbUrl: z.string().min(1),
-  size: Vec3Schema.optional(),
+  size: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]).optional(),
+  scale: z.number().positive().optional(),
+  autoSnapGrid: z.union([z.boolean(), AutoSnapGridOptionsSchema]).optional(),
+  snapPoints: z.array(SnapPointSchema).optional(),
 })
 
 const CatalogMetadataSchema = z
@@ -21,7 +42,7 @@ const CatalogMetadataSchema = z
 
 // Wrapper form: { version, items, metadata? }. Used for versioned external files.
 const CatalogDataSchema = z.object({
-  version: z.number().int().nonnegative(),
+  version: z.literal(CATALOG_SCHEMA_VERSION),
   items: z.array(CatalogItemSchema),
   metadata: CatalogMetadataSchema.optional(),
 })
@@ -60,7 +81,18 @@ export function parseCatalog(raw: string | unknown): CatalogItem[] {
   const schema = isArray ? CatalogArraySchema : CatalogDataSchema
   const result = schema.safeParse(obj)
   if (result.success) {
-    return (isArray ? result.data : (result.data as { items: CatalogItem[] }).items) as CatalogItem[]
+    const items = (isArray ? result.data : (result.data as { items: CatalogItem[] }).items) as CatalogItem[]
+    const ids = new Set<string>()
+    for (const item of items) {
+      if (ids.has(item.id)) throw new CatalogParseError('Duplicate catalog id', [{ level: 'error', path: '$.items', message: item.id }])
+      ids.add(item.id)
+      const snaps = new Set<string>()
+      for (const point of item.snapPoints ?? []) {
+        if (snaps.has(point.id)) throw new CatalogParseError('Duplicate snap id', [{ level: 'error', path: '$.items.snapPoints', message: point.id }])
+        snaps.add(point.id)
+      }
+    }
+    return items
   }
 
   const issues = result.error.issues.map<CatalogIssue>((iss) => ({
@@ -75,9 +107,9 @@ export function parseCatalog(raw: string | unknown): CatalogItem[] {
  * Resolve a catalog source to a CatalogItem[]. Accepts an array directly,
  * or a URL string to fetch + parse.
  */
-export async function loadCatalog(source: CatalogItem[] | string): Promise<CatalogItem[]> {
-  if (Array.isArray(source)) return source
-  const res = await fetch(source)
+export async function loadCatalog(source: CatalogItem[] | string, signal?: AbortSignal): Promise<CatalogItem[]> {
+  if (Array.isArray(source)) return parseCatalog(source)
+  const res = await fetch(source, { signal })
   if (!res.ok) {
     throw new CatalogParseError(`Catalog fetch failed: ${res.status} ${res.statusText}`, [
       { level: 'error', path: '$', message: `HTTP ${res.status}` },

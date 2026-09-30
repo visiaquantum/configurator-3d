@@ -1,5 +1,4 @@
 import type { CatalogItem, ProjectData } from '../types'
-import { PROJECT_SCHEMA_VERSION } from '../types'
 import { ProjectDataSchema } from './schema'
 import { migrateProject, MigrationError } from './migrations'
 
@@ -29,7 +28,7 @@ export interface ParseResult {
 }
 
 export function serializeProject(p: ProjectData): string {
-  return JSON.stringify({ ...p, version: PROJECT_SCHEMA_VERSION }, null, 2)
+  return JSON.stringify(parseProject(p).project, null, 2)
 }
 
 export function parseProject(raw: string | unknown, opts: ParseOptions = {}): ParseResult {
@@ -76,19 +75,8 @@ function collectReferenceWarnings(p: ProjectData, catalog?: CatalogItem[]): Proj
   const warnings: ProjectIssue[] = []
   const catalogIds = new Set(catalog?.map((c) => c.id) ?? [])
   const anchorIds = new Set(p.enclosure.anchors?.map((a) => a.id) ?? [])
-  const itemIdSet = new Set<string>()
 
   p.items.forEach((it, idx) => {
-    if (itemIdSet.has(it.id)) {
-      warnings.push({
-        level: 'warning',
-        path: `$.items[${idx}].id`,
-        message: `duplicate item id "${it.id}"`,
-      })
-    } else {
-      itemIdSet.add(it.id)
-    }
-
     if (catalog && !catalogIds.has(it.catalogId)) {
       warnings.push({
         level: 'warning',
