@@ -38,7 +38,7 @@ export function extractAnchorsFromObject(root: Object3D): ExtractedAnchorNode[] 
     let id: string | null = null
     const m = obj.name.match(NAME_PREFIX_RE)
     if (m) id = m[1]
-    else if (isAnchorByExtras) id = (ud.id as string | undefined) ?? obj.name
+    else if (isAnchorByExtras) id = typeof ud.id === 'string' ? ud.id : obj.name
 
     if (!id) return
 
@@ -51,7 +51,7 @@ export function extractAnchorsFromObject(root: Object3D): ExtractedAnchorNode[] 
     if (
       Array.isArray(overrideNormal) &&
       overrideNormal.length === 3 &&
-      overrideNormal.every((n) => typeof n === 'number')
+      overrideNormal.every((n) => typeof n === 'number' && Number.isFinite(n))
     ) {
       normal = overrideNormal as Vec3
     } else {

@@ -1,5 +1,10 @@
 export { Configurator3D } from './Configurator3D'
-export { useConfiguratorStore } from './state/store'
+export { useConfiguratorStore, useConfiguratorStoreApi, createConfiguratorStore } from './state/store'
+export type { ConfiguratorStore, ConfiguratorState } from './state/store'
+export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview } from './scene/attachment'
+export type { AttachmentInteraction } from './scene/attachment'
+export { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
+export { configurationStatus, validationForState } from './state/readiness'
 export {
   serializeProject,
   parseProject,
@@ -30,6 +35,7 @@ export {
 export type { CatalogIssue } from './io/catalog'
 export {
   assemblyGroup,
+  assemblyPosePatches,
   canMate,
   dedupeJoints,
   itemSnapConstraint,
@@ -92,6 +98,7 @@ export type {
   ValidationContext,
   ConfiguratorTelemetryEvent,
   Configurator3DProps,
+  ConfiguratorTheme,
   ConfiguratorHandle,
   ProjectMetadata,
   Vec3,

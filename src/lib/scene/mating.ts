@@ -1,6 +1,7 @@
-import { Vector3 } from 'three'
+import { Vector3, Euler as ThreeEuler, Quaternion } from 'three'
 import type { Connection, Euler, ItemConstraint, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
-import { colliderSizeOf, getItem } from './itemRegistry'
+import { colliderSizeOf, getItem, defaultItemRegistry } from './itemRegistry'
+import { rotateVector } from './geometry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
 
@@ -47,6 +48,7 @@ export function snapKindLabel(kind: string): string {
 
 /** Readable name for one point: "Foro r3 c2", "Facciata 2", "Base a terra". */
 export function snapPointLabel(p: ItemSnapPoint): string {
+  if (p.label) return p.label
   const base = snapKindLabel(p.kind)
   if (p.kind === AUTO_GRID_SNAP_KIND) {
     const m = p.id.match(/-r(\d+)-c(\d+)$/)
@@ -105,8 +107,8 @@ export interface MatingTarget {
 const _v = new Vector3()
 
 /** World position of an item-local snap point, or null if the item is gone. */
-export function worldSnapPosition(itemId: string, local: Vec3): Vec3 | null {
-  const reg = getItem(itemId)
+export function worldSnapPosition(itemId: string, local: Vec3, registry = defaultItemRegistry): Vec3 | null {
+  const reg = getItem(itemId, registry)
   if (!reg) return null
   reg.group.updateWorldMatrix(true, false)
   _v.set(local[0], local[1], local[2]).applyMatrix4(reg.group.matrixWorld)
@@ -126,6 +128,7 @@ export function listMatingTargets(
   sourceKind: string,
   snapsByItem: Map<string, ItemSnapPoint[]>,
   opts: { all?: boolean } = {},
+  registry = defaultItemRegistry,
 ): MatingTarget[] {
   const out: MatingTarget[] = []
   for (const [itemId, points] of snapsByItem) {
@@ -133,7 +136,7 @@ export function listMatingTargets(
     for (const point of points) {
       const compatible = canMate(sourceKind, point.kind)
       if (!compatible && !opts.all) continue
-      const position = worldSnapPosition(itemId, point.position)
+      const position = worldSnapPosition(itemId, point.position, registry)
       if (!position) continue
       out.push({ itemId, point, position, compatible })
     }
@@ -151,19 +154,12 @@ export function listMatingTargets(
  */
 export function positionForItemSnap(
   myPoint: Vec3,
-  yaw: number,
+  yaw: number | Euler,
   colliderHeight: number,
   target: Vec3,
 ): Vec3 {
-  const c = Math.cos(yaw)
-  const s = Math.sin(yaw)
-  const dx = myPoint[0] * c + myPoint[2] * s
-  const dz = -myPoint[0] * s + myPoint[2] * c
-  return [
-    target[0] - dx,
-    target[1] - (myPoint[1] + colliderHeight / 2),
-    target[2] - dz,
-  ]
+  const offset = rotateVector(myPoint, typeof yaw === 'number' ? [0, yaw, 0] : yaw)
+  return [target[0] - offset[0], target[1] - colliderHeight / 2 - offset[1], target[2] - offset[2]]
 }
 
 /** The `snapToItem` constraint on an item, if any. */
@@ -206,6 +202,7 @@ export interface AssemblyContext {
 export function resolveSnappedChildren(
   movedId: string,
   ctx: AssemblyContext,
+  registry = defaultItemRegistry,
 ): Array<{ id: string; patch: Partial<PlacedItem> }> {
   const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = []
   const visited = new Set<string>([movedId])
@@ -225,8 +222,8 @@ export function resolveSnappedChildren(
       const targetPoint = parentPoints.find((p) => p.id === c.targetPoint)
       if (!myPoint || !targetPoint) continue
 
-      const targetWorld = worldSnapPosition(parentId, targetPoint.position)
-      const size = colliderSizeOf(child.id)
+      const targetWorld = worldSnapPosition(parentId, targetPoint.position, registry)
+      const size = colliderSizeOf(child.id, registry)
       if (!targetWorld || !size) continue
 
       // Re-derive the mating orientation from the two faces rather than
@@ -238,12 +235,12 @@ export function resolveSnappedChildren(
 
       const position = positionForItemSnap(
         myPoint.position,
-        rotation[1],
+        rotation,
         size[1],
         targetWorld,
       )
 
-      const reg = getItem(child.id)
+      const reg = getItem(child.id, registry)
       if (reg) {
         reg.group.position.set(position[0], position[1] + size[1] / 2, position[2])
         reg.group.rotation.set(rotation[0], rotation[1], rotation[2])
@@ -423,6 +420,9 @@ export function rotateGroupPatches(
   return items
     .filter((item) => group.has(item.id))
     .map((item) => {
+      const turn = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), step)
+      const quaternion = new Quaternion().setFromEuler(new ThreeEuler(...item.rotation)).premultiply(turn)
+      const euler = new ThreeEuler().setFromQuaternion(quaternion)
       const dx = item.position[0] - pivot[0]
       const dz = item.position[2] - pivot[2]
       return {
@@ -430,10 +430,23 @@ export function rotateGroupPatches(
         patch: {
           // Same yaw convention as positionForItemSnap.
           position: [pivot[0] + dx * cos + dz * sin, item.position[1], pivot[2] - dx * sin + dz * cos] as Vec3,
-          rotation: [item.rotation[0], item.rotation[1] + step, item.rotation[2]] as Euler,
+          rotation: item.rotation[0] === 0 && item.rotation[2] === 0
+            ? [0, item.rotation[1] + step, 0] as Euler
+            : [euler.x, euler.y, euler.z] as Euler,
         },
       }
     })
+}
+
+/** Pure rigid placement of a complete assembly, used by previews and commits. */
+export function assemblyPosePatches(items: PlacedItem[], group: Set<string>, source: PlacedItem, pose: { position: Vec3; rotation: Euler }) {
+  return rotateGroupPatches(items, group, source.position, pose.rotation[1] - source.rotation[1]).map(({ id, patch }) => ({
+    id,
+    patch: id === source.id ? { position: pose.position, rotation: pose.rotation } : {
+      ...patch,
+      position: patch.position!.map((value, index) => value + pose.position[index] - source.position[index]) as Vec3,
+    },
+  }))
 }
 
 /**

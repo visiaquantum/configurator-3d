@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useThree } from '@react-three/fiber'
 import type { Vector3 as Vec3Type } from 'three'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 
 interface OrbitLike {
   target: Vec3Type
@@ -19,6 +19,7 @@ function isOrbitLike(c: unknown): c is OrbitLike {
  * which bumps `focusSelectedRequest` and triggers the effect below.
  */
 export function SelectedOrbitTarget() {
+  const storeApi = useConfiguratorStoreApi()
   const { controls, invalidate } = useThree() as {
     controls: unknown
     invalidate: () => void
@@ -31,7 +32,7 @@ export function SelectedOrbitTarget() {
 
     // Read once, untracked: the effect must run when the request counter
     // changes, not whenever the item moves.
-    const { selectedId, project, catalog } = useConfiguratorStore.getState()
+    const { selectedId, project, catalog } = storeApi.getState()
     if (!selectedId || !project) return
     const item = project.items.find((it) => it.id === selectedId)
     if (!item) return
@@ -47,7 +48,7 @@ export function SelectedOrbitTarget() {
     )
     controls.update()
     invalidate()
-  }, [focusRequest, controls, invalidate, walkMode])
+  }, [focusRequest, controls, invalidate, walkMode, storeApi])
 
   return null
 }

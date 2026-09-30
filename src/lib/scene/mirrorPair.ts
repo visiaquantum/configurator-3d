@@ -21,7 +21,7 @@ export interface MirrorPairParams {
 
 export function mirrorPairDistances(rule: ItemRule): number[] {
   const d = (rule.params as Partial<MirrorPairParams>).distances
-  return Array.isArray(d) ? d.filter((n): n is number => typeof n === 'number') : []
+  return Array.isArray(d) ? d.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0) : []
 }
 
 export type MirrorAxis = 'x' | 'z'
@@ -121,6 +121,6 @@ export function mirrorPairConstraint(item: PlacedItem) {
  * this instead of overwriting `constraints` wholesale.
  */
 export function withSnapConstraint(item: PlacedItem, snap: ItemConstraint | null) {
-  const kept = item.constraints?.filter((c) => c.type === 'mirrorPair') ?? []
+  const kept = item.constraints?.filter((c) => c.type !== 'snapToAnchor' && c.type !== 'snapToItem') ?? []
   return snap ? [...kept, snap] : kept
 }

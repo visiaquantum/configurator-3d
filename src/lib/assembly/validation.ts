@@ -13,6 +13,7 @@ import type {
   Vec3,
 } from '../types'
 import { connectorsCanMate, definitionFor } from './manifest'
+import { worldPoint, transformedBounds, rotateVector, normalsOppose } from '../scene/geometry'
 import { mirrorScaleFor, snapsForItem } from '../scene/mating'
 
 interface Bounds {
@@ -22,41 +23,24 @@ interface Bounds {
 
 const EPSILON = 1e-6
 
-function productSize(item: PlacedItem, catalog: Record<string, CatalogItem>, manifest?: AssemblyManifest | null): Vec3 {
-  const definition = definitionFor(manifest, item.catalogId)
-  const fromCollider = definition?.colliders?.[0]?.size
-  const fromCatalog = catalog[item.catalogId]?.size
+function productSize(item: PlacedItem, catalog: Record<string, CatalogItem>, manifest?: AssemblyManifest | null, context: ValidationContext = {}): Vec3 {
+  const hydrated = context.itemSizes?.[item.catalogId]
+  if (hydrated) return hydrated
+  const size = catalog[item.catalogId]?.size ?? definitionFor(manifest, item.catalogId)?.colliders?.[0]?.size ?? [0.1, 0.1, 0.1]
   const scale = catalog[item.catalogId]?.scale ?? 1
-  const size = fromCollider ?? fromCatalog ?? [0.1, 0.1, 0.1]
-  return [size[0] * scale, size[1] * scale, size[2] * scale]
+  return size.map((value) => value * scale) as Vec3
 }
 
-function boundsFor(item: PlacedItem, catalog: Record<string, CatalogItem>, manifest?: AssemblyManifest | null): Bounds[] {
+function boundsFor(item: PlacedItem, catalog: Record<string, CatalogItem>, manifest?: AssemblyManifest | null, context: ValidationContext = {}): Bounds[] {
   const definition = definitionFor(manifest, item.catalogId)
   const scale = catalog[item.catalogId]?.scale ?? 1
-  const bodySize = productSize(item, catalog, manifest)
-  const colliders = definition?.colliders?.length
-    ? definition.colliders
-    : [{ id: 'body', center: [0, 0, 0] as Vec3, size: bodySize }]
-  const yaw = item.rotation[1]
-  const c = Math.abs(Math.cos(yaw))
-  const s = Math.abs(Math.sin(yaw))
-  const cos = Math.cos(yaw)
-  const sin = Math.sin(yaw)
-  return colliders.map((collider) => {
-    const sx = collider.size[0] * scale
-    const sy = collider.size[1] * scale
-    const sz = collider.size[2] * scale
-    const cx = item.position[0] + (collider.center[0] * cos + collider.center[2] * sin) * scale
-    const cy = item.position[1] + bodySize[1] / 2 + collider.center[1] * scale
-    const cz = item.position[2] + (-collider.center[0] * sin + collider.center[2] * cos) * scale
-    const hx = (c * sx + s * sz) / 2
-    const hz = (s * sx + c * sz) / 2
-    return {
-      min: [cx - hx, cy - sy / 2, cz - hz],
-      max: [cx + hx, cy + sy / 2, cz + hz],
-    }
-  })
+  const bodySize = productSize(item, catalog, manifest, context)
+  const mirror = mirrorScaleFor(item, context.itemRules ?? {}) ?? [1, 1, 1]
+  if (!definition?.colliders?.length) return [transformedBounds(item, bodySize[1], [0, 0, 0], bodySize)]
+  return definition.colliders.map((collider) => transformedBounds(item, bodySize[1],
+    collider.center.map((value, index) => value * scale * mirror[index]) as Vec3,
+    collider.size.map((value) => value * scale) as Vec3,
+  ))
 }
 
 function overlap(a: Bounds, b: Bounds): Vec3 | null {
@@ -84,36 +68,8 @@ function intersectionBounds(a: Bounds, b: Bounds): Bounds | null {
   }
 }
 
-function transformBounds(item: PlacedItem, bodyHeight: number, center: Vec3, size: Vec3, scale: number): Bounds {
-  const yaw = item.rotation[1]
-  const cos = Math.cos(yaw)
-  const sin = Math.sin(yaw)
-  const c = Math.abs(cos)
-  const s = Math.abs(sin)
-  const cx = item.position[0] + (center[0] * cos + center[2] * sin) * scale
-  const cy = item.position[1] + bodyHeight / 2 + center[1] * scale
-  const cz = item.position[2] + (-center[0] * sin + center[2] * cos) * scale
-  const hx = (c * size[0] + s * size[2]) / 2
-  const hz = (s * size[0] + c * size[2]) / 2
-  return {
-    min: [cx - hx, cy - size[1] * scale / 2, cz - hz],
-    max: [cx + hx, cy + size[1] * scale / 2, cz + hz],
-  }
-}
-
 function pointFor(item: PlacedItem, pointId: string, context: ValidationContext): ItemSnapPoint | undefined {
   return snapsForItem(item, context.itemSnaps ?? {}, context.itemRules ?? {}).find((point) => point.id === pointId)
-}
-
-function worldPoint(item: PlacedItem, local: Vec3, bodyHeight: number): Vec3 {
-  const yaw = item.rotation[1]
-  const cos = Math.cos(yaw)
-  const sin = Math.sin(yaw)
-  return [
-    item.position[0] + local[0] * cos + local[2] * sin,
-    item.position[1] + bodyHeight / 2 + local[1],
-    item.position[2] - local[0] * sin + local[2] * cos,
-  ]
 }
 
 function clearanceBounds(
@@ -123,33 +79,25 @@ function clearanceBounds(
   catalog: Record<string, CatalogItem>,
   manifest?: AssemblyManifest | null,
   itemRules: Record<string, ItemRule[]> = {},
+  context: ValidationContext = {},
 ): Bounds[] {
   if (!point || !connector?.clearance?.length) return []
-  const bodyHeight = productSize(item, catalog, manifest)[1]
+  const bodyHeight = productSize(item, catalog, manifest, context)[1]
   const scale = catalog[item.catalogId]?.scale ?? 1
   // The box is offset from the point in the catalogue's frame, so the mirrored
   // half needs it flipped too — otherwise the void sits on the far side of the
   // face and the joint its twin accepts reads as a collision here.
   const mirror = mirrorScaleFor(item, itemRules) ?? [1, 1, 1]
-  return connector.clearance.map((clearance: ConnectorClearanceBox) => transformBounds(
+  return connector.clearance.map((clearance: ConnectorClearanceBox) => transformedBounds(
     item,
     bodyHeight,
     [
-      point.position[0] + clearance.center[0] * mirror[0],
-      point.position[1] + clearance.center[1] * mirror[1],
-      point.position[2] + clearance.center[2] * mirror[2],
+      point.position[0] + clearance.center[0] * mirror[0] * scale,
+      point.position[1] + clearance.center[1] * mirror[1] * scale,
+      point.position[2] + clearance.center[2] * mirror[2] * scale,
     ],
-    clearance.size,
-    scale,
+    clearance.size.map((value) => value * scale) as Vec3,
   ))
-}
-
-function connectionBetween(a: string, b: string, connections: Connection[]): Connection | undefined {
-  return connections.find(
-    (connection) =>
-      (connection.sourceItemId === a && connection.targetItemId === b) ||
-      (connection.sourceItemId === b && connection.targetItemId === a),
-  )
 }
 
 /** A joint may only interpenetrate along its declared insertion axis. */
@@ -164,29 +112,26 @@ function allowedJointOverlap(
   catalog: Record<string, CatalogItem>,
   manifest?: AssemblyManifest | null,
   itemRules: Record<string, ItemRule[]> = {},
+  context: ValidationContext = {},
 ): boolean {
   const sourceDefinition = definitionFor(manifest, source.catalogId)
   const targetDefinition = definitionFor(manifest, target.catalogId)
   const sourceConnector = sourceDefinition?.connectors.find((c) => c.id === connection.sourceConnectorId)
   const targetConnector = targetDefinition?.connectors.find((c) => c.id === connection.targetConnectorId)
-  const depth = Math.max(sourceConnector?.insertionDepth ?? 0, targetConnector?.insertionDepth ?? 0)
+  const depth = Math.max((sourceConnector?.insertionDepth ?? 0) * (catalog[source.catalogId]?.scale ?? 1), (targetConnector?.insertionDepth ?? 0) * (catalog[target.catalogId]?.scale ?? 1))
   if (depth <= 0) return false
   // A connector defined for a family of holes inherits the selected hole's
   // face normal. A fixed insertionAxis is still available for asymmetric
   // connectors such as a tab or hook.
   const axis = sourceConnector?.insertionAxis ?? sourcePoint?.normal ?? targetConnector?.insertionAxis ?? [0, 0, 1]
-  const worldAxis: Vec3 = [
-    axis[0] * Math.cos(source.rotation[1]) + axis[2] * Math.sin(source.rotation[1]),
-    axis[1],
-    -axis[0] * Math.sin(source.rotation[1]) + axis[2] * Math.cos(source.rotation[1]),
-  ]
+  const worldAxis = rotateVector(axis, source.rotation)
   const dominant = Math.abs(worldAxis[0]) >= Math.abs(worldAxis[1]) && Math.abs(worldAxis[0]) >= Math.abs(worldAxis[2])
     ? 0
     : Math.abs(worldAxis[1]) >= Math.abs(worldAxis[2]) ? 1 : 2
   if (overlapSize[dominant] > depth + EPSILON) return false
   const clearance = [
-    ...clearanceBounds(source, sourcePoint, sourceConnector, catalog, manifest, itemRules),
-    ...clearanceBounds(target, targetPoint, targetConnector, catalog, manifest, itemRules),
+    ...clearanceBounds(source, sourcePoint, sourceConnector, catalog, manifest, itemRules, context),
+    ...clearanceBounds(target, targetPoint, targetConnector, catalog, manifest, itemRules, context),
   ]
   // New manifests must explicitly state the permitted void. Omitting it keeps
   // the connection valid only where no collider intersects, never by blanket
@@ -202,13 +147,15 @@ export function validateConfiguration(
 ): ValidationIssue[] {
   if (!project) return []
   const issues: ValidationIssue[] = []
+  if (project.items.length && !manifest) issues.push({ level: 'warning', code: 'incomplete-data', message: 'Manifest tecnico assente: verifica dei connettori non disponibile', itemIds: [] })
+  if (project.items.length && !context.enclosureBounds) issues.push({ level: 'warning', code: 'incomplete-data', message: 'Limiti interni del vano non disponibili: ingombro da verificare', itemIds: [] })
   const connections = project.connections ?? []
   const byId = new Map(project.items.map((item) => [item.id, item]))
 
   for (const item of project.items) {
-    if (!catalog[item.catalogId]) {
+    if (!Object.hasOwn(catalog, item.catalogId)) {
       issues.push({
-        level: 'warning',
+        level: 'error',
         code: 'unknown-product',
         message: `Prodotto ${item.catalogId} non presente nel catalogo corrente`,
         itemIds: [item.id],
@@ -216,6 +163,26 @@ export function validateConfiguration(
     }
   }
 
+  for (const item of project.items) {
+    if (manifest && !definitionFor(manifest, item.catalogId)) issues.push({ level: 'error', code: 'unknown-product', message: `Prodotto ${item.catalogId} assente dal manifest tecnico`, itemIds: [item.id] })
+    for (const constraint of item.constraints ?? []) {
+      if (constraint.type === 'mirrorPair' && byId.has(constraint.target ?? '')) {
+        const partner = byId.get(constraint.target!)!
+        const reciprocal = partner.constraints?.find((c) => c.type === 'mirrorPair' && c.target === item.id)
+        if (!reciprocal || partner.catalogId !== item.catalogId || reciprocal.distance !== constraint.distance) {
+          issues.push({ level: 'error', code: 'connection', message: 'Coppia specchiata non reciproca o incoerente', itemIds: [item.id, partner.id] })
+        }
+      }
+      if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!constraint.target || !byId.has(constraint.target) || constraint.target === item.id)) {
+        issues.push({ level: 'error', code: 'connection', message: 'Vincolo con item non valido', itemIds: [item.id] })
+      }
+      if (constraint.type === 'snapToItem' && project.connections !== undefined && !connections.some((c) => c.sourceItemId === item.id && c.targetItemId === constraint.target && c.sourcePointId === constraint.point && c.targetPointId === constraint.targetPoint)) {
+        issues.push({ level: 'error', code: 'connection', message: 'Vincolo legacy privo di connessione tecnica', itemIds: [item.id] })
+      }
+    }
+  }
+  const validConnections: Connection[] = []
+  const seenConnections = new Set<string>()
   const occupied = new Map<string, number>()
   const graph = new Map<string, string[]>()
   for (const connection of connections) {
@@ -225,6 +192,11 @@ export function validateConfiguration(
       issues.push({ level: 'error', code: 'connection', message: 'Connessione con item non valido', itemIds: [connection.sourceItemId, connection.targetItemId] })
       continue
     }
+    const connectionKey = [`${source.id}:${connection.sourcePointId}`, `${target.id}:${connection.targetPointId}`].sort().join('|')
+    if (seenConnections.has(connectionKey)) {
+      issues.push({ level: 'error', code: 'connection', message: 'Connessione duplicata', itemIds: [source.id, target.id] })
+    }
+    seenConnections.add(connectionKey)
     const children = graph.get(source.id) ?? []
     children.push(target.id)
     graph.set(source.id, children)
@@ -238,18 +210,30 @@ export function validateConfiguration(
     }
     const sourcePoint = pointFor(source, connection.sourcePointId, context)
     const targetPoint = pointFor(target, connection.targetPointId, context)
+    if (!sourcePoint || !targetPoint) {
+      issues.push({ level: 'error', code: 'connection', message: 'Punto di snap assente o non caricato', itemIds: [source.id, target.id] })
+      continue
+    }
+    let jointValid = true
     if (sourcePoint && targetPoint && !connectorsCanMate(sourceConnector, sourcePoint, targetConnector, targetPoint)) {
+      jointValid = false
       issues.push({ level: 'error', code: 'connection', message: 'Connettori non compatibili', itemIds: [source.id, target.id] })
     }
+    if (!normalsOppose(sourcePoint.normal, source.rotation, targetPoint.normal, target.rotation)) {
+      jointValid = false
+      issues.push({ level: 'error', code: 'connection', message: 'Normali dei connettori non opposte', itemIds: [source.id, target.id] })
+    }
     if (sourcePoint && targetPoint) {
-      const sourceWorld = worldPoint(source, sourcePoint.position, productSize(source, catalog, manifest)[1])
-      const targetWorld = worldPoint(target, targetPoint.position, productSize(target, catalog, manifest)[1])
+      const sourceWorld = worldPoint(source, sourcePoint.position, productSize(source, catalog, manifest, context)[1])
+      const targetWorld = worldPoint(target, targetPoint.position, productSize(target, catalog, manifest, context)[1])
       const distance = Math.hypot(sourceWorld[0] - targetWorld[0], sourceWorld[1] - targetWorld[1], sourceWorld[2] - targetWorld[2])
-      const tolerance = Math.max(sourceConnector.snapTolerance ?? 0.002, targetConnector.snapTolerance ?? 0.002)
+      const tolerance = Math.min(sourceConnector.snapTolerance ?? 0.002, targetConnector.snapTolerance ?? 0.002)
       if (distance > tolerance) {
+        jointValid = false
         issues.push({ level: 'error', code: 'connection', message: `Snap non allineati (${(distance * 1000).toFixed(1)} mm)`, itemIds: [source.id, target.id] })
       }
     }
+    if (jointValid) validConnections.push(connection)
     for (const key of [`${source.id}:${connection.sourcePointId}`, `${target.id}:${connection.targetPointId}`]) {
       occupied.set(key, (occupied.get(key) ?? 0) + 1)
     }
@@ -290,22 +274,32 @@ export function validateConfiguration(
     })
   }
 
-  for (let i = 0; i < project.items.length; i += 1) {
-    for (let j = i + 1; j < project.items.length; j += 1) {
-      const a = project.items[i]
-      const b = project.items[j]
-      const connection = connectionBetween(a.id, b.id, connections)
-      const source = connection?.sourceItemId === a.id ? a : b
-      const target = connection?.sourceItemId === a.id ? b : a
-      const sourcePoint = connection ? pointFor(source, connection.sourcePointId, context) : undefined
-      const targetPoint = connection ? pointFor(target, connection.targetPointId, context) : undefined
+  // Transform each collider once per validation pass, then prune separated pairs on X.
+  const prepared = project.items.map((item) => ({ item, boxes: boundsFor(item, catalog, manifest, context) }))
+    .map((entry) => ({ ...entry, minX: Math.min(...entry.boxes.map((box) => box.min[0])), maxX: Math.max(...entry.boxes.map((box) => box.max[0])) }))
+    .sort((a, b) => a.minX - b.minX)
+  const connectionsByPair = new Map<string, Connection[]>()
+  for (const connection of validConnections) {
+    const key = [connection.sourceItemId, connection.targetItemId].sort().join('|')
+    connectionsByPair.set(key, [...(connectionsByPair.get(key) ?? []), connection])
+  }
+  for (let i = 0; i < prepared.length; i += 1) {
+    for (let j = i + 1; j < prepared.length; j += 1) {
+      if (prepared[j].minX >= prepared[i].maxX - EPSILON) break
+      const a = prepared[i].item
+      const b = prepared[j].item
+      const pairConnections = connectionsByPair.get([a.id, b.id].sort().join('|')) ?? []
       let invalid = false
-      for (const aBounds of boundsFor(a, catalog, manifest)) {
-        for (const bBounds of boundsFor(b, catalog, manifest)) {
+      for (const aBounds of prepared[i].boxes) {
+        for (const bBounds of prepared[j].boxes) {
           const intersection = overlap(aBounds, bBounds)
           const area = intersectionBounds(aBounds, bBounds)
           if (!intersection || !area) continue
-          if (connection && allowedJointOverlap(connection, source, target, intersection, area, sourcePoint, targetPoint, catalog, manifest, context.itemRules ?? {})) continue
+          if (pairConnections.some((connection) => {
+            const source = connection.sourceItemId === a.id ? a : b
+            const target = connection.sourceItemId === a.id ? b : a
+            return allowedJointOverlap(connection, source, target, intersection, area, pointFor(source, connection.sourcePointId, context), pointFor(target, connection.targetPointId, context), catalog, manifest, context.itemRules ?? {}, context)
+          })) continue
           invalid = true
           break
         }
@@ -320,8 +314,8 @@ export function validateConfiguration(
     }
   }
   if (context.enclosureBounds) {
-    for (const item of project.items) {
-      for (const bounds of boundsFor(item, catalog, manifest)) {
+    for (const { item, boxes } of prepared) {
+      for (const bounds of boxes) {
         const enclosure = context.enclosureBounds
         if (
           bounds.min[0] < enclosure.min[0] - EPSILON || bounds.max[0] > enclosure.max[0] + EPSILON ||

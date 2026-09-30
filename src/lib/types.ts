@@ -85,6 +85,8 @@ export interface ItemConstraint {
 export interface ItemSnapPoint {
   /** Unique within the product. Bare `kind`, or `kind-N` when kind repeats. */
   id: string
+  /** Optional human-readable name shown during visual attachment. */
+  label?: string
   /** Mating family (`terra`, `frontale`, `laterale`, `foro`, ...). Decides
    * what this point may be joined to — see scene/mating.ts. */
   kind: string
@@ -162,12 +164,14 @@ export interface Connection {
 
 export interface ValidationIssue {
   level: 'error' | 'warning'
-  code: 'collision' | 'connection' | 'connector-capacity' | 'unknown-product' | 'out-of-bounds'
+  code: 'collision' | 'connection' | 'connector-capacity' | 'unknown-product' | 'out-of-bounds' | 'incomplete-data'
   message: string
   itemIds: string[]
 }
 
 export interface ValidationContext {
+  /** Hydrated body dimensions in metres, after catalog scale. */
+  itemSizes?: Record<string, Vec3>
   itemSnaps?: Record<string, ItemSnapPoint[]>
   itemRules?: Record<string, ItemRule[]>
   enclosureBounds?: { min: Vec3; max: Vec3 } | null
@@ -226,7 +230,15 @@ export interface ProjectData {
   metadata?: ProjectMetadata
 }
 
+export type ConfiguratorTheme = 'light' | 'dark'
+
 export interface Configurator3DProps {
+  /** Palette for the built-in panels and scene background. Default: light. */
+  theme?: ConfiguratorTheme
+  /** Optional store for host UI. Each configurator owns an isolated store by default. */
+  store?: import('./state/store').ConfiguratorStore
+  /** Optional HDR URL. Defaults to local procedural reflections; null disables reflections. */
+  environmentUrl?: string | null
   /** Optional ref to the imperative handle (addItem, exports, undo/redo, ...). */
   ref?: React.Ref<ConfiguratorHandle>
   /**

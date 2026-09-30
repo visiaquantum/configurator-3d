@@ -3,7 +3,7 @@ import { Vector3 } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { PointerLockControls } from '@react-three/drei'
 import type { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStoreApi } from '../state/store'
 
 const EYE_HEIGHT = 1.5 // meters above the floor
 const WALL_PADDING = 0.05 // keep the camera this far from the walls
@@ -27,7 +27,8 @@ function clamp(v: number, min: number, max: number): number {
  * mode so the orbit camera comes back.
  */
 export function WalkControls() {
-  const { camera } = useThree()
+  const storeApi = useConfiguratorStoreApi()
+  const { camera, gl } = useThree()
   const lockRef = useRef<PointerLockControlsImpl | null>(null)
   const keys = useRef<Record<string, boolean>>({})
   const enteredRef = useRef(false)
@@ -37,7 +38,7 @@ export function WalkControls() {
   // camera transforms imperatively is the idiomatic Three.js pattern.
   useEffect(() => {
     if (enteredRef.current) return
-    const bbox = useConfiguratorStore.getState().enclosureBBox
+    const bbox = storeApi.getState().interiorBBox ?? storeApi.getState().enclosureBBox
     if (!bbox) return
     const cx = (bbox.min[0] + bbox.max[0]) / 2
     const cz = (bbox.min[2] + bbox.max[2]) / 2
@@ -45,11 +46,11 @@ export function WalkControls() {
     camera.position.set(cx, eye, cz)
     camera.lookAt(cx, eye, cz - 1)
     enteredRef.current = true
-  }, [camera])
+  }, [camera, storeApi])
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      keys.current[e.code] = true
+      if (document.pointerLockElement === gl.domElement) keys.current[e.code] = true
     }
     const up = (e: KeyboardEvent) => {
       keys.current[e.code] = false
@@ -61,7 +62,7 @@ export function WalkControls() {
       window.removeEventListener('keyup', up)
       keys.current = {}
     }
-  }, [])
+  }, [gl])
 
   const forward = useRef(new Vector3()).current
   const right = useRef(new Vector3()).current
@@ -70,6 +71,8 @@ export function WalkControls() {
 
   /* eslint-disable react-hooks/immutability */
   useFrame((_, dt) => {
+    if (document.pointerLockElement !== gl.domElement) return
+    dt = Math.min(dt, 0.1)
     camera.getWorldDirection(forward)
     forward.y = 0
     if (forward.lengthSq() < 1e-6) return
@@ -89,7 +92,7 @@ export function WalkControls() {
     }
 
     // Clamp to enclosure interior. Y stays locked to eye height.
-    const bbox = useConfiguratorStore.getState().enclosureBBox
+    const bbox = storeApi.getState().interiorBBox ?? storeApi.getState().enclosureBBox
     if (bbox) {
       camera.position.x = clamp(
         camera.position.x,
@@ -112,7 +115,7 @@ export function WalkControls() {
       ref={lockRef}
       onUnlock={() => {
         // Esc / pointer-unlock returns to orbit mode.
-        useConfiguratorStore.getState().setWalkMode(false)
+        storeApi.getState().setWalkMode(false)
       }}
     />
   )

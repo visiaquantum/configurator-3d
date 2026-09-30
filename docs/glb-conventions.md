@@ -136,8 +136,11 @@ Parsing: `src/lib/io/itemSnaps.ts`. Regole di accoppiamento e matematica:
 1. **Nome nodo** `SNAP_<TIPO>` (case-insensitive) — convenzione già in uso nei
    file Sincro esportati da SolidWorks. **È il canale da usare**: l'export CAD
    del cliente non scrive extras.
-2. **extras** `{ "kind": "snap", "id": "<tipo>" }` (alternativa, se il GLB
-   viene post-processato).
+2. **extras** `{ "kind": "snap", "id": "<tipo>" }` (alternativa legacy, se il GLB
+   viene post-processato). Per dichiarare un identificativo stabile separato
+   dalla famiglia usare `{ "kind": "snap", "id": "faccia-destra", "snapKind": "laterale", "normal": [1, 0, 0] }`.
+   `normal` è facoltativa, deve essere un vettore finito non nullo nel frame
+   locale del nodo e viene trasformata e normalizzata durante l'estrazione.
 
 ### `kind` e `id`
 
@@ -160,6 +163,11 @@ sarebbero tutti lo stesso punto.
 > **Per chi prepara i GLB**: non serve inventare nomi univoci. Ripetere
 > `SNAP_FRONTALE` su ogni posizione utile è corretto e voluto — ci pensa il
 > configuratore a numerarli.
+
+La numerazione dipende dall'ordine dei nodi. Per cataloghi aggiornati nel tempo
+e progetti salvati, preferire gli ID espliciti con `snapKind` oppure
+`catalog.snapPoints`: questi mantengono i riferimenti anche se il CAD riordina
+i marker.
 
 ### Tabella di accoppiamento
 
@@ -191,6 +199,8 @@ La **normale** è la direzione uscente della faccia del bounding box su cui il
 punto appoggia, dedotta geometricamente (i marker non portano una rotazione
 utilizzabile). Un marker su uno spigolo tocca più facce contemporaneamente: in
 quel caso la normale non viene dichiarata, invece di tirare a indovinare.
+Un `normal` esplicito negli extras prevale sulla deduzione geometrica. Il
+bounding box usato per la deduzione esclude i sottoalberi dei marker.
 
 ### Constraint nel project JSON
 
@@ -266,9 +276,10 @@ montaggio e non genera snap.
 Per ogni faccia esterna si prendono i triangoli che giacciono su quel piano e
 si contano gli usi di ciascuno spigolo. Uno spigolo usato da due triangoli è
 interno; usato **una volta sola** delimita la superficie. Concatenando gli
-spigoli di bordo si ottengono i contorni chiusi: quello grande è la sagoma del
-pezzo, quelli piccoli sono i fori. Il centro di ogni contorno piccolo diventa
-un punto di snap.
+spigoli di bordo si ottengono contorni chiusi semplici. La loro inclusione
+reciproca distingue le sagome esterne dai fori: un piccolo poligono pieno
+isolato non è un foro. Solo i contorni interni con dimensioni ammesse diventano
+punti di snap; sottoalberi nascosti non vengono analizzati.
 
 > La versione precedente cercava «quattro vertici complanari che formano un
 > rettangolo». Quel test scatta su qualunque tassellatura regolare: su un
