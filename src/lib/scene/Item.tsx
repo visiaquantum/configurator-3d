@@ -30,6 +30,7 @@ import { hydrateItemRulesAndHide } from '../io/rules'
 import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSnapGrid'
 import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
 import { buildLocalCorners } from './itemRegistry'
+import { uprightYaw } from './rotation'
 import {
   MIRROR_PAIR_RULE,
   mirrorAxisOf,
