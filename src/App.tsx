@@ -166,6 +166,145 @@ export default function App() {
     setLoadStatus(null)
   }
 
+  const handleRecordDemo = async () => {
+    const { default: html2canvas } = await import('html2canvas')
+    const recordingCanvas = document.createElement('canvas')
+    recordingCanvas.width = window.innerWidth
+    recordingCanvas.height = window.innerHeight
+    const recordingContext = recordingCanvas.getContext('2d')
+    if (!recordingContext) throw new Error('Canvas di registrazione non disponibile')
+    const stream = recordingCanvas.captureStream(30)
+    const chunks: Blob[] = []
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' })
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) chunks.push(event.data)
+    }
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'demo-kit-configuratore.webm'
+      link.click()
+      URL.revokeObjectURL(url)
+    }
+
+    const cursor = document.createElement('div')
+    Object.assign(cursor.style, {
+      position: 'fixed', zIndex: '99999', width: '22px', height: '22px',
+      borderRadius: '50%', background: '#ff4d67', border: '3px solid white',
+      boxShadow: '0 4px 18px rgba(0,0,0,.6)', pointerEvents: 'none',
+      left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
+      transition: 'left .65s ease, top .65s ease, transform .14s ease',
+    })
+    const caption = document.createElement('div')
+    Object.assign(caption.style, {
+      position: 'fixed', zIndex: '99998', left: '50%', bottom: '34px',
+      transform: 'translateX(-50%)', padding: '12px 20px', borderRadius: '9px',
+      background: 'rgba(8,12,22,.88)', color: '#fff', font: '600 18px system-ui',
+      letterSpacing: '.2px', boxShadow: '0 8px 30px rgba(0,0,0,.45)', pointerEvents: 'none',
+    })
+    document.body.append(cursor, caption)
+
+    const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
+    let capturing = true
+    const captureFrames = async () => {
+      while (capturing) {
+        const sceneCanvas = document.querySelector<HTMLCanvasElement>('canvas')
+        const frame = await html2canvas(document.body, {
+          backgroundColor: null,
+          logging: false,
+          scale: 1,
+          useCORS: true,
+          ignoreElements: (element) => element === sceneCanvas,
+        })
+        recordingContext.fillStyle = '#0f1320'
+        recordingContext.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height)
+        if (sceneCanvas) {
+          const rect = sceneCanvas.getBoundingClientRect()
+          recordingContext.drawImage(sceneCanvas, rect.left, rect.top, rect.width, rect.height)
+        }
+        recordingContext.drawImage(frame, 0, 0, recordingCanvas.width, recordingCanvas.height)
+        await wait(80)
+      }
+    }
+    const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')]
+      .find((element) => element.textContent?.trim().startsWith(text))
+    const moveTo = async (element: HTMLElement, label: string) => {
+      caption.textContent = label
+      const rect = element.getBoundingClientRect()
+      cursor.style.left = `${rect.left + rect.width / 2}px`
+      cursor.style.top = `${rect.top + rect.height / 2}px`
+      await wait(760)
+    }
+    const click = async (element: HTMLElement | undefined, label: string) => {
+      if (!element) throw new Error(`Controllo non trovato: ${label}`)
+      await moveTo(element, label)
+      cursor.style.transform = 'translate(-50%,-50%) scale(.68)'
+      element.click()
+      await wait(160)
+      cursor.style.transform = 'translate(-50%,-50%) scale(1)'
+      await wait(720)
+    }
+    const choose = async (selectIndex: number, optionText: string, label: string) => {
+      const select = document.querySelectorAll<HTMLSelectElement>('select')[selectIndex]
+      if (!select) throw new Error(`Menu non trovato: ${label}`)
+      await moveTo(select, label)
+      const option = [...select.options].find((entry) => entry.text.trim() === optionText || entry.text.includes(optionText))
+      if (!option) throw new Error(`Opzione non trovata: ${optionText}`)
+      select.value = option.value
+      select.dispatchEvent(new Event('change', { bubbles: true }))
+      cursor.style.transform = 'translate(-50%,-50%) scale(.68)'
+      await wait(160)
+      cursor.style.transform = 'translate(-50%,-50%) scale(1)'
+      await wait(620)
+    }
+    const attach = async (targetPoint: string, label: string, setSource = true) => {
+      if (setSource) await choose(0, 'end-a', 'Scelgo il punto di contatto del componente')
+      const target = document.querySelectorAll<HTMLSelectElement>('select')[1]
+      const firstUpright = [...target.options].find((entry) => entry.text.includes('YSI 12836'))
+      if (!firstUpright) throw new Error('Montante di destinazione non trovato')
+      await moveTo(target, 'Seleziono il montante di destinazione')
+      target.value = firstUpright.value
+      target.dispatchEvent(new Event('change', { bubbles: true }))
+      await wait(650)
+      await choose(2, targetPoint, `Scelgo la sede ${label}`)
+      await click(button('Aggancia'), `Aggancio ${label}`)
+    }
+
+    recorder.start(250)
+    void captureFrames()
+    try {
+      caption.textContent = 'KIT 01 — montaggio manuale nel configuratore 3D'
+      await wait(1800)
+      await click(button('Nuovo'), 'Parto da un progetto vuoto')
+      await click(button('YSI 12836'), 'Inserisco il primo montante YSI 12836')
+      await click(button('⟳ 90°'), 'Ruoto il montante nel vano')
+      await click(button('95.3 cm'), 'Creo la coppia specchiata alla distanza corretta')
+
+      await click(button('XDS 40236 KM02'), 'Aggiungo il ripiano superiore XDS 40236 KM02')
+      await attach('shelf-top', 'del ripiano superiore')
+      await click(button('XDS 40236 KM02'), 'Aggiungo il ripiano inferiore')
+      await attach('shelf-bottom', 'del ripiano inferiore')
+
+      await click(button('XHA 40100'), 'Aggiungo la prima traversa XHA 40100')
+      await attach('rail-xmax', 'della prima traversa')
+      await click(button('XHA 40100'), 'Aggiungo la seconda traversa')
+      await attach('rail-xmin', 'della seconda traversa')
+
+      await click(button('⊙'), 'Centro la vista sul KIT completo')
+      caption.textContent = 'KIT completo — configurazione valida e pronta per l’export'
+      await wait(3000)
+    } finally {
+      capturing = false
+      await wait(500)
+      recorder.stop()
+      stream.getTracks().forEach((track) => track.stop())
+      cursor.remove()
+      caption.remove()
+    }
+  }
+
   const handleImport = async (file: File) => {
     try {
       const text = await file.text()
@@ -260,6 +399,9 @@ export default function App() {
         </div>
 
         <h3 style={{ marginBottom: 6 }}>Progetto</h3>
+        <button type="button" onClick={handleRecordDemo} style={{ ...ghostBtn, width: '100%', marginBottom: 10 }}>
+          Registra demo KIT
+        </button>
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           <button type="button" onClick={handleExportJson} style={ghostBtn}>
             Export JSON
