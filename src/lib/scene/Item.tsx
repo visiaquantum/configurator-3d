@@ -4,7 +4,6 @@ import type { Group, InstancedMesh, Material, Object3D } from 'three'
 import {
   Color,
   DoubleSide,
-  Euler,
   MathUtils,
   Mesh,
   MeshPhysicalMaterial,
@@ -135,7 +134,6 @@ function enhanceItemMaterials(root: Object3D) {
 // Scratch instances reused across pointermove. Drag is single-threaded so this
 // is safe and saves ~100s of Vector3 allocations per second during a drag.
 const _hit = new Vector3()
-const _euler = new Euler()
 
 interface SnapLock {
   myCornerIdx: number
@@ -327,6 +325,7 @@ function ItemInner({
   }
   const dragRef = useRef<DragCtx | null>(null)
   const transformLockPosRef = useRef<Vector3 | null>(null)
+  const transformDraggingRef = useRef(false)
 
   const gltf = useGLTF(url)
   const scale = catalog?.scale ?? 1
@@ -730,9 +729,9 @@ function ItemInner({
   /* eslint-enable react-hooks/immutability */
 
   const handleTransformEnd = () => {
+    transformDraggingRef.current = false
     if (!group) return
-    _euler.setFromQuaternion(group.quaternion)
-    const newRot: EulerTuple = [snapAngle(_euler.x), snapAngle(_euler.y), snapAngle(_euler.z)]
+    const newRot: EulerTuple = [snapAngle(group.rotation.x), snapAngle(group.rotation.y), snapAngle(group.rotation.z)]
     group.rotation.set(newRot[0], newRot[1], newRot[2])
 
     // Rotate gizmo: rotate IN PLACE around the collider center. No overlap
@@ -843,10 +842,8 @@ function ItemInner({
     // A frame turns about the upright axis only. Tipping it would lift half its
     // members off the floor, and the commit keeps each one's own pitch anyway —
     // so a pitch shown here would be a pitch taken back on release.
-    /* eslint-disable react-hooks/immutability -- holding the live scene-graph node upright is the point */
-    group.rotation.x = item.rotation[0]
-    group.rotation.z = item.rotation[2]
-    /* eslint-enable react-hooks/immutability */
+    const yaw = uprightYaw(group.quaternion, item.rotation[1])
+    group.rotation.set(item.rotation[0], yaw, item.rotation[2])
     groupFollowPatches(
       [group.position.x, group.position.y - colliderSize[1] / 2, group.position.z],
       group.rotation.y,
@@ -1298,9 +1295,10 @@ function ItemInner({
           showY={gizmoMode === 'rotate' || !item.constraints?.some((c) => c.type === 'lockAxis' && c.axis === 'y')}
           showZ={!item.constraints?.some((c) => c.type === 'lockAxis' && c.axis === 'z')}
           onMouseDown={() => {
+            transformDraggingRef.current = true
+            dragRef.current = null
             transformLockPosRef.current = gizmoMode === 'rotate' ? group.position.clone() : null
           }}
-          // eslint-disable-next-line react-hooks/immutability -- handler drives group transforms imperatively (three.js scene-graph)
           onObjectChange={() => {
             if (gizmoMode === 'rotate' && transformLockPosRef.current) {
               group.position.copy(transformLockPosRef.current)
