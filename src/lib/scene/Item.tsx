@@ -66,6 +66,7 @@ interface Props {
   anchors?: Anchor[]
 }
 
+const CONNECTION_SNAP_RADIUS = 0.12 // 12 cm — how close a contact point has to get before the seat pulls the part in
 const ANCHOR_SNAP_RADIUS = 0.06 // 6 cm — XZ distance to an enclosure anchor that triggers a snap
 const ANCHOR_SNAP_MAX_DY = 0.3 // ignore anchors more than 30 cm above/below the item base (e.g. wall anchors while floor-dragging)
 const DRAG_THRESHOLD_PX = 4 // mouse movement (px) before a pointerdown is treated as a drag
@@ -539,12 +540,29 @@ function ItemInner({
           target.point,
         )
         if (!targetConnector || !connectorsCanMate(sourceConnector, source, targetConnector, target.point)) continue
-        const distance = Math.hypot(
+        const pointDistance = Math.hypot(
           sourceWorld[0] - target.position[0],
           sourceWorld[1] - target.position[1],
           sourceWorld[2] - target.position[2],
         )
-        if (distance > 0.09 || (best && distance >= best.distance)) continue
+        // A part held at the wrong angle has its contact point metres from the
+        // seat while the part itself is right next to it. Measuring how far it
+        // would have to travel to sit in the seat lets the magnet take it and
+        // turn it, instead of asking the user to line it up first.
+        const seatedYaw = yawToMate(source.normal, target.point.normal, targetItem.rotation[1])
+        const seated = positionForItemSnap(
+          source.position,
+          seatedYaw ?? group.rotation.y,
+          colliderSize[1],
+          target.position,
+        )
+        const travelDistance = Math.hypot(
+          seated[0] - group.position.x,
+          seated[1] - (group.position.y - colliderSize[1] / 2),
+          seated[2] - group.position.z,
+        )
+        const distance = Math.min(pointDistance, travelDistance)
+        if (distance > CONNECTION_SNAP_RADIUS || (best && distance >= best.distance)) continue
         best = { source, target, distance }
       }
     }
@@ -983,7 +1001,21 @@ function ItemInner({
     // `validateConfiguration`, bounds included, so it needs neither guard.
     const preview = resolveConnectionPreview()
     updateConnectionPreview(preview)
-    if (!preview?.valid) {
+    if (preview?.valid) {
+      // Magnet: in range the part sits in the seat instead of under the
+      // pointer, so the join is something you see and feel during the drag
+      // rather than a jump on release. The pose is recomputed from the pointer
+      // at the top of every move, so pulling away lets go on its own.
+      group.position.set(
+        preview.position[0],
+        preview.position[1] + colliderSize[1] / 2,
+        preview.position[2],
+      )
+      group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
+    } else {
+      // Out of range: give back the orientation the drag started with, or the
+      // part keeps whatever turn the last seat asked of it.
+      group.rotation.set(d.startRotX, d.startRotY, item.rotation[2])
       // Hard collision constraints: separate from other products and keep the
       // collider inside the van/interior bounds. The rest of the assembly is
       // exempt: those parts share material with this one by design.
