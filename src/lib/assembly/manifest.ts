@@ -227,6 +227,12 @@ export function inferLegacyConnections(
 ): Connection[] {
   if (project.connections) return project.connections
   const byId = new Map(project.items.map((item) => [item.id, item]))
+  // Never expose a partial migration: saving it would freeze unresolved links.
+  if (project.items.some((item) => item.constraints?.some((constraint) => {
+    if (constraint.type !== 'snapToItem') return false
+    const target = byId.get(constraint.target ?? '')
+    return !Object.hasOwn(itemSnaps, item.catalogId) || !target || !Object.hasOwn(itemSnaps, target.catalogId)
+  }))) return []
   const connections: Connection[] = []
   for (const source of project.items) {
     const legacy = source.constraints?.find((constraint) => constraint.type === 'snapToItem')

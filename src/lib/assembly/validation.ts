@@ -147,11 +147,13 @@ export function validateConfiguration(
 ): ValidationIssue[] {
   if (!project) return []
   const issues: ValidationIssue[] = []
+  if (project.items.length && !manifest) issues.push({ level: 'warning', code: 'incomplete-data', message: 'Manifest tecnico assente: verifica dei connettori non disponibile', itemIds: [] })
+  if (project.items.length && !context.enclosureBounds) issues.push({ level: 'warning', code: 'incomplete-data', message: 'Limiti interni del vano non disponibili: ingombro da verificare', itemIds: [] })
   const connections = project.connections ?? []
   const byId = new Map(project.items.map((item) => [item.id, item]))
 
   for (const item of project.items) {
-    if (!catalog[item.catalogId]) {
+    if (!Object.hasOwn(catalog, item.catalogId)) {
       issues.push({
         level: 'error',
         code: 'unknown-product',
@@ -164,6 +166,13 @@ export function validateConfiguration(
   for (const item of project.items) {
     if (manifest && !definitionFor(manifest, item.catalogId)) issues.push({ level: 'error', code: 'unknown-product', message: `Prodotto ${item.catalogId} assente dal manifest tecnico`, itemIds: [item.id] })
     for (const constraint of item.constraints ?? []) {
+      if (constraint.type === 'mirrorPair' && byId.has(constraint.target ?? '')) {
+        const partner = byId.get(constraint.target!)!
+        const reciprocal = partner.constraints?.find((c) => c.type === 'mirrorPair' && c.target === item.id)
+        if (!reciprocal || partner.catalogId !== item.catalogId || reciprocal.distance !== constraint.distance) {
+          issues.push({ level: 'error', code: 'connection', message: 'Coppia specchiata non reciproca o incoerente', itemIds: [item.id, partner.id] })
+        }
+      }
       if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!constraint.target || !byId.has(constraint.target) || constraint.target === item.id)) {
         issues.push({ level: 'error', code: 'connection', message: 'Vincolo con item non valido', itemIds: [item.id] })
       }

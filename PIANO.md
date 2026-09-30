@@ -15,7 +15,13 @@ Decisioni fissate:
 | Interazione primaria | Drag con anteprima di snap verde/rossa |
 | Materiali/texture | Fuori dall’MVP; dopo la correttezza meccanica |
 
-## Gap analysis e audit
+## Stato dopo le correzioni
+
+Sono presenti manifest e connessioni esplicite, controllo di capacità e tolleranze, collisioni limitate dalle clearance, preview dell'intero assieme, ricerca catalogo e pannello errori. Ogni configuratore dispone di store e registro indipendenti. Gli asset sono clonati per istanza, il rilevamento dei fori usa una cache e la scena non richiede più un HDR esterno implicito. Import/export, readonly, reset, storia e rimozione dei collegamenti sono coperti da test automatici e CI.
+
+La documentazione operativa aggiornata è in [README.md](README.md). Restano obiettivi di prodotto da misurare nel pilota: asset budget, prove con utenti reali, prestazioni su hardware di riferimento e verifica CAD dei collider dichiarati. Le tabelle seguenti descrivono il piano originale e non costituiscono un elenco aggiornato di bug aperti.
+
+## Gap analysis e audit originari
 
 | Area | Stato attuale | Gap / rischio | Priorità |
 |---|---|---|---|

@@ -162,7 +162,7 @@ export interface Connection {
 
 export interface ValidationIssue {
   level: 'error' | 'warning'
-  code: 'collision' | 'connection' | 'connector-capacity' | 'unknown-product' | 'out-of-bounds'
+  code: 'collision' | 'connection' | 'connector-capacity' | 'unknown-product' | 'out-of-bounds' | 'incomplete-data'
   message: string
   itemIds: string[]
 }
@@ -231,7 +231,7 @@ export interface ProjectData {
 export interface Configurator3DProps {
   /** Optional store for host UI. Each configurator owns an isolated store by default. */
   store?: import('./state/store').ConfiguratorStore
-  /** Optional HDR URL provided by the host. No external environment is fetched by default. */
+  /** Optional HDR URL. Defaults to local procedural reflections; null disables reflections. */
   environmentUrl?: string | null
   /** Optional ref to the imperative handle (addItem, exports, undo/redo, ...). */
   ref?: React.Ref<ConfiguratorHandle>

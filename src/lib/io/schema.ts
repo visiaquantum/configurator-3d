@@ -68,7 +68,7 @@ const ProjectMetadataSchema = z
 
 export const ProjectDataSchema = z.object({
   id: z.string().min(1),
-  version: z.number().int().nonnegative(),
+  version: z.literal(1),
   enclosure: EnclosureSchema,
   items: z.array(PlacedItemSchema),
   connections: z.array(ConnectionSchema).optional(),
@@ -78,6 +78,22 @@ export const ProjectDataSchema = z.object({
   project.items.forEach((item, index) => {
     if (ids.has(item.id)) ctx.addIssue({ code: 'custom', path: ['items', index, 'id'], message: 'Duplicate item id' })
     ids.add(item.id)
+  })
+  project.items.forEach((item, index) => {
+    item.constraints?.forEach((constraint, constraintIndex) => {
+      if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!constraint.target || !ids.has(constraint.target) || constraint.target === item.id)) {
+        ctx.addIssue({ code: 'custom', path: ['items', index, 'constraints', constraintIndex, 'target'], message: 'Unknown or self-referencing item constraint' })
+      }
+    })
+  })
+  const joints = new Set<string>()
+  project.connections?.forEach((connection, index) => {
+    if (!ids.has(connection.sourceItemId) || !ids.has(connection.targetItemId) || connection.sourceItemId === connection.targetItemId) {
+      ctx.addIssue({ code: 'custom', path: ['connections', index], message: 'Unknown or self-referencing connection item' })
+    }
+    const key = JSON.stringify([JSON.stringify([connection.sourceItemId, connection.sourcePointId]), JSON.stringify([connection.targetItemId, connection.targetPointId])].sort())
+    if (joints.has(key)) ctx.addIssue({ code: 'custom', path: ['connections', index], message: 'Duplicate connection' })
+    joints.add(key)
   })
   const anchors = new Set<string>()
   project.enclosure.anchors?.forEach((anchor, index) => {

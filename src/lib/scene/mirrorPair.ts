@@ -21,7 +21,7 @@ export interface MirrorPairParams {
 
 export function mirrorPairDistances(rule: ItemRule): number[] {
   const d = (rule.params as Partial<MirrorPairParams>).distances
-  return Array.isArray(d) ? d.filter((n): n is number => typeof n === 'number') : []
+  return Array.isArray(d) ? d.filter((n): n is number => typeof n === 'number' && Number.isFinite(n) && n > 0) : []
 }
 
 export type MirrorAxis = 'x' | 'z'
