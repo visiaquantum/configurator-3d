@@ -46,6 +46,7 @@ import {
 } from './snapping'
 import {
   assemblyGroup,
+  assemblyPosePatches,
   dedupeJoints,
   itemSnapConstraint,
   itemSnapConstraintFor,
@@ -60,6 +61,7 @@ import {
   yawToMate,
 } from './mating'
 import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { reconcileConstraints } from '../state/projectGraph'
 import { validateConfiguration } from '../assembly/validation'
 
 interface Props {
@@ -314,7 +316,7 @@ function ItemInner({
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
   const storeReadOnly = useConfiguratorStore((s) => s.readOnly)
   const project = useConfiguratorStore((s) => s.project)
-  const readOnly = storeReadOnly || !!item.locked || !!project?.items.some((member) => member.locked && assemblyGroup(item.id, project.items, project.connections ?? []).has(member.id))
+  const readOnly = storeReadOnly || !!project?.items.some((member) => (member.locked || member.constraints?.some((c) => c.type === 'lockAxis')) && assemblyGroup(item.id, project.items, project.connections ?? []).has(member.id))
   const assetEpoch = useConfiguratorStore((s) => s.assetEpoch)
   const collisionBounds = useConfiguratorStore((s) => s.interiorBBox ?? s.enclosureBBox)
   const isSelected = selectedId === item.id
@@ -617,25 +619,15 @@ function ItemInner({
       targetPointId: best.target.point.id,
       resolvedTransform: { position, rotation },
     }
-    // Every contact this pose makes, not just the one the drag was nearest to.
-    const joints = connectionsAtPose(item, { position, rotation }, {
-      items: s.project.items,
-      itemSnaps: s.itemSnaps,
-      itemRules: s.itemRules, itemSizes: s.itemSizes,
-      manifest: s.assemblyManifest,
-      heightOf: (placed) => colliderSizeOf(placed.id)?.[1] ?? 0,
-    })
-    const connections = joints.length > 0 ? joints : [connection]
-    const retained = (s.project.connections ?? []).filter((existing) => existing.sourceItemId !== item.id)
-    const constraints = [
-      ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
-      itemSnapConstraintFor(targetItem.id, best.source.id, best.target.point.id),
-    ]
-    const previewProject = {
-      ...s.project,
-      connections: [...retained, ...connections],
-      items: s.project.items.map((placed) => placed.id === item.id ? { ...placed, position, rotation, constraints } : placed),
-    }
+    const patches = assemblyPosePatches(s.project.items, travelling, item, { position, rotation })
+    const byId = new Map(patches.map((entry) => [entry.id, entry.patch]))
+    const posedItems = s.project.items.map((placed) => ({ ...placed, ...byId.get(placed.id) }))
+    const joints = posedItems.filter((placed) => travelling.has(placed.id)).flatMap((placed) => connectionsAtPose(placed, placed, {
+      items: posedItems, itemSnaps: s.itemSnaps, itemRules: s.itemRules, manifest: s.assemblyManifest,
+      heightOf: (member) => colliderSizeOf(member.id)?.[1] ?? s.itemSizes[member.catalogId]?.[1] ?? 0,
+    }))
+    const connections = dedupeJoints([...jointsSurvivingMove(patches, s.project.connections ?? []), ...(joints.length > 0 ? joints : [connection])])
+    const previewProject = { ...s.project, connections, items: reconcileConstraints(posedItems, connections) }
     const issues = validateConfiguration(previewProject, s.catalog, s.assemblyManifest, {
       itemSnaps: s.itemSnaps,
       itemRules: s.itemRules, itemSizes: s.itemSizes,
@@ -963,7 +955,7 @@ function ItemInner({
     group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
     const s = storeApi.getState()
     const constraints = [
-      ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
+      ...(item.constraints?.filter((constraint) => constraint.type !== 'snapToItem' && constraint.type !== 'snapToAnchor') ?? []),
       itemSnapConstraintFor(preview.connection.targetItemId, preview.connection.sourcePointId, preview.connection.targetPointId),
     ]
     const patches = [

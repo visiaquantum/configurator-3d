@@ -429,10 +429,23 @@ export function rotateGroupPatches(
         patch: {
           // Same yaw convention as positionForItemSnap.
           position: [pivot[0] + dx * cos + dz * sin, item.position[1], pivot[2] - dx * sin + dz * cos] as Vec3,
-          rotation: [euler.x, euler.y, euler.z] as Euler,
+          rotation: item.rotation[0] === 0 && item.rotation[2] === 0
+            ? [0, item.rotation[1] + step, 0] as Euler
+            : [euler.x, euler.y, euler.z] as Euler,
         },
       }
     })
+}
+
+/** Pure rigid placement of a complete assembly, used by previews and commits. */
+export function assemblyPosePatches(items: PlacedItem[], group: Set<string>, source: PlacedItem, pose: { position: Vec3; rotation: Euler }) {
+  return rotateGroupPatches(items, group, source.position, pose.rotation[1] - source.rotation[1]).map(({ id, patch }) => ({
+    id,
+    patch: id === source.id ? { position: pose.position, rotation: pose.rotation } : {
+      ...patch,
+      position: patch.position!.map((value, index) => value + pose.position[index] - source.position[index]) as Vec3,
+    },
+  }))
 }
 
 /**

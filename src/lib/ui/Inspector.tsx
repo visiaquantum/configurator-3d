@@ -11,8 +11,8 @@ import {
   withSnapConstraint,
 } from '../scene/mirrorPair'
 import {
-  assemblyContext,
   assemblyGroup,
+  assemblyPosePatches,
   canMate,
   dedupeJoints,
   itemSnapConstraint,
@@ -28,6 +28,7 @@ import {
   yawToMate,
 } from '../scene/mating'
 import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { reconcileConstraints } from '../state/projectGraph'
 import { validateConfiguration } from '../assembly/validation'
 import type { Connection, Euler, ItemSnapPoint, PlacedItem } from '../types'
 
@@ -136,7 +137,7 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
 
   if (!item) return null
 
-  const readOnly = hostReadOnly || item.locked || !!project?.items.some((member) => member.locked && assemblyGroup(item.id, project.items, project.connections ?? []).has(member.id))
+  const readOnly = hostReadOnly || item.locked || !!project?.items.some((member) => (member.locked || member.constraints?.some((c) => c.type === 'lockAxis')) && assemblyGroup(item.id, project.items, project.connections ?? []).has(member.id))
   const cat = catalog[item.catalogId]
   const [x, y, z] = item.position
   const size = cat?.size
@@ -344,10 +345,15 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
     const rotation: Euler =
       yaw === null ? item.rotation : [item.rotation[0], yaw, item.rotation[2]]
 
-    const position = positionForItemSnap(sourcePoint.position, rotation[1], size[1], world)
+    const position = positionForItemSnap(sourcePoint.position, rotation, size[1], world)
     const link = itemSnapConstraintFor(toItemId, sourcePoint.id, targetPoint.id)
-    const kept = item.constraints?.filter((c) => c.type === 'mirrorPair') ?? []
+    const kept = item.constraints?.filter((c) => c.type !== 'snapToItem' && c.type !== 'snapToAnchor') ?? []
     const s = storeApi.getState()
+    const members = assemblyGroup(item.id, s.project?.items ?? [], s.project?.connections ?? [])
+    if (members.has(toItemId)) { setJoinError('Il pezzo di destinazione appartiene già a questo assieme'); return }
+    const patches = assemblyPosePatches(s.project?.items ?? [], members, item, { position, rotation })
+    const byId = new Map(patches.map((entry) => [entry.id, entry.patch]))
+    const posedItems = (s.project?.items ?? []).map((placed) => ({ ...placed, ...byId.get(placed.id) }))
     const targetDefinition = definitionFor(assemblyManifest, targetItem.catalogId)
     const sourceConnector = connectorForSnap(definitionFor(assemblyManifest, item.catalogId), sourcePoint)
     const targetConnector = connectorForSnap(targetDefinition, targetPoint)
@@ -367,34 +373,20 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
         }
       : null
     const joints = connection
-      ? connectionsAtPose(item, { position, rotation }, {
-          items: s.project?.items ?? [],
-          itemSnaps: s.itemSnaps,
-          itemRules: s.itemRules, itemSizes: s.itemSizes,
-          manifest: assemblyManifest,
-          heightOf: (placed) => colliderSizeOf(placed.id)?.[1] ?? 0,
-        })
+      ? posedItems.filter((placed) => members.has(placed.id)).flatMap((placed) => connectionsAtPose(placed, placed, {
+          items: posedItems, itemSnaps: s.itemSnaps, itemRules: s.itemRules, manifest: assemblyManifest,
+          heightOf: (member) => colliderSizeOf(member.id)?.[1] ?? s.itemSizes[member.catalogId]?.[1] ?? 0,
+        }))
       : []
     const connections = connection
-      ? [
-          ...(s.project?.connections ?? []).filter((existing) => existing.sourceItemId !== item.id),
-          ...(joints.length > 0 ? joints : [connection]),
-        ]
+      ? dedupeJoints([...jointsSurvivingMove(patches, s.project?.connections ?? []), ...(joints.length > 0 ? joints : [connection])])
       : s.project?.connections ?? []
-    const preview = s.project
-      ? {
-          ...s.project,
-          connections,
-          items: s.project.items.map((placed) =>
-            placed.id === item.id ? { ...placed, position, rotation, constraints: [...kept, link] } : placed,
-          ),
-        }
-      : null
+    const preview = s.project ? { ...s.project, connections, items: reconcileConstraints(posedItems, connections) } : null
     const problems = validateConfiguration(preview, s.catalog, assemblyManifest, {
       itemSnaps: s.itemSnaps,
       itemRules: s.itemRules, itemSizes: s.itemSizes,
       enclosureBounds: interiorBBox,
-    }).filter((candidate) => candidate.level === 'error' && candidate.itemIds.includes(item.id))
+    }).filter((candidate) => candidate.level === 'error' && candidate.itemIds.some((id) => members.has(id)))
     // Sticking out of the van does not make the joint wrong, and refusing over
     // it makes whole assemblies impossible to build: a frame wider than the van
     // is half the width across, and only fits once it is turned along the
@@ -409,23 +401,15 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
 
     // Only now move the live group. An invalid explicit join never makes the
     // scene graph drift away from the persisted project.
-    const reg = getItem(item.id)
-    if (reg) {
-      reg.group.position.set(position[0], position[1] + size[1] / 2, position[2])
-      reg.group.rotation.set(rotation[0], rotation[1], rotation[2])
+    for (const { id, patch } of patches) {
+      const reg = getItem(id)
+      if (!reg || !patch.position || !patch.rotation) continue
+      reg.group.position.set(patch.position[0], patch.position[1] + (colliderSizeOf(id)?.[1] ?? 0) / 2, patch.position[2])
+      reg.group.rotation.set(...patch.rotation)
       reg.group.updateWorldMatrix(true, false)
     }
-    const patches = [
-      { id: item.id, patch: { position, rotation, constraints: [...kept, link] } },
-      ...(s.project
-        ? resolveSnappedChildren(
-            item.id,
-            assemblyContext(s.project.items, s.itemSnaps, s.itemRules),
-          )
-        : []),
-    ]
     if (connection) commitAssembly(patches, connections)
-    else updateItems(patches)
+    else updateItems(patches.map((entry) => entry.id === item.id ? { ...entry, patch: { ...entry.patch, constraints: [...kept, link] } } : entry))
     // The joint is made; anything left is the out-of-bounds note, kept on
     // screen so the move it asks for is not a surprise.
     setJoinError(problems[0]?.message ?? null)
@@ -483,7 +467,7 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
     if (pair?.target) {
       // Already paired: move the partner and update the stored distance on both.
       const setDistance = (it: PlacedItem) =>
-        it.constraints?.map((c) => (c.type === 'mirrorPair' ? { ...c, distance } : c))
+        it.constraints?.map((c) => (c.type !== 'snapToItem' && c.type !== 'snapToAnchor' ? { ...c, distance } : c))
       const partner = project?.items.find((it) => it.id === pair.target)
       if (!partner) return
       const patch = {

@@ -28,7 +28,7 @@ function clamp(v: number, min: number, max: number): number {
  */
 export function WalkControls() {
   const storeApi = useConfiguratorStoreApi()
-  const { camera } = useThree()
+  const { camera, gl } = useThree()
   const lockRef = useRef<PointerLockControlsImpl | null>(null)
   const keys = useRef<Record<string, boolean>>({})
   const enteredRef = useRef(false)
@@ -38,7 +38,7 @@ export function WalkControls() {
   // camera transforms imperatively is the idiomatic Three.js pattern.
   useEffect(() => {
     if (enteredRef.current) return
-    const bbox = storeApi.getState().enclosureBBox
+    const bbox = storeApi.getState().interiorBBox ?? storeApi.getState().enclosureBBox
     if (!bbox) return
     const cx = (bbox.min[0] + bbox.max[0]) / 2
     const cz = (bbox.min[2] + bbox.max[2]) / 2
@@ -50,7 +50,7 @@ export function WalkControls() {
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
-      keys.current[e.code] = true
+      if (document.pointerLockElement === gl.domElement) keys.current[e.code] = true
     }
     const up = (e: KeyboardEvent) => {
       keys.current[e.code] = false
@@ -62,7 +62,7 @@ export function WalkControls() {
       window.removeEventListener('keyup', up)
       keys.current = {}
     }
-  }, [])
+  }, [gl])
 
   const forward = useRef(new Vector3()).current
   const right = useRef(new Vector3()).current
@@ -71,6 +71,8 @@ export function WalkControls() {
 
   /* eslint-disable react-hooks/immutability */
   useFrame((_, dt) => {
+    if (document.pointerLockElement !== gl.domElement) return
+    dt = Math.min(dt, 0.1)
     camera.getWorldDirection(forward)
     forward.y = 0
     if (forward.lengthSq() < 1e-6) return
@@ -90,7 +92,7 @@ export function WalkControls() {
     }
 
     // Clamp to enclosure interior. Y stays locked to eye height.
-    const bbox = storeApi.getState().enclosureBBox
+    const bbox = storeApi.getState().interiorBBox ?? storeApi.getState().enclosureBBox
     if (bbox) {
       camera.position.x = clamp(
         camera.position.x,
