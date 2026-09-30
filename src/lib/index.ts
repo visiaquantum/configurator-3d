@@ -2,7 +2,7 @@ export { Configurator3D } from './Configurator3D'
 export { useConfiguratorStore, useConfiguratorStoreApi, createConfiguratorStore } from './state/store'
 export type { ConfiguratorStore, ConfiguratorState } from './state/store'
 export { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
-export { configurationStatus } from './state/readiness'
+export { configurationStatus, validationForState } from './state/readiness'
 export {
   serializeProject,
   parseProject,

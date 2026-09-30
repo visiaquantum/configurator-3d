@@ -5,7 +5,7 @@ import { Inspector } from './ui/Inspector'
 import { ConfiguratorStoreContext, createConfiguratorStore, useConfiguratorStore, useConfiguratorStoreApi } from './state/store'
 import type { ConfiguratorStore } from './state/store'
 import { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
-import { configurationStatus } from './state/readiness'
+import { configurationStatus, validationForState } from './state/readiness'
 import { loadCatalog } from './io/catalog'
 import { hasBlockingIssues, validateConfiguration } from './assembly/validation'
 import { inferLegacyConnections, loadAssemblyManifest } from './assembly/manifest'
@@ -69,6 +69,15 @@ function ConfiguratorContent({
   const catalogEntries = useConfiguratorStore((s) => s.catalog)
   const itemSizes = useConfiguratorStore((s) => s.itemSizes)
   const interiorBBox = useConfiguratorStore((s) => s.interiorBBox)
+  const captureRefs = useConfiguratorStore((s) => s.captureRefs)
+  const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
+  const loadingCatalog = useConfiguratorStore((s) => s.loadingCatalog)
+  const loadingManifest = useConfiguratorStore((s) => s.loadingManifest)
+  const catalogError = useConfiguratorStore((s) => s.catalogError)
+  const assetErrors = useConfiguratorStore((s) => s.assetErrors)
+  const listeners = useRef({ onChange, onValidationChange })
+  const validationReported = useRef(false)
+  useEffect(() => { listeners.current = { onChange, onValidationChange } }, [onChange, onValidationChange])
 
   // Build the project once when any of the source props change (reference compare).
   // Host should memoize these to control when the scene resets.
@@ -95,7 +104,7 @@ function ConfiguratorContent({
   const [fetched, setFetched] = useState<
     { url: string; items: CatalogItem[] } | { url: string; error: string } | null
   >(null)
-  const [manifestError, setManifestError] = useState<{ source: string; error: string } | null>(null)
+  const manifestError = useConfiguratorStore((s) => s.manifestError)
 
   useEffect(() => {
     storeApi.getState().setTelemetryListener(onTelemetry ?? null)
@@ -152,7 +161,6 @@ function ConfiguratorContent({
           type: 'manifest-load', outcome: 'success', durationMs: performance.now() - startedAt,
           detail: { version: next.version, productCount: next.products.length },
         })
-        setManifestError(null)
       })
       .catch((error: Error) => {
         if (cancelled) return
@@ -162,7 +170,6 @@ function ConfiguratorContent({
           type: 'manifest-load', outcome: 'error', durationMs: performance.now() - startedAt,
           detail: { message: error.message },
         })
-        setManifestError({ source: typeof assemblyManifest === 'string' ? assemblyManifest : 'inline', error: error.message })
       })
     return () => {
       cancelled = true
@@ -188,19 +195,14 @@ function ConfiguratorContent({
   }, [builtProject, setProject])
 
   useEffect(() => {
-    if (project && onChange) onChange(structuredClone(project))
-  }, [project, onChange])
+    if (project) listeners.current.onChange?.(structuredClone(project))
+  }, [project])
 
   useEffect(() => {
-    const issues = validateConfiguration(project, catalogEntries, manifest, {
-      itemSnaps,
-      itemRules,
-      itemSizes,
-      enclosureBounds: interiorBBox,
-    })
+    const issues = validationForState(storeApi.getState())
     const current = storeApi.getState().validationIssues
     const same = current.length === issues.length && current.every((issue, i) =>
-      issue.code === issues[i].code && issue.message === issues[i].message && issue.itemIds.join('|') === issues[i].itemIds.join('|'),
+      issue.level === issues[i].level && issue.code === issues[i].code && issue.message === issues[i].message && JSON.stringify(issue.itemIds) === JSON.stringify(issues[i].itemIds),
     )
     if (!same) {
       storeApi.getState().setValidationIssues(issues)
@@ -210,8 +212,11 @@ function ConfiguratorContent({
         detail: { issueCount: issues.length, errorCount: issues.filter((issue) => issue.level === 'error').length },
       })
     }
-    onValidationChange?.(issues)
-  }, [project, catalogEntries, manifest, itemSnaps, itemRules, itemSizes, interiorBBox, onValidationChange, storeApi])
+    if (!same || !validationReported.current) {
+      validationReported.current = true
+      listeners.current.onValidationChange?.(structuredClone(issues))
+    }
+  }, [project, catalogEntries, manifest, itemSnaps, itemRules, itemSizes, interiorBBox, captureRefs, enclosureBBox, loadingCatalog, loadingManifest, catalogError, manifestError, assetErrors, storeApi])
 
   useEffect(() => {
     if (!project || project.connections !== undefined || !manifest) return
@@ -275,7 +280,7 @@ function ConfiguratorContent({
         return storeApi.getState().exportProject()
       },
       getValidation() {
-        return structuredClone(storeApi.getState().validationIssues)
+        return structuredClone(validationForState(storeApi.getState()))
       },
       setProject(p) {
         storeApi.getState().setProject(p)
@@ -320,7 +325,7 @@ function ConfiguratorContent({
         <CatalogStatusBadge text={`Catalogo: ${catalogStatus.message}`} tone="error" />
       )}
       {assemblyManifest && manifestError && (
-        <CatalogStatusBadge text={`Manifest: ${manifestError.error}`} tone="error" />
+        <CatalogStatusBadge text={`Manifest: ${manifestError}`} tone="error" />
       )}
       {showToolbar && <Toolbar readOnly={readOnly} onSave={onSave} />}
     </div>
