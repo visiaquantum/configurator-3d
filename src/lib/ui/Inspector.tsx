@@ -503,7 +503,8 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   }
 
   return (
-    <div style={panelStyle}>
+    <div className="cfg-inspector" style={panelStyle}>
+      <style>{inspectorControlStyles}</style>
       <div style={headerStyle}>Selezionato</div>
       <div style={bodyStyle}>
         <div style={rowStyle}><span style={labelStyle}>id</span><span style={valueStyle}>{item.id}</span></div>
@@ -679,12 +680,14 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
 
         <div style={{ marginTop: 8 }}>
           <div style={{ ...labelStyle, marginBottom: 4 }}>rotazione</div>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button type="button" disabled={readOnly} onClick={() => handleRotate(-Math.PI / 2)} style={pairBtnStyle}>
-              ⟲ 90°
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" disabled={readOnly} onClick={() => handleRotate(-Math.PI / 2)} style={rotationBtnStyle} aria-label="Ruota di -90 gradi" title="Ruota di -90° attorno all’asse verticale">
+              <RotationIcon />
+              <span>−90°</span>
             </button>
-            <button type="button" disabled={readOnly} onClick={() => handleRotate(Math.PI / 2)} style={pairBtnStyle}>
-              ⟳ 90°
+            <button type="button" disabled={readOnly} onClick={() => handleRotate(Math.PI / 2)} style={rotationBtnStyle} aria-label="Ruota di +90 gradi" title="Ruota di +90° attorno all’asse verticale">
+              <RotationIcon clockwise />
+              <span>+90°</span>
             </button>
           </div>
         </div>
@@ -758,6 +761,25 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   )
 }
 
+function RotationIcon({ clockwise = false }: { clockwise?: boolean }) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <g transform={clockwise ? 'translate(24 0) scale(-1 1)' : undefined}>
+        <path d="M3 11a9 9 0 1 1 2.64 6.36" />
+        <path d="M3 4v7h7" />
+      </g>
+    </svg>
+  )
+}
+
+// Scoped and shipped with the panel so library consumers need no CSS import.
+const inspectorControlStyles = `
+.cfg-inspector button:not(:disabled):hover { filter: brightness(1.18); }
+.cfg-inspector button:not(:disabled):active { filter: brightness(0.94); }
+.cfg-inspector button:focus-visible { outline: 2px solid #60a5fa; outline-offset: 2px; }
+.cfg-inspector button:disabled { opacity: 0.45; cursor: not-allowed; }
+`
+
 const panelStyle: React.CSSProperties = {
   position: 'absolute',
   bottom: 12,
@@ -789,6 +811,7 @@ const rowStyle: React.CSSProperties = { display: 'flex', gap: 8, padding: '3px 0
 const labelStyle: React.CSSProperties = { color: '#778', width: 60, flexShrink: 0 }
 const valueStyle: React.CSSProperties = { fontFamily: 'monospace', wordBreak: 'break-all' }
 const btnStyle: React.CSSProperties = {
+  appearance: 'none',
   color: 'white',
   border: 'none',
   padding: '6px 10px',
@@ -796,21 +819,41 @@ const btnStyle: React.CSSProperties = {
   cursor: 'pointer',
   fontSize: 12,
   fontWeight: 600,
+  fontFamily: 'inherit',
+  minHeight: 32,
+  transition: 'filter 120ms ease',
 }
 /** Centimetres, one decimal only when it carries information. */
 const formatCm = (metres: number) => (metres * 100).toFixed(1).replace(/\.0$/, '')
 
 const pairBtnStyle: React.CSSProperties = {
+  appearance: 'none',
   flex: 1,
-  padding: '5px 6px',
+  padding: '7px 8px',
+  background: '#222936',
   borderWidth: 1,
   borderStyle: 'solid',
   borderColor: '#2a2a35',
-  borderRadius: 4,
+  borderRadius: 6,
   cursor: 'pointer',
   fontSize: 11,
   fontWeight: 600,
-  color: '#ddd',
+  fontFamily: 'inherit',
+  lineHeight: 1.35,
+  minHeight: 32,
+  color: '#e2e8f0',
+  transition: 'filter 120ms ease',
+}
+const rotationBtnStyle: React.CSSProperties = {
+  ...pairBtnStyle,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  minHeight: 36,
+  fontSize: 12,
+  borderColor: '#39465a',
+  fontVariantNumeric: 'tabular-nums',
 }
 const selectStyle: React.CSSProperties = {
   width: '100%',

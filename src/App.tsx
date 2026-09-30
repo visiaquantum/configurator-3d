@@ -281,7 +281,7 @@ export default function App() {
       await wait(1800)
       await click(button('Nuovo'), 'Parto da un progetto vuoto')
       await click(button('YSI 12836'), 'Inserisco il primo montante YSI 12836')
-      await click(button('⟳ 90°'), 'Ruoto il montante nel vano')
+      await click(button('+90°'), 'Ruoto il montante nel vano')
       await click(button('95.3 cm'), 'Creo la coppia specchiata alla distanza corretta')
 
       await click(button('XDS 40236 KM02'), 'Aggiungo il ripiano superiore XDS 40236 KM02')
@@ -336,6 +336,7 @@ export default function App() {
           metadata={PROJECT_METADATA}
           catalog={catalog}
           assemblyManifest="/catalog/assembly-manifest.json"
+          environmentUrl="/hdr/empty_warehouse_01_4k.hdr"
           onSave={(p) => setSavedJson(serializeProject(p))}
         />
       </div>

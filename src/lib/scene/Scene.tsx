@@ -60,8 +60,10 @@ export function Scene({ project, environmentUrl }: Props) {
       <NeighborGapIndicator />
       <PerformanceTelemetry />
       <color attach="background" args={['#101827']} />
-      <ambientLight intensity={0.4} />
-      <directionalLight position={[5, 8, 5]} intensity={1.1} castShadow />
+      <ambientLight intensity={0.6} />
+      <hemisphereLight args={['#f5f8ff', '#9aa9bd', 1.2]} />
+      <directionalLight position={[5, 8, 5]} intensity={2.2} castShadow />
+      <directionalLight position={[-5, 4, -5]} intensity={1.2} />
 
       {/* Each GLB-loading subtree gets its own Suspense boundary, so loading a
           new item type doesn't unmount the enclosure + already-placed items. */}
@@ -78,8 +80,9 @@ export function Scene({ project, environmentUrl }: Props) {
         </Suspense></AssetBoundary>
       ))}
       {effectiveAnchors.length > 0 && <AnchorMarkers anchors={effectiveAnchors} />}
-      {/* Keep the HDR only for material reflections; the visible scene uses a
-          plain background and a readable floor grid. */}
+      {/* Reflections and diffuse fill are separate from the visible background.
+          Metallic materials need light from every direction, including inside
+          the enclosure, rather than bright panels against a black environment. */}
       {environmentUrl && <AssetBoundary id="environment" source={environmentUrl}><Suspense fallback={null}>
         <Environment
           files={environmentUrl}
@@ -88,10 +91,13 @@ export function Scene({ project, environmentUrl }: Props) {
         />
       </Suspense></AssetBoundary>}
       {environmentUrl === undefined && (
-        <Environment resolution={128}>
+        <Environment resolution={128} environmentIntensity={0.9}>
+          <color attach="background" args={['#b8c2d0']} />
           <Lightformer intensity={3} position={[0, 8, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[12, 12, 1]} />
           <Lightformer intensity={2} position={[8, 3, 0]} rotation={[0, -Math.PI / 2, 0]} scale={[10, 6, 1]} />
           <Lightformer intensity={2} position={[-8, 3, 0]} rotation={[0, Math.PI / 2, 0]} scale={[10, 6, 1]} />
+          <Lightformer intensity={1.5} position={[0, 3, 8]} rotation={[0, Math.PI, 0]} scale={[10, 6, 1]} />
+          <Lightformer intensity={1.5} position={[0, 3, -8]} scale={[10, 6, 1]} />
         </Environment>
       )}
 
