@@ -14,6 +14,7 @@ import {
   Plane,
   Vector3,
 } from 'three'
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { TransformControls, useGLTF } from '@react-three/drei'
 import type { ThreeEvent } from '@react-three/fiber'
 import type {
@@ -348,7 +349,7 @@ function ItemInner({
   }, [assetStartedAt, item.catalogId, storeApi])
   const mirrored = item.mirrored === true
   const cloned = useMemo(() => {
-    const c = gltf.scene.clone()
+    const c = cloneSkeleton(gltf.scene)
     c.scale.setScalar(scale)
     enhanceItemMaterials(c)
     if (mirrored) {
@@ -603,7 +604,7 @@ function ItemInner({
       : [0, yaw, 0]
     const position = positionForItemSnap(
       best.source.position,
-      rotation[1],
+      rotation,
       colliderSize[1],
       best.target.position,
     )

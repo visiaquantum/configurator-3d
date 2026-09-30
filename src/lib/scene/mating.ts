@@ -1,6 +1,7 @@
-import { Vector3 } from 'three'
+import { Vector3, Euler as ThreeEuler, Quaternion } from 'three'
 import type { Connection, Euler, ItemConstraint, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
 import { colliderSizeOf, getItem, defaultItemRegistry } from './itemRegistry'
+import { rotateVector } from './geometry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
 
@@ -152,19 +153,12 @@ export function listMatingTargets(
  */
 export function positionForItemSnap(
   myPoint: Vec3,
-  yaw: number,
+  yaw: number | Euler,
   colliderHeight: number,
   target: Vec3,
 ): Vec3 {
-  const c = Math.cos(yaw)
-  const s = Math.sin(yaw)
-  const dx = myPoint[0] * c + myPoint[2] * s
-  const dz = -myPoint[0] * s + myPoint[2] * c
-  return [
-    target[0] - dx,
-    target[1] - (myPoint[1] + colliderHeight / 2),
-    target[2] - dz,
-  ]
+  const offset = rotateVector(myPoint, typeof yaw === 'number' ? [0, yaw, 0] : yaw)
+  return [target[0] - offset[0], target[1] - colliderHeight / 2 - offset[1], target[2] - offset[2]]
 }
 
 /** The `snapToItem` constraint on an item, if any. */
@@ -240,7 +234,7 @@ export function resolveSnappedChildren(
 
       const position = positionForItemSnap(
         myPoint.position,
-        rotation[1],
+        rotation,
         size[1],
         targetWorld,
       )
@@ -425,6 +419,9 @@ export function rotateGroupPatches(
   return items
     .filter((item) => group.has(item.id))
     .map((item) => {
+      const turn = new Quaternion().setFromAxisAngle(new Vector3(0, 1, 0), step)
+      const quaternion = new Quaternion().setFromEuler(new ThreeEuler(...item.rotation)).premultiply(turn)
+      const euler = new ThreeEuler().setFromQuaternion(quaternion)
       const dx = item.position[0] - pivot[0]
       const dz = item.position[2] - pivot[2]
       return {
@@ -432,7 +429,7 @@ export function rotateGroupPatches(
         patch: {
           // Same yaw convention as positionForItemSnap.
           position: [pivot[0] + dx * cos + dz * sin, item.position[1], pivot[2] - dx * sin + dz * cos] as Vec3,
-          rotation: [item.rotation[0], item.rotation[1] + step, item.rotation[2]] as Euler,
+          rotation: [euler.x, euler.y, euler.z] as Euler,
         },
       }
     })

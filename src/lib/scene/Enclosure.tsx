@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { Box3, Color, DoubleSide, Mesh, MeshPhysicalMaterial, MathUtils } from 'three'
 import type { Material, Object3D } from 'three'
+import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { EnclosureData } from '../types'
@@ -57,7 +58,7 @@ const DOOR_RIG: Record<string, DoorRig> = {
 export function Enclosure({ data }: Props) {
   const storeApi = useConfiguratorStoreApi()
   const gltf = useGLTF(data.glbUrl)
-  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene])
+  const scene = useMemo(() => cloneSkeleton(gltf.scene), [gltf.scene])
   const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl)
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
@@ -116,6 +117,7 @@ export function Enclosure({ data }: Props) {
         const apply = (m: Material) => {
           const clone = m.clone()
           clone.side = DoubleSide
+          clone.userData.configuratorMaterial = { transparent: clone.transparent, opacity: clone.opacity, depthWrite: clone.depthWrite }
           clone.needsUpdate = true
           kept.add(clone)
           return clone
@@ -150,9 +152,10 @@ export function Enclosure({ data }: Props) {
   /* eslint-disable react-hooks/immutability */
   useEffect(() => {
     for (const m of materialsRef.current) {
-      m.transparent = xrayEnabled
-      m.opacity = xrayEnabled ? XRAY_OPACITY : 1
-      m.depthWrite = !xrayEnabled
+      const original = m.userData.configuratorMaterial ?? { transparent: false, opacity: 1, depthWrite: true }
+      m.transparent = xrayEnabled || original.transparent
+      m.opacity = xrayEnabled ? XRAY_OPACITY : original.opacity
+      m.depthWrite = xrayEnabled ? false : original.depthWrite
       m.needsUpdate = true
     }
   }, [xrayEnabled, scene])

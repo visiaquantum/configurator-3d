@@ -367,34 +367,32 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     updateItems: (patches) => {
       const s = get()
       if (!s.project || s.readOnly || patches.length === 0 || patches.some(({ id, patch }) => { const item = s.project?.items.find((entry) => entry.id === id); return !item || !canPatchItem(item, patch) })) return
-      pushHistory()
       const byId = new Map(patches.map((p) => [p.id, p.patch]))
-      set({
-        project: {
+      const project = parseProject({
           ...s.project,
           items: s.project.items.map((it) => {
             const patch = byId.get(it.id)
             return patch ? { ...it, ...patch } : it
           }),
-        },
-      })
+      }).project
+      pushHistory()
+      set({ project })
     },
 
     commitAssembly: (patches, connections) => {
       const s = get()
       if (!s.project || s.readOnly || patches.some(({ id, patch }) => { const item = s.project?.items.find((entry) => entry.id === id); return !item || !canPatchItem(item, patch) })) return
-      pushHistory()
       const byId = new Map(patches.map((p) => [p.id, p.patch]))
-      set({
-        project: {
+      const project = parseProject({
           ...s.project,
           items: reconcileConstraints(s.project.items.map((it) => {
             const patch = byId.get(it.id)
             return patch ? { ...it, ...patch } : it
           }), connections),
           connections: structuredClone(connections),
-        },
-      })
+      }).project
+      pushHistory()
+      set({ project })
     },
 
     addItem: (item) => {

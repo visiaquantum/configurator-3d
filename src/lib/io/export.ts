@@ -76,9 +76,8 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
       const copy = (material: Material) => {
         const result = material.clone()
         if (result instanceof MeshStandardMaterial && material.userData.originalColor) result.color.set(material.userData.originalColor)
-        result.transparent = false
-        result.opacity = 1
-        result.depthWrite = true
+        const original = material.userData.configuratorMaterial
+        if (original) { result.transparent = original.transparent; result.opacity = original.opacity; result.depthWrite = original.depthWrite }
         materials.push(result)
         return result
       }
@@ -146,20 +145,24 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   const CONTENT_W = PAGE_W - MARGIN * 2
   const MAX_IMG_H = 130 // mm — keeps room for the components table below
 
-  doc.setFontSize(16)
-  const title = doc.splitTextToSize(project.metadata?.name ?? project.id, CONTENT_W)
-  doc.text(title.slice(0, 3), MARGIN, 20)
-  doc.setFontSize(10)
-  const customer = project.metadata?.customer
-  if (customer) doc.text(`Cliente: ${customer}`, MARGIN, 28)
-  doc.text(`Data: ${date.toLocaleDateString('it-IT')}`, MARGIN, customer ? 34 : 28)
-  doc.text(`Progetto: ${project.id}`, MARGIN, customer ? 40 : 34)
-  doc.setTextColor(validationIssues.some((issue) => issue.level === 'error') ? 180 : 30, validationIssues.some((issue) => issue.level === 'error') ? 50 : 120, 80)
-  doc.text(opts.validated && manifest ? (validationIssues.length ? `Stato: ${validationIssues.length} segnalazioni` : 'Stato: configurazione validata') : 'Stato: verifica tecnica non eseguita', MARGIN + 75, customer ? 40 : 34)
-  doc.setTextColor(0)
-  if (manifest) doc.text(`Manifest tecnico: v${manifest.version}`, MARGIN + 75, customer ? 46 : 40)
-
-  let y = manifest ? (customer ? 53 : 47) : (customer ? 48 : 42)
+  let y = 20
+  const textBlock = (text: string, fontSize = 10) => {
+    doc.setFontSize(fontSize)
+    const lines: string[] = doc.splitTextToSize(text, CONTENT_W)
+    for (const line of lines) {
+      if (y > 275) { doc.addPage(); y = 20 }
+      doc.text(line, MARGIN, y)
+      y += fontSize * 0.5
+    }
+    y += 2
+  }
+  textBlock(project.metadata?.name ?? project.id, 16)
+  if (project.metadata?.customer) textBlock(`Cliente: ${project.metadata.customer}`)
+  textBlock(`Data: ${date.toLocaleDateString('it-IT')}`)
+  textBlock(`Progetto: ${project.id}`)
+  textBlock(opts.validated && manifest ? (validationIssues.length ? `Stato: ${validationIssues.length} segnalazioni` : 'Stato: configurazione validata') : 'Stato: verifica tecnica non eseguita')
+  if (manifest) textBlock(`Manifest tecnico: v${manifest.version}`)
+  y += 3
 
   if (imageDataUrl) {
     // Preserve the screenshot's native aspect ratio: fit it inside CONTENT_W ×
@@ -172,11 +175,13 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
       imgH = MAX_IMG_H
       imgW = imgH * aspect
     }
+    if (y + imgH > 275) { doc.addPage(); y = 20 }
     const fmt = imageDataUrl.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG'
     doc.addImage(imageDataUrl, fmt, MARGIN, y, imgW, imgH, undefined, 'FAST')
     y += imgH + 8
   }
 
+  if (y > 250) { doc.addPage(); y = 20 }
   doc.setFontSize(12)
   doc.text('Componenti', MARGIN, y)
   y += 6
