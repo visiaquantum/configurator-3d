@@ -1,6 +1,5 @@
 import { useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
-import { useGLTF } from '@react-three/drei'
 import { Scene } from './scene/Scene'
 import { Inspector } from './ui/Inspector'
 import { ConfiguratorStoreContext, createConfiguratorStore, useConfiguratorStore, useConfiguratorStoreApi } from './state/store'
@@ -103,38 +102,37 @@ function ConfiguratorContent({
     return () => storeApi.getState().setTelemetryListener(null)
   }, [onTelemetry, storeApi])
 
+  const catalogCallbacks = useRef({ onCatalogLoaded, onCatalogError })
+  useEffect(() => { catalogCallbacks.current = { onCatalogLoaded, onCatalogError } }, [onCatalogLoaded, onCatalogError])
   useEffect(() => {
-    if (!catalogUrl) return
-    let cancelled = false
-    const controller = new AbortController()
-    storeApi.setState({ loadingCatalog: true, catalogError: null, catalog: {} })
-    const startedAt = performance.now()
-    loadCatalog(catalogUrl, controller.signal)
-      .then((items) => {
-        if (cancelled) return
-        storeApi.setState({ loadingCatalog: false })
-        setFetched({ url: catalogUrl, items })
-        storeApi.getState().reportTelemetry({
-          type: 'catalog-load', outcome: 'success', durationMs: performance.now() - startedAt,
-          detail: { itemCount: items.length },
-        })
-        onCatalogLoaded?.(items)
-      })
-      .catch((e: Error) => {
-        if (cancelled) return
-        storeApi.setState({ loadingCatalog: false, catalogError: e.message })
-        setFetched({ url: catalogUrl, error: e.message })
-        storeApi.getState().reportTelemetry({
-          type: 'catalog-load', outcome: 'error', durationMs: performance.now() - startedAt,
-          detail: { message: e.message },
-        })
-        onCatalogError?.(e)
-      })
-    return () => {
-      cancelled = true
-      controller.abort()
+    if (!catalog) {
+      storeApi.setState({ loadingCatalog: false, catalogError: null })
+      setCatalog([])
+      return
     }
-  }, [catalogUrl, onCatalogLoaded, onCatalogError, storeApi])
+    const controller = new AbortController()
+    const startedAt = performance.now()
+    storeApi.setState({ loadingCatalog: true, catalogError: null })
+    if (typeof catalog === 'string') setCatalog([])
+    loadCatalog(catalog, controller.signal).then((items) => {
+      if (controller.signal.aborted) return
+      setCatalog(items)
+      storeApi.setState({ loadingCatalog: false })
+      setFetched({ url: catalogUrl ?? 'inline', items })
+      // Models load on demand. Preloading the entire catalog can exhaust memory
+      // and puts failures outside the per-model error boundary.
+      storeApi.getState().reportTelemetry({ type: 'catalog-load', outcome: 'success', durationMs: performance.now() - startedAt, detail: { itemCount: items.length } })
+      catalogCallbacks.current.onCatalogLoaded?.(items)
+    }).catch((cause: unknown) => {
+      if (controller.signal.aborted) return
+      const error = cause instanceof Error ? cause : new Error(String(cause))
+      storeApi.setState({ loadingCatalog: false, catalogError: error.message })
+      setFetched({ url: catalogUrl ?? 'inline', error: error.message })
+      storeApi.getState().reportTelemetry({ type: 'catalog-load', outcome: 'error', durationMs: performance.now() - startedAt, detail: { message: error.message } })
+      catalogCallbacks.current.onCatalogError?.(error)
+    })
+    return () => controller.abort()
+  }, [catalog, catalogUrl, setCatalog, storeApi])
 
   useEffect(() => {
     storeApi.setState({ loadingManifest: !!assemblyManifest, manifestError: null, assemblyManifest: null })
@@ -171,22 +169,6 @@ function ConfiguratorContent({
       controller.abort()
     }
   }, [assemblyManifest, storeApi])
-
-  // Push prop catalog into the store. Imperative `addItem` adds more on top.
-  // Also preload each catalog GLB so the first instance of a new type doesn't
-  // suspend its Suspense boundary (which would briefly blank the item).
-  useEffect(() => {
-    if (Array.isArray(catalog)) {
-      storeApi.setState({ loadingCatalog: false, catalogError: null })
-      setCatalog(catalog)
-      catalog.forEach((c) => useGLTF.preload(c.glbUrl))
-      return
-    }
-    if (fetched && fetched.url === catalogUrl && 'items' in fetched) {
-      setCatalog(fetched.items)
-      fetched.items.forEach((c) => useGLTF.preload(c.glbUrl))
-    }
-  }, [catalog, fetched, catalogUrl, setCatalog, storeApi])
 
   const catalogStatus: { state: 'idle' } | { state: 'loading' } | { state: 'error'; message: string } =
     !catalogUrl
@@ -357,7 +339,6 @@ function addItemToScene(
 ): string {
   const s = storeApi.getState()
   if (!s.project || s.readOnly) throw new Error('Il progetto non è modificabile')
-  if (!s.catalog[product.id]) useGLTF.preload(product.glbUrl)
   s.addCatalogItem(product)
   const items = s.project?.items ?? []
   const last = items[items.length - 1]
@@ -385,7 +366,17 @@ function addItemToScene(
   return id
 }
 
-async function exportSceneAsBlob(storeApi: ConfiguratorStore, kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
+const pendingExports = new WeakMap<ConfiguratorStore, Promise<Blob>>()
+function exportSceneAsBlob(storeApi: ConfiguratorStore, kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
+  const previous = pendingExports.get(storeApi)
+  const next = (previous ? previous.catch(() => undefined) : Promise.resolve()).then(() => performSceneExport(storeApi, kind))
+  pendingExports.set(storeApi, next)
+  const cleanup = () => { if (pendingExports.get(storeApi) === next) pendingExports.delete(storeApi) }
+  void next.then(cleanup, cleanup)
+  return next
+}
+
+async function performSceneExport(storeApi: ConfiguratorStore, kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
   const startedAt = performance.now()
   const selectedId = storeApi.getState().selectedId
   const initialProject = storeApi.getState().project
@@ -429,6 +420,7 @@ async function exportSceneAsBlob(storeApi: ConfiguratorStore, kind: 'png' | 'glb
         validated: true,
       })
     }
+    if (storeApi.getState().project !== initialProject) throw new Error('Il progetto è cambiato durante l’esportazione: riprova')
     s.reportTelemetry({ type: 'export', outcome: 'success', durationMs: performance.now() - startedAt, detail: { kind, size: blob.size } })
     return blob
   } catch (error) {

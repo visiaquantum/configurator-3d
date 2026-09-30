@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
-import { OrbitControls, Grid, Environment, GizmoHelper, GizmoViewport } from '@react-three/drei'
+import { OrbitControls, Grid, Environment, Lightformer, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import type { ProjectData } from '../types'
 import { AssetBoundary } from './AssetBoundary'
 import { Enclosure } from './Enclosure'
@@ -87,6 +87,13 @@ export function Scene({ project, environmentUrl }: Props) {
           environmentIntensity={1}
         />
       </Suspense></AssetBoundary>}
+      {environmentUrl === undefined && (
+        <Environment resolution={128}>
+          <Lightformer intensity={3} position={[0, 8, 0]} rotation={[-Math.PI / 2, 0, 0]} scale={[12, 12, 1]} />
+          <Lightformer intensity={2} position={[8, 3, 0]} rotation={[0, -Math.PI / 2, 0]} scale={[10, 6, 1]} />
+          <Lightformer intensity={2} position={[-8, 3, 0]} rotation={[0, Math.PI / 2, 0]} scale={[10, 6, 1]} />
+        </Environment>
+      )}
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow>
         <planeGeometry args={[40, 40]} />

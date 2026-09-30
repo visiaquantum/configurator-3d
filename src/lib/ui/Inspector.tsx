@@ -85,7 +85,7 @@ function groupByKind(points: ItemSnapPoint[]): Array<[string, ItemSnapPoint[]]> 
 
 export function Inspector({ readOnly: hostReadOnly }: Props) {
   const storeApi = useConfiguratorStoreApi()
-  const { getItem, colliderSizeOf, worldSnapPosition, resolveSnappedChildren } = useSceneTools()
+  const { getItem, colliderSizeOf, worldSnapPosition } = useSceneTools()
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const project = useConfiguratorStore((s) => s.project)
   const removeItem = useConfiguratorStore((s) => s.removeItem)
@@ -467,7 +467,7 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
     if (pair?.target) {
       // Already paired: move the partner and update the stored distance on both.
       const setDistance = (it: PlacedItem) =>
-        it.constraints?.map((c) => (c.type !== 'snapToItem' && c.type !== 'snapToAnchor' ? { ...c, distance } : c))
+        it.constraints?.map((c) => (c.type === 'mirrorPair' ? { ...c, distance } : c))
       const partner = project?.items.find((it) => it.id === pair.target)
       if (!partner) return
       const patch = {
