@@ -2,7 +2,6 @@ import { useSceneTools } from './useSceneTools'
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Group, InstancedMesh, Material, Object3D } from 'three'
 import {
-  Box3,
   Color,
   DoubleSide,
   Euler,
@@ -61,6 +60,7 @@ import {
   yawToMate,
 } from './mating'
 import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { visibleBodyBounds, rotateVector } from './geometry'
 import { reconcileConstraints } from '../state/projectGraph'
 import { validateConfiguration } from '../assembly/validation'
 
@@ -263,23 +263,6 @@ function findAnchorSnap(
   return best
 }
 
-/** World-space AABB of the visible meshes only (markers are hidden). */
-function computeVisibleBBox(root: Object3D): Box3 {
-  root.updateMatrixWorld(true)
-  const box = new Box3()
-  const tmp = new Box3()
-  root.traverseVisible((obj) => {
-    if (!(obj instanceof Mesh)) return
-    const geom = obj.geometry
-    if (!geom.boundingBox) geom.computeBoundingBox()
-    if (geom.boundingBox) {
-      tmp.copy(geom.boundingBox).applyMatrix4(obj.matrixWorld)
-      box.union(tmp)
-    }
-  })
-  return box
-}
-
 /** snapToAnchor constraint recording which item feature landed on the anchor. */
 function snapHitConstraint(hit: AnchorSnapHit): ItemConstraint {
   return {
@@ -456,8 +439,8 @@ function ItemInner({
   // (e.g. Sincro's 1 mm SNAP_* cubes at floor level under a wall-mounted
   // panel would stretch the box down to y=0).
   const bbox = useMemo(() => {
-    const b = computeVisibleBBox(cloned)
-    if (b.isEmpty()) b.setFromObject(cloned)
+    const b = visibleBodyBounds(cloned)
+    if (b.isEmpty() || ![...b.min.toArray(), ...b.max.toArray()].every(Number.isFinite)) throw new Error('Il modello non contiene geometria visibile valida')
     const size = new Vector3()
     const center = new Vector3()
     b.getSize(size)
@@ -661,9 +644,9 @@ function ItemInner({
       const corner = snapCorner != null ? cornerOffsetsXZ(colliderSize)[snapCorner] : undefined
       if (sp) {
         // Snapped by a product snap point: place it exactly on the anchor.
-        const [dx, dz] = rotateOffsetXZ(sp.position[0], sp.position[2], item.rotation[1])
+        const [dx, dy, dz] = rotateVector(sp.position, item.rotation)
         px = snappedAnchor.position[0] - dx
-        py = snappedAnchor.position[1] - (sp.position[1] + colliderSize[1] / 2)
+        py = snappedAnchor.position[1] - (dy + colliderSize[1] / 2)
         pz = snappedAnchor.position[2] - dz
       } else if (corner) {
         // Snapped by a corner: place the item so that corner sits on the anchor.

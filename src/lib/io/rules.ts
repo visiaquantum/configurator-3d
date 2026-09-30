@@ -39,7 +39,7 @@ interface ExtractedRuleNode {
 }
 
 function isVec3(v: unknown): v is Vec3 {
-  return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number')
+  return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n))
 }
 
 /**
@@ -75,7 +75,7 @@ export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
     if (!ruleId) return
 
     const params =
-      typeof ud.params === 'object' && ud.params !== null
+      typeof ud.params === 'object' && ud.params !== null && !Array.isArray(ud.params)
         ? (ud.params as Record<string, unknown>)
         : {}
 

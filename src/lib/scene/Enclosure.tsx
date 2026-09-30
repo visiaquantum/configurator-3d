@@ -5,6 +5,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { EnclosureData } from '../types'
+import { visibleBodyBounds } from './geometry'
 import { hydrateAnchorsAndHide } from '../io/anchors'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 
@@ -191,7 +192,7 @@ export function Enclosure({ data }: Props) {
     scene.scale.setScalar(s)
     scene.position.y = 0
     scene.updateMatrixWorld(true)
-    const probe = new Box3().setFromObject(scene)
+    const probe = visibleBodyBounds(scene)
     if (isFinite(probe.min.y)) {
       scene.position.y = -probe.min.y
       scene.updateMatrixWorld(true)
@@ -210,7 +211,8 @@ export function Enclosure({ data }: Props) {
   // When the GLB ships no native anchors, synthesize a handful on the
   // interior floor so the demo can showcase snap-to-anchor behaviour.
   useEffect(() => {
-    const box = new Box3().setFromObject(scene)
+    const box = visibleBodyBounds(scene)
+    if (box.isEmpty() || ![...box.min.toArray(), ...box.max.toArray()].every(Number.isFinite)) throw new Error('Il vano non contiene geometria visibile valida')
     setEnclosureBBox({
       min: [box.min.x, box.min.y, box.min.z],
       max: [box.max.x, box.max.y, box.max.z],

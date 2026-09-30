@@ -1,4 +1,5 @@
-import { Euler, Vector3 } from 'three'
+import { Box3, Euler, Mesh, Vector3 } from 'three'
+import type { Object3D } from 'three'
 import type { PlacedItem, Vec3 } from '../types'
 
 /** Snap coordinates are already in metres in the centred collider frame. */
@@ -31,4 +32,21 @@ export function transformedBounds(item: PlacedItem, bodyHeight: number, center: 
     min: position.map((value, index) => value - half[index]) as Vec3,
     max: position.map((value, index) => value + half[index]) as Vec3,
   }
+}
+
+/** Visible body bounds, excluding complete marker subtrees rather than their pivots. */
+export function visibleBodyBounds(root: Object3D): Box3 {
+  root.updateWorldMatrix(true, true)
+  const bounds = new Box3()
+  const scratch = new Box3()
+  const visit = (object: Object3D) => {
+    if (!object.visible || /^(snap|anchor|rule)[_:]/i.test(object.name) || ['snap', 'anchor', 'rule'].includes(object.userData.kind)) return
+    if (object instanceof Mesh) {
+      if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
+      if (object.geometry.boundingBox) bounds.union(scratch.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld))
+    }
+    object.children.forEach(visit)
+  }
+  visit(root)
+  return bounds
 }

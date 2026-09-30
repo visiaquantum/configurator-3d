@@ -1,5 +1,6 @@
 import type { Object3D } from 'three'
-import { Box3, Vector3 } from 'three'
+import { Box3, Matrix3, Vector3 } from 'three'
+import { visibleBodyBounds } from '../scene/geometry'
 import type { Vec3 } from '../types'
 
 /**
@@ -63,6 +64,8 @@ interface RawSnapNode {
   kind: string
   position: Vec3
   node: Object3D
+  explicitId?: string
+  normal?: Vec3
 }
 
 /**
@@ -102,7 +105,7 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
     if (m) {
       kind = m[1].toLowerCase()
     } else if (ud.kind === 'snap') {
-      kind = ((ud.id as string | undefined) ?? obj.name).toLowerCase()
+      kind = (typeof ud.snapKind === 'string' ? ud.snapKind : typeof ud.id === 'string' ? ud.id : obj.name).toLowerCase()
     }
     if (!kind) return
 
@@ -117,7 +120,12 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
       position = [_center.x, _center.y, _center.z]
     }
 
-    raw.push({ kind, position, node: obj })
+    let normal: Vec3 | undefined
+    if (Array.isArray(ud.normal) && ud.normal.length === 3 && ud.normal.every((value) => typeof value === 'number' && Number.isFinite(value)) && Math.hypot(...ud.normal) > 1e-9) {
+      const direction = new Vector3(...ud.normal as Vec3).applyNormalMatrix(new Matrix3().getNormalMatrix(obj.matrixWorld))
+      normal = direction.toArray() as Vec3
+    }
+    raw.push({ kind, position, node: obj, normal, explicitId: ud.kind === 'snap' && typeof ud.id === 'string' && ud.id ? ud.id : undefined })
   })
 
   if (raw.length === 0) return []
@@ -132,20 +140,18 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
   for (const r of raw) perKind.set(r.kind, (perKind.get(r.kind) ?? 0) + 1)
   const seen = new Map<string, number>()
 
-  // Model bbox for normal derivation: computed from the visible body, with the
-  // marker nodes still shown. They are tiny relative to the body, so they do
-  // not meaningfully inflate it.
-  _modelBox.setFromObject(root)
+  // Marker geometry must not influence the body faces used to infer normals.
+  _modelBox.copy(visibleBodyBounds(root))
   const hasBox = isFinite(_modelBox.min.x)
 
   return raw.map((r) => {
-    let id = r.kind
-    if ((perKind.get(r.kind) ?? 0) > 1) {
+    let id = r.explicitId ?? r.kind
+    if (!r.explicitId && (perKind.get(r.kind) ?? 0) > 1) {
       const n = (seen.get(r.kind) ?? 0) + 1
       seen.set(r.kind, n)
       id = `${r.kind}-${n}`
     }
-    const normal = hasBox ? faceNormalFor(r.position, _modelBox) : undefined
+    const normal = r.normal ?? (hasBox ? faceNormalFor(r.position, _modelBox) : undefined)
     return {
       extracted: { id, kind: r.kind, position: r.position, normal },
       node: r.node,
