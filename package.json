@@ -35,15 +35,16 @@
     "verify:pilot": "node scripts/verify-pilot-assembly.mjs",
     "verify:kit01": "node scripts/verify-kit01-composition.mjs",
     "preview": "vite preview",
-    "prepublishOnly": "npm run build:lib"
+    "prepublishOnly": "npm run build:lib",
+    "test": "npm run build:lib && node --test tests/*.test.mjs && npm run verify:assembly && npm run verify:snaps && npm run verify:pilot && npm run verify:kit01"
   },
   "peerDependencies": {
     "@react-three/drei": ">=10",
     "@react-three/fiber": ">=9",
     "jspdf": ">=3",
     "nanoid": ">=5",
-    "react": ">=18",
-    "react-dom": ">=18",
+    "react": ">=19 <20",
+    "react-dom": ">=19 <20",
     "three": ">=0.180",
     "zod": ">=4",
     "zustand": ">=5"
@@ -71,6 +72,7 @@
     "vite": "^8.0.12",
     "vite-plugin-dts": "^5.0.0",
     "zod": "^4.4.3",
-    "zustand": "^5.0.13"
+    "zustand": "^5.0.13",
+    "html2canvas": "^1.4.1"
   }
 }

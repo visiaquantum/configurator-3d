@@ -1,6 +1,6 @@
 import { Vector3 } from 'three'
 import type { Connection, Euler, ItemConstraint, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
-import { colliderSizeOf, getItem } from './itemRegistry'
+import { colliderSizeOf, getItem, defaultItemRegistry } from './itemRegistry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
 
@@ -105,8 +105,8 @@ export interface MatingTarget {
 const _v = new Vector3()
 
 /** World position of an item-local snap point, or null if the item is gone. */
-export function worldSnapPosition(itemId: string, local: Vec3): Vec3 | null {
-  const reg = getItem(itemId)
+export function worldSnapPosition(itemId: string, local: Vec3, registry = defaultItemRegistry): Vec3 | null {
+  const reg = getItem(itemId, registry)
   if (!reg) return null
   reg.group.updateWorldMatrix(true, false)
   _v.set(local[0], local[1], local[2]).applyMatrix4(reg.group.matrixWorld)
@@ -126,6 +126,7 @@ export function listMatingTargets(
   sourceKind: string,
   snapsByItem: Map<string, ItemSnapPoint[]>,
   opts: { all?: boolean } = {},
+  registry = defaultItemRegistry,
 ): MatingTarget[] {
   const out: MatingTarget[] = []
   for (const [itemId, points] of snapsByItem) {
@@ -133,7 +134,7 @@ export function listMatingTargets(
     for (const point of points) {
       const compatible = canMate(sourceKind, point.kind)
       if (!compatible && !opts.all) continue
-      const position = worldSnapPosition(itemId, point.position)
+      const position = worldSnapPosition(itemId, point.position, registry)
       if (!position) continue
       out.push({ itemId, point, position, compatible })
     }
@@ -206,6 +207,7 @@ export interface AssemblyContext {
 export function resolveSnappedChildren(
   movedId: string,
   ctx: AssemblyContext,
+  registry = defaultItemRegistry,
 ): Array<{ id: string; patch: Partial<PlacedItem> }> {
   const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = []
   const visited = new Set<string>([movedId])
@@ -225,8 +227,8 @@ export function resolveSnappedChildren(
       const targetPoint = parentPoints.find((p) => p.id === c.targetPoint)
       if (!myPoint || !targetPoint) continue
 
-      const targetWorld = worldSnapPosition(parentId, targetPoint.position)
-      const size = colliderSizeOf(child.id)
+      const targetWorld = worldSnapPosition(parentId, targetPoint.position, registry)
+      const size = colliderSizeOf(child.id, registry)
       if (!targetWorld || !size) continue
 
       // Re-derive the mating orientation from the two faces rather than
@@ -243,7 +245,7 @@ export function resolveSnappedChildren(
         targetWorld,
       )
 
-      const reg = getItem(child.id)
+      const reg = getItem(child.id, registry)
       if (reg) {
         reg.group.position.set(position[0], position[1] + size[1] / 2, position[2])
         reg.group.rotation.set(rotation[0], rotation[1], rotation[2])

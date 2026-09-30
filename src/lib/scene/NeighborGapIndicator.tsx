@@ -1,8 +1,9 @@
+import { useSceneTools } from './useSceneTools'
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
-import { useConfiguratorStore } from '../state/store'
-import { computeNeighborGap, type NeighborGap } from './neighborGap'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
+import { type NeighborGap } from './neighborGap'
 
 /**
  * Live product-to-product distance readout for the selected item: measures the
@@ -52,10 +53,12 @@ function quantizeGap(g: NeighborGap): NeighborGap {
 }
 
 export function NeighborGapIndicator() {
+  const storeApi = useConfiguratorStoreApi()
+  const { computeNeighborGap } = useSceneTools()
   const prevRef = useRef<NeighborGap | null>(null)
 
   useFrame(() => {
-    const state = useConfiguratorStore.getState()
+    const state = storeApi.getState()
     let next: NeighborGap | null = null
     if (!state.walkMode && state.selectedId) {
       const g = computeNeighborGap(state.selectedId)

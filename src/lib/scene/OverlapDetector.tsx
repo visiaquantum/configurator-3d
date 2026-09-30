@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 
 /**
  * Mirrors the pure assembly validator into the scene's red collision tint.
@@ -11,6 +11,7 @@ import { useConfiguratorStore } from '../state/store'
  * Drag-time feedback is supplied by Item's green/red connection ghost.
  */
 export function OverlapDetector() {
+  const storeApi = useConfiguratorStoreApi()
   const issues = useConfiguratorStore((state) => state.validationIssues)
 
   useEffect(() => {
@@ -20,10 +21,10 @@ export function OverlapDetector() {
       if (issue.code !== 'collision' && issue.code !== 'out-of-bounds') continue
       issue.itemIds.forEach((id) => next.add(id))
     }
-    const previous = useConfiguratorStore.getState().overlappingIds
+    const previous = storeApi.getState().overlappingIds
     if (previous.size === next.size && [...next].every((id) => previous.has(id))) return
-    useConfiguratorStore.getState().setOverlappingIds(next)
-  }, [issues])
+    storeApi.getState().setOverlappingIds(next)
+  }, [issues, storeApi])
 
   return null
 }

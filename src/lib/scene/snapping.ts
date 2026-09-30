@@ -1,5 +1,6 @@
 import { Box3, Vector3 } from 'three'
 import {
+  defaultItemRegistry,
   getItem,
   getWorldAABB,
   getWorldCorners,
@@ -53,8 +54,9 @@ const _mtvVec = new Vector3()
 export function findNearestVertexSnap(
   myId: string,
   threshold = VERTEX_SNAP_RADIUS,
+  registry = defaultItemRegistry,
 ): VertexSnapResult | null {
-  const me = getItem(myId)
+  const me = getItem(myId, registry)
   if (!me) return null
   getWorldCorners(me, _myCorners)
 
@@ -66,7 +68,7 @@ export function findNearestVertexSnap(
   let bestOy = 0
   let bestOz = 0
 
-  for (const other of listOtherItems(myId)) {
+  for (const other of listOtherItems(myId, registry)) {
     getWorldCorners(other, _otherCorners)
     for (let i = 0; i < 8; i++) {
       const mc = _myCorners[i]
@@ -109,9 +111,10 @@ export function offsetForLockedCorners(
   myCornerIdx: number,
   otherId: string,
   otherCornerIdx: number,
+  registry = defaultItemRegistry,
 ): { offset: Vector3; dist: number } | null {
-  const me = getItem(myId)
-  const other = getItem(otherId)
+  const me = getItem(myId, registry)
+  const other = getItem(otherId, registry)
   if (!me || !other) return null
   getWorldCorners(me, _myCorners)
   getWorldCorners(other, _otherCorners)
@@ -139,15 +142,16 @@ export function pushOutOverlaps(
   myId: string,
   maxIter = 8,
   ignore?: ReadonlySet<string>,
+  registry = defaultItemRegistry,
 ): boolean {
-  const me = getItem(myId)
+  const me = getItem(myId, registry)
   if (!me) return false
 
   let pushed = false
   for (let iter = 0; iter < maxIter; iter++) {
     getWorldAABB(me, _myBox)
     let pushedThisPass = false
-    for (const other of listOtherItems(myId)) {
+    for (const other of listOtherItems(myId, registry)) {
       if (ignore?.has(other.id)) continue
       getWorldAABB(other, _otherBox)
       if (horizontalMTV(_myBox, _otherBox, _mtvVec)) {
@@ -171,8 +175,8 @@ export interface CollisionBounds {
  * its group. This prevents products from sinking into the floor or escaping
  * through the vehicle shell/interior cargo box.
  */
-export function clampItemToBounds(myId: string, bounds: CollisionBounds | null | undefined): boolean {
-  const me = getItem(myId)
+export function clampItemToBounds(myId: string, bounds: CollisionBounds | null | undefined, registry = defaultItemRegistry): boolean {
+  const me = getItem(myId, registry)
   if (!me || !bounds) return false
   getWorldAABB(me, _myBox)
   _mtvVec.set(

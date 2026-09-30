@@ -3,7 +3,7 @@ import { Vector3 } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { PointerLockControls } from '@react-three/drei'
 import type { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStoreApi } from '../state/store'
 
 const EYE_HEIGHT = 1.5 // meters above the floor
 const WALL_PADDING = 0.05 // keep the camera this far from the walls
@@ -27,6 +27,7 @@ function clamp(v: number, min: number, max: number): number {
  * mode so the orbit camera comes back.
  */
 export function WalkControls() {
+  const storeApi = useConfiguratorStoreApi()
   const { camera } = useThree()
   const lockRef = useRef<PointerLockControlsImpl | null>(null)
   const keys = useRef<Record<string, boolean>>({})
@@ -37,7 +38,7 @@ export function WalkControls() {
   // camera transforms imperatively is the idiomatic Three.js pattern.
   useEffect(() => {
     if (enteredRef.current) return
-    const bbox = useConfiguratorStore.getState().enclosureBBox
+    const bbox = storeApi.getState().enclosureBBox
     if (!bbox) return
     const cx = (bbox.min[0] + bbox.max[0]) / 2
     const cz = (bbox.min[2] + bbox.max[2]) / 2
@@ -45,7 +46,7 @@ export function WalkControls() {
     camera.position.set(cx, eye, cz)
     camera.lookAt(cx, eye, cz - 1)
     enteredRef.current = true
-  }, [camera])
+  }, [camera, storeApi])
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -89,7 +90,7 @@ export function WalkControls() {
     }
 
     // Clamp to enclosure interior. Y stays locked to eye height.
-    const bbox = useConfiguratorStore.getState().enclosureBBox
+    const bbox = storeApi.getState().enclosureBBox
     if (bbox) {
       camera.position.x = clamp(
         camera.position.x,
@@ -112,7 +113,7 @@ export function WalkControls() {
       ref={lockRef}
       onUnlock={() => {
         // Esc / pointer-unlock returns to orbit mode.
-        useConfiguratorStore.getState().setWalkMode(false)
+        storeApi.getState().setWalkMode(false)
       }}
     />
   )

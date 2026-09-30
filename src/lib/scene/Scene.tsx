@@ -2,6 +2,7 @@ import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid, Environment, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import type { ProjectData } from '../types'
+import { AssetBoundary } from './AssetBoundary'
 import { Enclosure } from './Enclosure'
 import { Item } from './Item'
 import { AnchorMarkers } from './AnchorMarkers'
@@ -16,9 +17,10 @@ import { useConfiguratorStore } from '../state/store'
 
 interface Props {
   project: ProjectData
+  environmentUrl?: string | null
 }
 
-export function Scene({ project }: Props) {
+export function Scene({ project, environmentUrl }: Props) {
   const select = useConfiguratorStore((s) => s.select)
   const catalog = useConfiguratorStore((s) => s.catalog)
   const runtimeAnchors = useConfiguratorStore((s) => s.runtimeAnchors)
@@ -26,7 +28,7 @@ export function Scene({ project }: Props) {
   const walkMode = useConfiguratorStore((s) => s.walkMode)
   const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
   const effectiveAnchors =
-    runtimeAnchors.length > 0 ? runtimeAnchors : project.enclosure.anchors ?? []
+    project.enclosure.anchors?.length ? project.enclosure.anchors : runtimeAnchors
 
   // Pull-back limit: generous multiple of the enclosure size, with a floor so
   // small enclosures can still be framed from far out. Kept under the camera
@@ -63,28 +65,28 @@ export function Scene({ project }: Props) {
 
       {/* Each GLB-loading subtree gets its own Suspense boundary, so loading a
           new item type doesn't unmount the enclosure + already-placed items. */}
-      <Suspense fallback={null}>
+      <AssetBoundary id="enclosure" source={`${project.enclosure.glbUrl}:${project.enclosure.scale ?? 1}`}><Suspense fallback={null}>
         <Enclosure data={project.enclosure} />
-      </Suspense>
+      </Suspense></AssetBoundary>
       {project.items.map((it) => (
-        <Suspense key={it.id} fallback={null}>
+        <AssetBoundary key={it.id} id={it.id} source={catalog[it.catalogId]?.glbUrl ?? it.catalogId}><Suspense fallback={null}>
           <Item
             item={it}
             catalog={catalog[it.catalogId]}
             anchors={effectiveAnchors}
           />
-        </Suspense>
+        </Suspense></AssetBoundary>
       ))}
       {effectiveAnchors.length > 0 && <AnchorMarkers anchors={effectiveAnchors} />}
       {/* Keep the HDR only for material reflections; the visible scene uses a
           plain background and a readable floor grid. */}
-      <Suspense fallback={null}>
+      {environmentUrl && <AssetBoundary id="environment" source={environmentUrl}><Suspense fallback={null}>
         <Environment
-          files="/hdr/empty_warehouse_01_4k.hdr"
-          resolution={2048}
+          files={environmentUrl}
+          resolution={256}
           environmentIntensity={1}
         />
-      </Suspense>
+      </Suspense></AssetBoundary>}
 
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow>
         <planeGeometry args={[40, 40]} />

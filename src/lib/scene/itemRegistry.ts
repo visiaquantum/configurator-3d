@@ -15,21 +15,23 @@ export interface ItemRegistration {
   localCorners: Vector3[]
 }
 
-const registry = new Map<string, ItemRegistration>()
+export type ItemRegistry = Map<string, ItemRegistration>
+export const createItemRegistry = (): ItemRegistry => new Map()
+export const defaultItemRegistry = createItemRegistry()
 
-export function registerItem(reg: ItemRegistration): void {
+export function registerItem(reg: ItemRegistration, registry = defaultItemRegistry): void {
   registry.set(reg.id, reg)
 }
 
-export function unregisterItem(id: string): void {
+export function unregisterItem(id: string, registry = defaultItemRegistry): void {
   registry.delete(id)
 }
 
-export function getItem(id: string): ItemRegistration | undefined {
+export function getItem(id: string, registry = defaultItemRegistry): ItemRegistration | undefined {
   return registry.get(id)
 }
 
-export function listOtherItems(excludeId: string): ItemRegistration[] {
+export function listOtherItems(excludeId: string, registry = defaultItemRegistry): ItemRegistration[] {
   const out: ItemRegistration[] = []
   for (const [id, reg] of registry) {
     if (id !== excludeId) out.push(reg)
@@ -42,7 +44,7 @@ export function listOtherItems(excludeId: string): ItemRegistration[] {
  * Lets snap math size an item without a catalog lookup (the fallback size is
  * derived from the GLB bbox, so the catalog may not know it).
  */
-export function colliderSizeOf(id: string): [number, number, number] | null {
+export function colliderSizeOf(id: string, registry = defaultItemRegistry): [number, number, number] | null {
   const reg = registry.get(id)
   if (!reg) return null
   const c = reg.localCorners[7] // (+hx, +hy, +hz)

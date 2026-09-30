@@ -1,4 +1,5 @@
-import type { Camera, Object3D, Scene, WebGLRenderer } from 'three'
+import { Mesh, MeshStandardMaterial } from 'three'
+import type { Camera, Material, Object3D, Scene, WebGLRenderer } from 'three'
 import type { AssemblyManifest, CatalogItem, ProjectData, ValidationIssue } from '../types'
 import { definitionFor } from '../assembly/manifest'
 
@@ -63,21 +64,47 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
   // loading keeps the initial configurator bundle focused on the 3D editor.
   const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js')
   const exporter = new GLTFExporter()
-  return new Promise((resolve, reject) => {
+  const materials: Material[] = []
+  const cleaned = roots.map((root) => {
+    root.updateWorldMatrix(true, true)
+    const clone = root.clone(true)
+    root.matrixWorld.decompose(clone.position, clone.quaternion, clone.scale)
+    const helpers: Object3D[] = []
+    clone.traverse((object) => {
+      if (object.userData.configuratorHelper) helpers.push(object)
+      if (!(object instanceof Mesh)) return
+      const copy = (material: Material) => {
+        const result = material.clone()
+        if (result instanceof MeshStandardMaterial && material.userData.originalColor) result.color.set(material.userData.originalColor)
+        result.transparent = false
+        result.opacity = 1
+        result.depthWrite = true
+        materials.push(result)
+        return result
+      }
+      object.material = Array.isArray(object.material) ? object.material.map(copy) : copy(object.material)
+    })
+    helpers.forEach((helper) => helper.removeFromParent())
+    return clone
+  })
+  try {
+    return await new Promise<Blob>((resolve, reject) => {
     exporter.parse(
-      roots,
+      cleaned,
       (result) => {
         if (result instanceof ArrayBuffer) {
           resolve(new Blob([result], { type: 'model/gltf-binary' }))
         } else {
-          // Fallback: JSON glTF if binary couldn't be produced for some reason.
-          resolve(new Blob([JSON.stringify(result)], { type: 'application/json' }))
+          reject(new Error('Il formato di esportazione non è GLB binario'))
         }
       },
       (err) => reject(err),
       { binary: true, onlyVisible: true, embedImages: true },
     )
-  })
+    })
+  } finally {
+    materials.forEach((material) => material.dispose())
+  }
 }
 
 export interface ExportPdfOptions {
@@ -89,6 +116,8 @@ export interface ExportPdfOptions {
   date?: Date
   manifest?: AssemblyManifest | null
   validationIssues?: ValidationIssue[]
+  /** Set only after checking loaded assets, a complete manifest and current geometry. */
+  validated?: boolean
 }
 
 async function loadImageSize(dataUrl: string): Promise<{ w: number; h: number }> {
@@ -118,14 +147,15 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   const MAX_IMG_H = 130 // mm — keeps room for the components table below
 
   doc.setFontSize(16)
-  doc.text(project.metadata?.name ?? project.id, MARGIN, 20)
+  const title = doc.splitTextToSize(project.metadata?.name ?? project.id, CONTENT_W)
+  doc.text(title.slice(0, 3), MARGIN, 20)
   doc.setFontSize(10)
   const customer = project.metadata?.customer
   if (customer) doc.text(`Cliente: ${customer}`, MARGIN, 28)
   doc.text(`Data: ${date.toLocaleDateString('it-IT')}`, MARGIN, customer ? 34 : 28)
   doc.text(`Progetto: ${project.id}`, MARGIN, customer ? 40 : 34)
   doc.setTextColor(validationIssues.some((issue) => issue.level === 'error') ? 180 : 30, validationIssues.some((issue) => issue.level === 'error') ? 50 : 120, 80)
-  doc.text(validationIssues.length ? `Stato: ${validationIssues.length} segnalazioni` : 'Stato: configurazione validata', MARGIN + 75, customer ? 40 : 34)
+  doc.text(opts.validated && manifest ? (validationIssues.length ? `Stato: ${validationIssues.length} segnalazioni` : 'Stato: configurazione validata') : 'Stato: verifica tecnica non eseguita', MARGIN + 75, customer ? 40 : 34)
   doc.setTextColor(0)
   if (manifest) doc.text(`Manifest tecnico: v${manifest.version}`, MARGIN + 75, customer ? 46 : 40)
 
@@ -163,15 +193,33 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
 
   const lines = buildProjectBom(project, catalog, manifest)
 
-  for (const line of lines) {
-    doc.text(line.code, MARGIN, y)
-    doc.text(line.label, MARGIN + 40, y)
-    doc.text(String(line.quantity), PAGE_W - MARGIN - 10, y, { align: 'right' })
+  const tableHeader = () => {
+    doc.setFontSize(10)
+    doc.text('Codice', MARGIN, y)
+    doc.text('Descrizione', MARGIN + 40, y)
+    doc.text('Q.tà', PAGE_W - MARGIN - 10, y, { align: 'right' })
     y += 5
-    if (y > 280) {
+    doc.line(MARGIN, y, PAGE_W - MARGIN, y)
+    y += 5
+  }
+  for (const line of lines) {
+    const codes: string[] = doc.splitTextToSize(line.code, 36)
+    const labels: string[] = doc.splitTextToSize(line.label, CONTENT_W - 58)
+    const height = Math.max(codes.length, labels.length) * 5
+    if (y + height > 280) {
       doc.addPage()
       y = 20
+      tableHeader()
     }
+    // Split unusually long rows across pages while preserving column alignment.
+    for (let index = 0; index < Math.max(codes.length, labels.length); index += 1) {
+      if (y > 275) { doc.addPage(); y = 20; tableHeader() }
+      if (codes[index]) doc.text(codes[index], MARGIN, y)
+      if (labels[index]) doc.text(labels[index], MARGIN + 40, y)
+      if (index === 0) doc.text(String(line.quantity), PAGE_W - MARGIN - 10, y, { align: 'right' })
+      y += 5
+    }
+    y += 2
   }
 
   if (project.items.length === 0) {
@@ -190,5 +238,5 @@ export function downloadBlob(blob: Blob, filename: string): void {
   a.href = url
   a.download = filename
   a.click()
-  URL.revokeObjectURL(url)
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
 }

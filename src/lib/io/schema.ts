@@ -11,7 +11,8 @@ const AnchorSchema = z.object({
 
 const EnclosureSchema = z.object({
   glbUrl: z.string().min(1),
-  dimensions: Vec3Schema.optional(),
+  dimensions: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]).optional(),
+  scale: z.number().positive().optional(),
   anchors: z.array(AnchorSchema).optional(),
 })
 
@@ -21,10 +22,19 @@ const ItemConstraintSchema = z.object({
   type: z.enum(['snapToAnchor', 'snapToItem', 'lockAxis', 'noOverlap', 'mirrorPair']),
   target: z.string().optional(),
   axis: z.enum(['x', 'y', 'z']).optional(),
-  distance: z.number().optional(),
+  distance: z.number().positive().optional(),
   corner: z.number().int().min(0).max(3).optional(),
   point: z.string().optional(),
   targetPoint: z.string().optional(),
+}).superRefine((constraint, ctx) => {
+  const required = constraint.type === 'snapToItem' ? ['target', 'point', 'targetPoint'] as const
+    : constraint.type === 'snapToAnchor' || constraint.type === 'mirrorPair' ? ['target'] as const : []
+  for (const field of required) {
+    if (!constraint[field]) ctx.addIssue({ code: 'custom', path: [field], message: 'Required constraint reference' })
+  }
+  if (constraint.type === 'lockAxis' && !constraint.axis) {
+    ctx.addIssue({ code: 'custom', path: ['axis'], message: 'Required locked axis' })
+  }
 })
 
 const PlacedItemSchema = z.object({
@@ -63,6 +73,17 @@ export const ProjectDataSchema = z.object({
   items: z.array(PlacedItemSchema),
   connections: z.array(ConnectionSchema).optional(),
   metadata: ProjectMetadataSchema.optional(),
+}).superRefine((project, ctx) => {
+  const ids = new Set<string>()
+  project.items.forEach((item, index) => {
+    if (ids.has(item.id)) ctx.addIssue({ code: 'custom', path: ['items', index, 'id'], message: 'Duplicate item id' })
+    ids.add(item.id)
+  })
+  const anchors = new Set<string>()
+  project.enclosure.anchors?.forEach((anchor, index) => {
+    if (anchors.has(anchor.id)) ctx.addIssue({ code: 'custom', path: ['enclosure', 'anchors', index, 'id'], message: 'Duplicate anchor id' })
+    anchors.add(anchor.id)
+  })
 })
 
 export type ProjectDataValidated = z.infer<typeof ProjectDataSchema>

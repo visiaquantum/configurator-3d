@@ -1,4 +1,5 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useSceneTools } from './useSceneTools'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Group, InstancedMesh, Material, Object3D } from 'three'
 import {
   Box3,
@@ -24,11 +25,11 @@ import type {
   Vec3,
 } from '../types'
 import type { ItemConstraint, ItemSnapPoint } from '../types'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { hydrateItemRulesAndHide } from '../io/rules'
 import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSnapGrid'
 import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
-import { colliderSizeOf, buildLocalCorners, getItem, registerItem, unregisterItem } from './itemRegistry'
+import { buildLocalCorners } from './itemRegistry'
 import {
   MIRROR_PAIR_RULE,
   mirrorAxisOf,
@@ -36,10 +37,10 @@ import {
   withSnapConstraint,
 } from './mirrorPair'
 import {
-  clampItemToBounds,
-  findNearestVertexSnap,
-  offsetForLockedCorners,
-  pushOutOverlaps,
+  
+  
+  
+  
   VERTEX_SNAP_RELEASE_RADIUS,
 } from './snapping'
 import {
@@ -49,12 +50,12 @@ import {
   itemSnapConstraintFor,
   jointsSurvivingMove,
   linkedPartners,
-  listMatingTargets,
+  
   mirrorSnapPoints,
   positionForItemSnap,
   rotateGroupPatches,
   snapsForItem,
-  worldSnapPosition,
+  
   yawToMate,
 } from './mating'
 import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
@@ -74,6 +75,7 @@ const ROTATION_SENSITIVITY = 0.01 // radians of Y rotation per pixel of horizont
 const ROTATION_STEP = Math.PI / 2 // rotations snap to 90° increments
 const SNAP_POINT_MARKER_RADIUS = 0.006
 const EMPTY_AUTO_SNAP_OPTIONS = {}
+const gridCache = new WeakMap<Object3D, Map<string, ReturnType<typeof extractAutoSnapGridFromObject>>>()
 
 const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
 
@@ -108,7 +110,7 @@ function enhanceItemMaterials(root: Object3D) {
       next.needsUpdate = true
       return next
     }
-    return m
+    return m.clone()
   }
   root.traverse((obj) => {
     if (!(obj instanceof Mesh)) return
@@ -302,12 +304,17 @@ function ItemInner({
   url,
   assetStartedAt,
 }: Props & { url: string; assetStartedAt: number }) {
+  const storeApi = useConfiguratorStoreApi()
+  const { getItem, registerItem, unregisterItem, colliderSizeOf, worldSnapPosition, listMatingTargets, clampItemToBounds, findNearestVertexSnap, offsetForLockedCorners, pushOutOverlaps } = useSceneTools()
   const select = useConfiguratorStore((s) => s.select)
   const updateItems = useConfiguratorStore((s) => s.updateItems)
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
-  const readOnly = useConfiguratorStore((s) => s.readOnly)
+  const storeReadOnly = useConfiguratorStore((s) => s.readOnly)
+  const project = useConfiguratorStore((s) => s.project)
+  const readOnly = storeReadOnly || !!item.locked || !!project?.items.some((member) => member.locked && assemblyGroup(item.id, project.items, project.connections ?? []).has(member.id))
+  const assetEpoch = useConfiguratorStore((s) => s.assetEpoch)
   const collisionBounds = useConfiguratorStore((s) => s.interiorBBox ?? s.enclosureBBox)
   const isSelected = selectedId === item.id
   const isOverlapping = useConfiguratorStore((s) => s.overlappingIds.has(item.id))
@@ -332,13 +339,13 @@ function ItemInner({
   useLayoutEffect(() => {
     if (assetReportedRef.current) return
     assetReportedRef.current = true
-    useConfiguratorStore.getState().reportTelemetry({
+    storeApi.getState().reportTelemetry({
       type: 'asset-load',
       outcome: 'success',
       durationMs: performance.now() - assetStartedAt,
       detail: { catalogId: item.catalogId },
     })
-  }, [assetStartedAt, item.catalogId])
+  }, [assetStartedAt, item.catalogId, storeApi])
   const mirrored = item.mirrored === true
   const cloned = useMemo(() => {
     const c = gltf.scene.clone()
@@ -360,6 +367,13 @@ function ItemInner({
     c.updateMatrixWorld(true)
     return c
   }, [gltf.scene, scale, mirrored])
+
+  useEffect(() => () => {
+    cloned.traverse((obj) => {
+      if (!(obj instanceof Mesh)) return
+      for (const material of Array.isArray(obj.material) ? obj.material : [obj.material]) material.dispose()
+    })
+  }, [cloned])
 
   // Rules declared in the GLB via extras (kind: "rule") and snap points
   // (SNAP_* nodes / extras kind: "snap"). Extraction also hides the marker
@@ -387,8 +401,18 @@ function ItemInner({
     [modelRules, autoGridForced, autoGridConfig],
   )
   const autoGridSnaps = useMemo(
-    () => extractAutoSnapGridFromObject(cloned, gridRules),
-    [cloned, gridRules],
+    () => {
+      let variants = gridCache.get(gltf.scene)
+      if (!variants) { variants = new Map(); gridCache.set(gltf.scene, variants) }
+      const key = JSON.stringify([scale, gridRules])
+      const cached = variants.get(key)
+      if (cached) return cached
+      const points = extractAutoSnapGridFromObject(cloned, gridRules)
+      if (variants.size >= 16) variants.clear()
+      variants.set(key, points)
+      return points
+    },
+    [gltf.scene, scale, cloned, gridRules],
   )
 
   // Mirror flip for the twin of a mirror pair: along the local axis
@@ -413,7 +437,7 @@ function ItemInner({
       const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
       for (const m of mats) {
         if (!(m instanceof MeshStandardMaterial)) continue
-        if (!originals.has(m)) originals.set(m, m.color.clone())
+        if (!originals.has(m)) { originals.set(m, m.color.clone()); m.userData.originalColor = m.color.getHex() }
         const orig = originals.get(m)!
         if (isOverlapping) {
           m.color.copy(orig).lerp(RED, 0.6)
@@ -466,8 +490,8 @@ function ItemInner({
       p[1] - colliderSize[1] / 2 - bbox.min.y,
       p[2] - bbox.center.z,
     ]
-    const s = useConfiguratorStore.getState()
-    if (modelRules.length > 0 && !s.itemRules[item.catalogId]) {
+    const s = storeApi.getState()
+    if (!s.itemRules[item.catalogId]) {
       setItemRules(
         item.catalogId,
         modelRules.map((r) => ({
@@ -480,13 +504,13 @@ function ItemInner({
     }
     const extractedSnaps = [...modelSnaps, ...autoGridSnaps]
     const catalogSnapPoints = catalog?.snapPoints ?? []
-    if ((extractedSnaps.length > 0 || catalogSnapPoints.length > 0) && !s.itemSnaps[item.catalogId]) {
+    if (!s.itemSnaps[item.catalogId]) {
       setItemSnaps(
         item.catalogId,
         // `toLocal` is a pure translation, so the face normal carries over
         // unchanged from the model frame to the item frame.
         [
-          ...extractedSnaps.map((sp) => ({
+          ...extractedSnaps.filter((sp) => !catalogSnapPoints.some((declared) => declared.kind === sp.kind)).map((sp) => ({
             id: sp.id,
             kind: sp.kind,
             position: toLocal(sp.position),
@@ -497,7 +521,7 @@ function ItemInner({
         ],
       )
     }
-  }, [modelRules, modelSnaps, autoGridSnaps, catalog?.snapPoints, bbox, colliderSize, item.catalogId, setItemRules, setItemSnaps])
+  }, [modelRules, modelSnaps, autoGridSnaps, catalog?.snapPoints, bbox, colliderSize, item.catalogId, setItemRules, setItemSnaps, storeApi, assetEpoch])
 
   /**
    * Items this one may legitimately overlap: whatever it is joined to through
@@ -506,13 +530,13 @@ function ItemInner({
    * apart on every move.
    */
   const linkedTo = (id: string): ReadonlySet<string> | undefined => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     return s.project ? linkedPartners(id, s.project.items, s.project.connections ?? []) : undefined
   }
 
   /** Nearest manifest-approved mating candidate for the current live drag pose. */
   const resolveConnectionPreview = (): ConnectionPreview | null => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     if (!s.project || !s.assemblyManifest || !group) return null
     const sourceDefinition = definitionFor(s.assemblyManifest, item.catalogId)
     if (!sourceDefinition) return null
@@ -596,7 +620,7 @@ function ItemInner({
     const joints = connectionsAtPose(item, { position, rotation }, {
       items: s.project.items,
       itemSnaps: s.itemSnaps,
-      itemRules: s.itemRules,
+      itemRules: s.itemRules, itemSizes: s.itemSizes,
       manifest: s.assemblyManifest,
       heightOf: (placed) => colliderSizeOf(placed.id)?.[1] ?? 0,
     })
@@ -613,7 +637,7 @@ function ItemInner({
     }
     const issues = validateConfiguration(previewProject, s.catalog, s.assemblyManifest, {
       itemSnaps: s.itemSnaps,
-      itemRules: s.itemRules,
+      itemRules: s.itemRules, itemSizes: s.itemSizes,
       enclosureBounds: s.interiorBBox,
     })
     const blocking = issues.find((issue) => issue.level === 'error' && issue.itemIds.includes(item.id))
@@ -634,7 +658,8 @@ function ItemInner({
   const snapCorner = snapConstraint?.corner ?? null
   const snapPointId = snapConstraint?.point ?? null
   const catalogSnaps = useConfiguratorStore((s) => s.itemSnaps[item.catalogId])
-  const effectiveCatalogSnaps = mirrorSnapPoints(catalogSnaps, mirrorScale)
+  // eslint-disable-next-line react-hooks/preserve-manual-memoization -- Three.js handlers mutate live groups; point identity must remain stable during a drag.
+  const effectiveCatalogSnaps = useMemo(() => mirrorSnapPoints(catalogSnaps, mirrorScale), [catalogSnaps, mirrorScale])
   useLayoutEffect(() => {
     if (!group) return
     let px: number, py: number, pz: number
@@ -678,13 +703,14 @@ function ItemInner({
     group.userData.exportable = true
     const localCorners = buildLocalCorners(colliderSize)
     registerItem({ id: item.id, group, localCorners })
+    storeApi.getState().setItemSize(item.catalogId, colliderSize)
     return () => unregisterItem(item.id)
-  }, [item.id, colliderSize, group])
+  }, [item.id, item.catalogId, colliderSize, group, registerItem, unregisterItem, storeApi])
 
   // If an item is loaded/added before enclosure bounds are ready, normalize it
   // as soon as bounds exist so it never starts below the floor or outside the van.
   useLayoutEffect(() => {
-    if (!group || !collisionBounds) return
+    if (!group || !collisionBounds || readOnly) return
     // A joined part is held by its joint, not by the van, and so is the twin of
     // a mirror pair: both are placed by something else. Clamping either slides
     // it off its seat, and the patch below then drops the joint as well — so an
@@ -710,7 +736,7 @@ function ItemInner({
         patch: { position: nextPos, constraints: withSnapConstraint(item, null) },
       },
     ])
-  }, [group, collisionBounds, item, item.id, item.position, colliderSize, updateItems])
+  }, [group, collisionBounds, item, item.id, item.position, colliderSize, updateItems, clampItemToBounds, readOnly])
   /* eslint-enable react-hooks/immutability */
 
   const handleTransformEnd = () => {
@@ -724,7 +750,7 @@ function ItemInner({
     // by corner/point can't survive an in-place rotation (the item would
     // orbit the anchor), so it is dropped and the current position is kept;
     // a center snap is rotation-invariant and stays.
-    if (useConfiguratorStore.getState().gizmoMode === 'rotate') {
+    if (storeApi.getState().gizmoMode === 'rotate') {
       if (transformLockPosRef.current) group.position.copy(transformLockPosRef.current)
       transformLockPosRef.current = null
       const swung = turnAssembly(newRot[1] - item.rotation[1])
@@ -798,7 +824,7 @@ function ItemInner({
    * to leave every joint exactly as tight as it was.
    */
   const assemblyFollowers = (): Array<{ id: string; start: Vector3 }> => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const members = assemblyGroup(item.id, s.project?.items ?? [], s.project?.connections ?? [])
     const out: Array<{ id: string; start: Vector3 }> = []
     for (const id of members) {
@@ -821,7 +847,7 @@ function ItemInner({
    */
   const followLive = (): boolean => {
     if (!group) return false
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const members = assemblyGroup(item.id, s.project?.items ?? [], s.project?.connections ?? [])
     if (members.size < 2) return false
     // A frame turns about the upright axis only. Tipping it would lift half its
@@ -848,7 +874,7 @@ function ItemInner({
    * long frame fit in the first place. Validation still reports the result.
    */
   const turnAssembly = (step: number): Array<{ id: string; patch: Partial<PlacedItem> }> | null => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const items = s.project?.items ?? []
     const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
     if (members.size < 2) return null
@@ -878,7 +904,7 @@ function ItemInner({
     position: Vec3,
     yaw: number,
   ): Array<{ id: string; patch: Partial<PlacedItem> }> => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const items = s.project?.items ?? []
     const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
     const swung = rotateGroupPatches(items, members, item.position, yaw - item.rotation[1])
@@ -934,7 +960,7 @@ function ItemInner({
       preview.position[2],
     )
     group.rotation.set(preview.rotation[0], preview.rotation[1], preview.rotation[2])
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const constraints = [
       ...(item.constraints?.filter((constraint) => constraint.type === 'mirrorPair') ?? []),
       itemSnapConstraintFor(preview.connection.targetItemId, preview.connection.sourcePointId, preview.connection.targetPointId),
@@ -953,11 +979,12 @@ function ItemInner({
   }
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
-    if (useConfiguratorStore.getState().walkMode) return
+    if (storeApi.getState().walkMode) return
     e.stopPropagation()
     if (!isSelected) select(item.id)
     if (readOnly) return
     if (!group) return
+    if (item.constraints?.some((constraint) => constraint.type === 'lockAxis')) return
     ;(e.target as Element & { setPointerCapture?: (id: number) => void })
       .setPointerCapture?.(e.pointerId)
 
@@ -1012,7 +1039,7 @@ function ItemInner({
     // Y stays at the plane constant.
 
     // Grid snap (base step). Vertex snap below may override on engagement.
-    const store = useConfiguratorStore.getState()
+    const store = storeApi.getState()
     if (store.snapToGridEnabled && store.gridStep > 0) {
       const s = store.gridStep
       group.position.x = Math.round(group.position.x / s) * s
@@ -1098,7 +1125,7 @@ function ItemInner({
     dragRef.current = null
     if (!d.started) return // pure click — selection already handled in pointerdown
     setDraggingItemId(null)
-    useConfiguratorStore.getState().setDragClearance(null)
+    storeApi.getState().setDragClearance(null)
     if (!group) return
 
     if (d.mode === 'rotate') {
@@ -1176,7 +1203,7 @@ function ItemInner({
       { id: item.id, patch: { position: finalPos, constraints } },
       ...groupFollowPatches(finalPos, item.rotation[1]),
     ]
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const kept = jointsSurvivingMove(patches, s.project?.connections ?? [])
     if (kept.length !== (s.project?.connections ?? []).length) s.commitAssembly(patches, kept)
     else updateItems(patches)
@@ -1187,9 +1214,15 @@ function ItemInner({
     if (!d) return
     ;(e.target as Element & { releasePointerCapture?: (id: number) => void })
       .releasePointerCapture?.(e.pointerId)
+    for (const placed of storeApi.getState().project?.items ?? []) {
+      const live = getItem(placed.id)
+      if (!live) continue
+      live.group.position.set(placed.position[0], placed.position[1] + (colliderSizeOf(placed.id)?.[1] ?? 0) / 2, placed.position[2])
+      live.group.rotation.set(...placed.rotation)
+    }
     dragRef.current = null
     setDraggingItemId(null)
-    useConfiguratorStore.getState().setDragClearance(null)
+    storeApi.getState().setDragClearance(null)
     updateConnectionPreview(null)
   }
   /* eslint-enable react-hooks/immutability */
@@ -1213,11 +1246,11 @@ function ItemInner({
               -bbox.center.z,
             ]}
           >
-            <primitive object={cloned} />
+            <primitive object={cloned} dispose={null} />
           </group>
         </group>
         {isSelected && !readOnly && (
-          <mesh>
+          <mesh userData={{ configuratorHelper: true }}>
             <boxGeometry
               args={[colliderSize[0] * 1.05, colliderSize[1] * 1.05, colliderSize[2] * 1.05]}
             />
@@ -1228,7 +1261,7 @@ function ItemInner({
           </mesh>
         )}
         {!isSelected && isOverlapping && (
-          <mesh>
+          <mesh userData={{ configuratorHelper: true }}>
             <boxGeometry
               args={[colliderSize[0] * 1.05, colliderSize[1] * 1.05, colliderSize[2] * 1.05]}
             />
@@ -1244,6 +1277,9 @@ function ItemInner({
           mode={gizmoMode}
           size={MathUtils.clamp(Math.max(...colliderSize) * 4, 0.05, 0.3)}
           rotationSnap={ROTATION_STEP}
+          showX={!item.constraints?.some((c) => c.type === 'lockAxis' && c.axis === 'x')}
+          showY={gizmoMode === 'rotate' || !item.constraints?.some((c) => c.type === 'lockAxis' && c.axis === 'y')}
+          showZ={!item.constraints?.some((c) => c.type === 'lockAxis' && c.axis === 'z')}
           onMouseDown={() => {
             transformLockPosRef.current = gizmoMode === 'rotate' ? group.position.clone() : null
           }}
@@ -1323,6 +1359,7 @@ function SnapPointMarkers({ points }: { points: ItemSnapPoint[] }) {
     <instancedMesh
       key={points.length}
       ref={ref}
+      userData={{ configuratorHelper: true }}
       args={[undefined, undefined, points.length]}
       renderOrder={1001}
       frustumCulled={false}

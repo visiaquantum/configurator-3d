@@ -5,6 +5,7 @@ import {
   serializeProject,
   ProjectParseError,
   useConfiguratorStore,
+  useConfiguratorStoreApi,
 } from './lib'
 import { definitionFor } from './lib/assembly/manifest'
 import type {
@@ -115,6 +116,7 @@ const PROJECT_METADATA: ProjectMetadata = {
 }
 
 export default function App() {
+  const storeApi = useConfiguratorStoreApi()
   const cfg = useRef<ConfiguratorHandle>(null)
   const [savedJson, setSavedJson] = useState('')
   const [loadStatus, setLoadStatus] = useState<{ ok: boolean; msg: string; issues?: ProjectIssue[] } | null>(null)
@@ -309,7 +311,7 @@ export default function App() {
     try {
       const text = await file.text()
       const { project, warnings } = parseProject(text, { catalog })
-      useConfiguratorStore.getState().setProject(project)
+      storeApi.getState().setProject(project)
       setLoadStatus({
         ok: true,
         msg: `Caricato "${project.id}" v${project.version} con ${project.items.length} item${warnings.length ? ` (${warnings.length} warning)` : ''}`,

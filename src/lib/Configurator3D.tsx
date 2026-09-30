@@ -1,9 +1,12 @@
-import { useEffect, useImperativeHandle, useMemo, useState } from 'react'
+import { useContext, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
 import { nanoid } from 'nanoid'
 import { useGLTF } from '@react-three/drei'
 import { Scene } from './scene/Scene'
 import { Inspector } from './ui/Inspector'
-import { useConfiguratorStore } from './state/store'
+import { ConfiguratorStoreContext, createConfiguratorStore, useConfiguratorStore, useConfiguratorStoreApi } from './state/store'
+import type { ConfiguratorStore } from './state/store'
+import { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
+import { configurationStatus } from './state/readiness'
 import { loadCatalog } from './io/catalog'
 import { hasBlockingIssues, validateConfiguration } from './assembly/validation'
 import { inferLegacyConnections, loadAssemblyManifest } from './assembly/manifest'
@@ -25,7 +28,14 @@ import type {
   Vec3,
 } from './types'
 
-export function Configurator3D({
+export function Configurator3D(props: Configurator3DProps) {
+  const inherited = useContext(ConfiguratorStoreContext)
+  const [owned] = useState(createConfiguratorStore)
+  const store = props.store ?? inherited ?? owned
+  return <ConfiguratorStoreProvider store={store}><ConfiguratorContent {...props} /></ConfiguratorStoreProvider>
+}
+
+function ConfiguratorContent({
   ref,
   enclosure,
   initialItems,
@@ -45,7 +55,10 @@ export function Configurator3D({
   readOnly,
   className,
   style,
+  environmentUrl,
 }: Configurator3DProps) {
+  const storeApi = useConfiguratorStoreApi()
+  const containerRef = useRef<HTMLDivElement>(null)
   const setProject = useConfiguratorStore((s) => s.setProject)
   const setCatalog = useConfiguratorStore((s) => s.setCatalog)
   const setReadOnly = useConfiguratorStore((s) => s.setReadOnly)
@@ -54,6 +67,8 @@ export function Configurator3D({
   const validationIssues = useConfiguratorStore((s) => s.validationIssues)
   const itemSnaps = useConfiguratorStore((s) => s.itemSnaps)
   const itemRules = useConfiguratorStore((s) => s.itemRules)
+  const catalogEntries = useConfiguratorStore((s) => s.catalog)
+  const itemSizes = useConfiguratorStore((s) => s.itemSizes)
   const interiorBBox = useConfiguratorStore((s) => s.interiorBBox)
 
   // Build the project once when any of the source props change (reference compare).
@@ -84,19 +99,22 @@ export function Configurator3D({
   const [manifestError, setManifestError] = useState<{ source: string; error: string } | null>(null)
 
   useEffect(() => {
-    useConfiguratorStore.getState().setTelemetryListener(onTelemetry ?? null)
-    return () => useConfiguratorStore.getState().setTelemetryListener(null)
-  }, [onTelemetry])
+    storeApi.getState().setTelemetryListener(onTelemetry ?? null)
+    return () => storeApi.getState().setTelemetryListener(null)
+  }, [onTelemetry, storeApi])
 
   useEffect(() => {
     if (!catalogUrl) return
     let cancelled = false
+    const controller = new AbortController()
+    storeApi.setState({ loadingCatalog: true, catalogError: null, catalog: {} })
     const startedAt = performance.now()
-    loadCatalog(catalogUrl)
+    loadCatalog(catalogUrl, controller.signal)
       .then((items) => {
         if (cancelled) return
+        storeApi.setState({ loadingCatalog: false })
         setFetched({ url: catalogUrl, items })
-        useConfiguratorStore.getState().reportTelemetry({
+        storeApi.getState().reportTelemetry({
           type: 'catalog-load', outcome: 'success', durationMs: performance.now() - startedAt,
           detail: { itemCount: items.length },
         })
@@ -104,8 +122,9 @@ export function Configurator3D({
       })
       .catch((e: Error) => {
         if (cancelled) return
+        storeApi.setState({ loadingCatalog: false, catalogError: e.message })
         setFetched({ url: catalogUrl, error: e.message })
-        useConfiguratorStore.getState().reportTelemetry({
+        storeApi.getState().reportTelemetry({
           type: 'catalog-load', outcome: 'error', durationMs: performance.now() - startedAt,
           detail: { message: e.message },
         })
@@ -113,21 +132,25 @@ export function Configurator3D({
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [catalogUrl, onCatalogLoaded, onCatalogError])
+  }, [catalogUrl, onCatalogLoaded, onCatalogError, storeApi])
 
   useEffect(() => {
+    storeApi.setState({ loadingManifest: !!assemblyManifest, manifestError: null, assemblyManifest: null })
     if (!assemblyManifest) {
-      useConfiguratorStore.getState().setAssemblyManifest(null)
+      storeApi.getState().setAssemblyManifest(null)
       return
     }
     let cancelled = false
+    const controller = new AbortController()
     const startedAt = performance.now()
-    loadAssemblyManifest(assemblyManifest)
+    loadAssemblyManifest(assemblyManifest, controller.signal)
       .then((next) => {
         if (cancelled) return
-        useConfiguratorStore.getState().setAssemblyManifest(next)
-        useConfiguratorStore.getState().reportTelemetry({
+        storeApi.setState({ loadingManifest: false })
+        storeApi.getState().setAssemblyManifest(next)
+        storeApi.getState().reportTelemetry({
           type: 'manifest-load', outcome: 'success', durationMs: performance.now() - startedAt,
           detail: { version: next.version, productCount: next.products.length },
         })
@@ -135,8 +158,9 @@ export function Configurator3D({
       })
       .catch((error: Error) => {
         if (cancelled) return
-        useConfiguratorStore.getState().setAssemblyManifest(null)
-        useConfiguratorStore.getState().reportTelemetry({
+        storeApi.setState({ loadingManifest: false, manifestError: error.message })
+        storeApi.getState().setAssemblyManifest(null)
+        storeApi.getState().reportTelemetry({
           type: 'manifest-load', outcome: 'error', durationMs: performance.now() - startedAt,
           detail: { message: error.message },
         })
@@ -144,14 +168,16 @@ export function Configurator3D({
       })
     return () => {
       cancelled = true
+      controller.abort()
     }
-  }, [assemblyManifest])
+  }, [assemblyManifest, storeApi])
 
   // Push prop catalog into the store. Imperative `addItem` adds more on top.
   // Also preload each catalog GLB so the first instance of a new type doesn't
   // suspend its Suspense boundary (which would briefly blank the item).
   useEffect(() => {
     if (Array.isArray(catalog)) {
+      storeApi.setState({ loadingCatalog: false, catalogError: null })
       setCatalog(catalog)
       catalog.forEach((c) => useGLTF.preload(c.glbUrl))
       return
@@ -160,7 +186,7 @@ export function Configurator3D({
       setCatalog(fetched.items)
       fetched.items.forEach((c) => useGLTF.preload(c.glbUrl))
     }
-  }, [catalog, fetched, catalogUrl, setCatalog])
+  }, [catalog, fetched, catalogUrl, setCatalog, storeApi])
 
   const catalogStatus: { state: 'idle' } | { state: 'loading' } | { state: 'error'; message: string } =
     !catalogUrl
@@ -180,45 +206,50 @@ export function Configurator3D({
   }, [builtProject, setProject])
 
   useEffect(() => {
-    if (project && onChange) onChange(project)
+    if (project && onChange) onChange(structuredClone(project))
   }, [project, onChange])
 
   useEffect(() => {
-    const issues = validateConfiguration(project, useConfiguratorStore.getState().catalog, manifest, {
+    const issues = validateConfiguration(project, catalogEntries, manifest, {
       itemSnaps,
       itemRules,
+      itemSizes,
       enclosureBounds: interiorBBox,
     })
-    const current = useConfiguratorStore.getState().validationIssues
+    const current = storeApi.getState().validationIssues
     const same = current.length === issues.length && current.every((issue, i) =>
       issue.code === issues[i].code && issue.message === issues[i].message && issue.itemIds.join('|') === issues[i].itemIds.join('|'),
     )
     if (!same) {
-      useConfiguratorStore.getState().setValidationIssues(issues)
-      useConfiguratorStore.getState().reportTelemetry({
+      storeApi.getState().setValidationIssues(issues)
+      storeApi.getState().reportTelemetry({
         type: 'validation',
         outcome: issues.some((issue) => issue.level === 'error') ? 'error' : 'success',
         detail: { issueCount: issues.length, errorCount: issues.filter((issue) => issue.level === 'error').length },
       })
     }
     onValidationChange?.(issues)
-  }, [project, manifest, itemSnaps, itemRules, interiorBBox, onValidationChange])
+  }, [project, catalogEntries, manifest, itemSnaps, itemRules, itemSizes, interiorBBox, onValidationChange, storeApi])
 
   useEffect(() => {
     if (!project || project.connections !== undefined || !manifest) return
+    if (project.items.some((item) => !Object.hasOwn(itemSnaps, item.catalogId))) return
     const inferred = inferLegacyConnections(project, manifest, itemSnaps, itemRules)
     // Wait for GLB snap hydration; an empty result may simply mean that assets
     // are still loading, so do not freeze migration prematurely.
-    if (inferred.length > 0) useConfiguratorStore.getState().setConnections(inferred)
-  }, [project, manifest, itemSnaps, itemRules])
+    const legacyCount = project.items.filter((item) => item.constraints?.some((c) => c.type === 'snapToItem')).length
+    if (inferred.length === legacyCount) storeApi.getState().setConnections(inferred)
+  }, [project, manifest, itemSnaps, itemRules, storeApi])
 
   // Global keyboard shortcuts
   useEffect(() => {
     if (readOnly) return
     const onKey = (e: KeyboardEvent) => {
+      if (!containerRef.current?.contains(document.activeElement)) return
+      if ((e.target as HTMLElement | null)?.isContentEditable) return
       const tag = (e.target as HTMLElement | null)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
-      const s = useConfiguratorStore.getState()
+      const s = storeApi.getState()
       // Walk mode owns the keyboard (WASD/Esc/Shift handled in WalkControls).
       if (s.walkMode) return
       const mod = e.metaKey || e.ctrlKey
@@ -243,51 +274,57 @@ export function Configurator3D({
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [readOnly])
+  }, [readOnly, storeApi])
 
   // Imperative API exposed to host via ref.
   useImperativeHandle(
     ref,
     (): ConfiguratorHandle => ({
       addItem(product, opts) {
-        return addItemToScene(product, opts)
+        return addItemToScene(storeApi, product, opts)
       },
       removeItem(id) {
-        useConfiguratorStore.getState().removeItem(id)
+        storeApi.getState().removeItem(id)
       },
       selectItem(id) {
-        useConfiguratorStore.getState().select(id)
+        storeApi.getState().select(id)
       },
       getProject() {
-        return useConfiguratorStore.getState().project
+        return storeApi.getState().exportProject()
       },
       getValidation() {
-        return useConfiguratorStore.getState().validationIssues
+        return structuredClone(storeApi.getState().validationIssues)
       },
       setProject(p) {
-        useConfiguratorStore.getState().setProject(p)
+        storeApi.getState().setProject(p)
       },
       undo() {
-        useConfiguratorStore.getState().undo()
+        storeApi.getState().undo()
       },
       redo() {
-        useConfiguratorStore.getState().redo()
+        storeApi.getState().redo()
       },
-      exportPNG: () => exportSceneAsBlob('png'),
-      exportGLB: () => exportSceneAsBlob('glb'),
-      exportPDF: () => exportSceneAsBlob('pdf'),
+      exportPNG: () => exportSceneAsBlob(storeApi, 'png'),
+      exportGLB: () => exportSceneAsBlob(storeApi, 'glb'),
+      exportPDF: () => exportSceneAsBlob(storeApi, 'pdf'),
     }),
-    [],
+    [storeApi],
   )
 
   if (!project) return null
 
   return (
     <div
+      ref={containerRef}
+      tabIndex={0}
+      onPointerDownCapture={(event) => {
+        const element = event.target as HTMLElement
+        if (!element.closest('input,textarea,select,button,[contenteditable]')) containerRef.current?.focus({ preventScroll: true })
+      }}
       className={className}
       style={{ position: 'relative', width: '100%', height: '100%', ...style }}
     >
-      <Scene project={project} />
+      <Scene project={project} environmentUrl={environmentUrl} />
       {showInspector && <Inspector readOnly={readOnly} />}
       {showHints && <Hints />}
       <ViewControls />
@@ -314,10 +351,12 @@ export function Configurator3D({
 // ---------------------------------------------------------------------------
 
 function addItemToScene(
+  storeApi: ConfiguratorStore,
   product: CatalogItem,
   opts?: { position?: Vec3; select?: boolean },
 ): string {
-  const s = useConfiguratorStore.getState()
+  const s = storeApi.getState()
+  if (!s.project || s.readOnly) throw new Error('Il progetto non è modificabile')
   if (!s.catalog[product.id]) useGLTF.preload(product.glbUrl)
   s.addCatalogItem(product)
   const items = s.project?.items ?? []
@@ -346,15 +385,21 @@ function addItemToScene(
   return id
 }
 
-async function exportSceneAsBlob(kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
+async function exportSceneAsBlob(storeApi: ConfiguratorStore, kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
   const startedAt = performance.now()
+  const selectedId = storeApi.getState().selectedId
+  const initialProject = storeApi.getState().project
+  const status = configurationStatus(storeApi.getState())
+  if (!status.ready) throw new Error(status.message)
+  if (kind === 'pdf' && !status.technical) throw new Error('Carica un manifest tecnico completo prima di esportare la BOM')
   try {
     // Deselect, then wait two frames: one for React to commit the unmount of
     // TransformControls/wireframe, one for R3F to render the clean scene.
-    useConfiguratorStore.getState().select(null)
+    storeApi.getState().select(null)
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
+    if (s.project !== initialProject) throw new Error('Il progetto è cambiato durante l’esportazione: riprova')
     const refs = s.captureRefs
     let blob: Blob
     if (kind === 'png') {
@@ -366,7 +411,8 @@ async function exportSceneAsBlob(kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
       if (roots.length === 0) throw new Error('No exportable geometry')
       blob = await exportSceneGLB(roots)
     } else {
-      if (hasBlockingIssues(s.validationIssues)) {
+      const issues = validateConfiguration(s.project, s.catalog, s.assemblyManifest, { itemSnaps: s.itemSnaps, itemRules: s.itemRules, itemSizes: s.itemSizes, enclosureBounds: s.interiorBBox })
+      if (hasBlockingIssues(issues)) {
         throw new Error('La configurazione contiene errori bloccanti: correggili prima di esportare la BOM/PDF')
       }
       const imageDataUrl = refs
@@ -379,17 +425,20 @@ async function exportSceneAsBlob(kind: 'png' | 'glb' | 'pdf'): Promise<Blob> {
         catalog: Object.values(s.catalog),
         imageDataUrl,
         manifest: s.assemblyManifest,
-        validationIssues: s.validationIssues,
+        validationIssues: issues,
+        validated: true,
       })
     }
     s.reportTelemetry({ type: 'export', outcome: 'success', durationMs: performance.now() - startedAt, detail: { kind, size: blob.size } })
     return blob
   } catch (error) {
-    useConfiguratorStore.getState().reportTelemetry({
+    storeApi.getState().reportTelemetry({
       type: 'export', outcome: 'error', durationMs: performance.now() - startedAt,
       detail: { kind, message: (error as Error).message },
     })
     throw error
+  } finally {
+    if (storeApi.getState().project === initialProject) storeApi.getState().select(selectedId)
   }
 }
 
@@ -404,37 +453,50 @@ function Toolbar({
   readOnly?: boolean
   onSave?: (p: ProjectData) => void
 }) {
+  const storeApi = useConfiguratorStoreApi()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const state = useConfiguratorStore((s) => s)
+  const status = configurationStatus(state)
   const projectId = useConfiguratorStore((s) => s.project?.id ?? 'scene')
   const validationIssues = useConfiguratorStore((s) => s.validationIssues)
-  const canExportBom = !hasBlockingIssues(validationIssues)
+  const canExportBom = status.ready && status.technical && !hasBlockingIssues(validationIssues)
   const download = async (kind: 'png' | 'glb' | 'pdf') => {
-    const blob = await exportSceneAsBlob(kind)
-    const ext = kind === 'glb' ? 'glb' : kind === 'pdf' ? 'pdf' : 'png'
-    downloadBlob(blob, `${projectId}.${ext}`)
+    setBusy(true)
+    setError(null)
+    try {
+      const blob = await exportSceneAsBlob(storeApi, kind)
+      downloadBlob(blob, `${projectId}.${kind}`)
+    } catch (cause) {
+      setError((cause as Error).message)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <div style={toolbarStyle}>
+      {error && <span role="alert" style={{ color: '#ff9090', maxWidth: 300 }}>{error}</span>}
       {onSave && (
         <button
           type="button"
           disabled={readOnly}
           onClick={() => {
-            const current = useConfiguratorStore.getState().project
-            if (current) onSave(current)
+            const current = storeApi.getState().project
+            if (current) onSave(structuredClone(current))
           }}
           style={primaryBtn}
         >
           Salva
         </button>
       )}
-      <button type="button" onClick={() => download('png')} style={secondaryBtn} title="Esporta immagine PNG">
+      <button type="button" disabled={busy || !status.ready} onClick={() => download('png')} style={secondaryBtn} title="Esporta immagine PNG">
         PNG
       </button>
-      <button type="button" onClick={() => download('glb')} style={secondaryBtn} title="Esporta scena GLB">
+      <button type="button" disabled={busy || !status.ready} onClick={() => download('glb')} style={secondaryBtn} title="Esporta scena GLB">
         GLB
       </button>
-      <button type="button" disabled={!canExportBom} onClick={() => download('pdf')} style={secondaryBtn} title={canExportBom ? 'Esporta PDF con lista componenti' : 'Correggi gli errori di configurazione prima di esportare'}>
+      <button type="button" disabled={busy || !canExportBom} onClick={() => download('pdf')} style={secondaryBtn} title={canExportBom ? 'Esporta PDF con lista componenti' : 'Correggi gli errori di configurazione prima di esportare'}>
         PDF
       </button>
     </div>
@@ -444,6 +506,11 @@ function Toolbar({
 function ValidationPanel({ issues }: { issues: ValidationIssue[] }) {
   const select = useConfiguratorStore((state) => state.select)
   const errors = issues.filter((issue) => issue.level === 'error')
+  const state = useConfiguratorStore((s) => s)
+  const status = configurationStatus(state)
+  if (!status.ready || !status.technical) {
+    return <div style={validationStyle}>{status.message}</div>
+  }
   if (issues.length === 0) {
     return <div style={{ ...validationStyle, borderColor: '#2c9b68', color: '#a8efc8' }}>Configurazione valida</div>
   }
@@ -476,8 +543,9 @@ function Hints() {
   const futureLen = useConfiguratorStore((s) => s.future.length)
   const undo = useConfiguratorStore((s) => s.undo)
   const redo = useConfiguratorStore((s) => s.redo)
-  const canUndo = pastLen > 0
-  const canRedo = futureLen > 0
+  const readOnly = useConfiguratorStore((s) => s.readOnly)
+  const canUndo = !readOnly && pastLen > 0
+  const canRedo = !readOnly && futureLen > 0
   return (
     <div style={hintsStyle}>
       <span style={{ pointerEvents: 'none' }}>

@@ -94,7 +94,7 @@ function collectTriangles(root: Object3D): Triangle[] {
   const v = new Vector3()
 
   root.updateWorldMatrix(true, true)
-  root.traverse((obj) => {
+  root.traverseVisible((obj) => {
     if (!obj.visible || !(obj instanceof Mesh)) return
     const pos = obj.geometry.getAttribute('position')
     if (!pos) return
@@ -123,7 +123,7 @@ function collectTriangles(root: Object3D): Triangle[] {
 function collectTriangleGroups(root: Object3D, meshNameIncludes: string[]): Triangle[][] {
   if (meshNameIncludes.length === 0) return [collectTriangles(root)]
   const groups: Triangle[][] = []
-  root.traverse((obj) => {
+  root.traverseVisible((obj) => {
     if (!(obj instanceof Mesh) || !meshNameIncludes.some((value) => obj.name.includes(value))) return
     const triangles = collectTriangles(obj)
     if (triangles.length > 0) groups.push(triangles)
@@ -219,6 +219,7 @@ function choosePlanes(box: Box3, params: Record<string, unknown>): PlaneCandidat
 // --- boundary loop detection ----------------------------------------------
 
 interface Loop {
+  polygon: Array<[number, number]>
   /** In-plane bbox extent on the plane's u and v axes. */
   du: number
   dv: number
@@ -278,6 +279,9 @@ function boundaryLoops(
   for (const start of adj.keys()) {
     if (visited.has(start)) continue
 
+    const polygon: Array<[number, number]> = []
+    let closed = false
+    let simple = true
     let minU = Infinity
     let maxU = -Infinity
     let minV = Infinity
@@ -287,23 +291,25 @@ function boundaryLoops(
 
     while (node && !visited.has(node)) {
       visited.add(node)
+      if (adj.get(node)?.length !== 2) simple = false
       const p = vertexPos.get(node)!
       const u = p[plane.uAxis]
       const v = p[plane.vAxis]
+      polygon.push([u, v])
       if (u < minU) minU = u
       if (u > maxU) maxU = u
       if (v < minV) minV = v
       if (v > maxV) maxV = v
 
-      const next: string | undefined = (adj.get(node) ?? []).find(
-        (n) => n !== prev && !visited.has(n),
-      )
+      const next: string | undefined = (adj.get(node) ?? []).find((n) => n !== prev)
+      if (next === start) closed = true
       prev = node
       node = next ?? null
     }
 
-    if (minU === Infinity) continue
+    if (minU === Infinity || !closed || !simple || polygon.length < 3) continue
     loops.push({
+      polygon,
       du: maxU - minU,
       dv: maxV - minV,
       centerU: (minU + maxU) / 2,
@@ -346,8 +352,21 @@ function detectHolesOnPlane(
   maxHoleSize: number,
   vertexTolerance: number,
 ): ExtractedSnapPoint[] {
-  const holes = boundaryLoops(tris, plane, vertexTolerance).filter(
+  const loops = boundaryLoops(tris, plane, vertexTolerance)
+  const containsPoint = (polygon: Array<[number, number]>, point: [number, number]) => {
+    let inside = false
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i]
+      const b = polygon[j]
+      if ((a[1] > point[1]) !== (b[1] > point[1]) && point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside
+    }
+    return inside
+  }
+  const holes = loops.filter(
     (l) =>
+      // A hole has an odd number of enclosing boundaries. Standalone small
+      // faces and open/non-manifold chains are never drilling locations.
+      loops.filter((outer) => outer !== l && containsPoint(outer.polygon, l.polygon[0])).length % 2 === 1 &&
       l.du >= minHoleSize &&
       l.du <= maxHoleSize &&
       l.dv >= minHoleSize &&

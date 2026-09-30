@@ -1,11 +1,11 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { Box3, Color, DoubleSide, Mesh, MeshPhysicalMaterial, MathUtils } from 'three'
 import type { Material, Object3D } from 'three'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { EnclosureData } from '../types'
 import { hydrateAnchorsAndHide } from '../io/anchors'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 
 interface Props {
   data: EnclosureData
@@ -55,7 +55,9 @@ const DOOR_RIG: Record<string, DoorRig> = {
  * handled manually via AABB push-out, so floor/wall colliders aren't needed.
  */
 export function Enclosure({ data }: Props) {
+  const storeApi = useConfiguratorStoreApi()
   const gltf = useGLTF(data.glbUrl)
+  const scene = useMemo(() => gltf.scene.clone(true), [gltf.scene])
   const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl)
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
@@ -105,17 +107,18 @@ export function Enclosure({ data }: Props) {
       return next
     }
 
-    gltf.scene.traverse((obj) => {
+    scene.traverse((obj) => {
       if (!(obj instanceof Mesh)) return
       if (!obj.geometry.attributes.normal) {
         obj.geometry.computeVertexNormals()
       }
       if (hasGltfMaterials) {
         const apply = (m: Material) => {
-          m.side = DoubleSide
-          m.needsUpdate = true
-          kept.add(m)
-          return m
+          const clone = m.clone()
+          clone.side = DoubleSide
+          clone.needsUpdate = true
+          kept.add(clone)
+          return clone
         }
         if (Array.isArray(obj.material)) {
           obj.material = obj.material.map(apply)
@@ -132,13 +135,13 @@ export function Enclosure({ data }: Props) {
     materialsRef.current = hasGltfMaterials ? Array.from(kept) : createdPaints
 
     return () => {
-      for (const p of createdPaints) p.dispose()
+      for (const p of [...createdPaints, ...kept]) p.dispose()
       materialsRef.current = []
     }
     // `gltf` is stable per URL (useGLTF caches it); we only need to re-run
     // when the loaded scene changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gltf.scene])
+  }, [scene])
 
   // Apply X-ray opacity reactively without recreating materials. The
   // immutability rule fires because we're mutating values reached through
@@ -152,13 +155,13 @@ export function Enclosure({ data }: Props) {
       m.depthWrite = !xrayEnabled
       m.needsUpdate = true
     }
-  }, [xrayEnabled])
+  }, [xrayEnabled, scene])
   /* eslint-enable react-hooks/immutability */
 
   // Find door nodes once per GLB load. They are animated via useFrame below.
   useEffect(() => {
     const found: { node: Object3D; rig: DoorRig; basePos: [number, number, number] }[] = []
-    gltf.scene.traverse((obj) => {
+    scene.traverse((obj) => {
       const rig = DOOR_RIG[obj.name]
       if (rig) {
         found.push({
@@ -169,12 +172,12 @@ export function Enclosure({ data }: Props) {
       }
     })
     doorsRef.current = found
-  }, [gltf.scene])
+  }, [scene])
 
   // Apply the optional scale to the loaded GLB, then lift it so the lowest
   // point sits on Y=0 — many vehicle GLBs are modeled with the body origin
   // at floor level, leaving the wheels below ground. Mutates the cached
-  // scene, which is fine here because the enclosure is loaded once per URL.
+  // scene clone owned by this configurator; the shared loader cache stays untouched.
   //
   // Anchor extraction (nodes named `anchor_*` or with `extras.kind ===
   // 'anchor'`) happens HERE, after scale + lift, so the anchor world
@@ -182,21 +185,21 @@ export function Enclosure({ data }: Props) {
   /* eslint-disable react-hooks/immutability */
   useEffect(() => {
     const s = data.scale ?? 1
-    gltf.scene.scale.setScalar(s)
-    gltf.scene.position.y = 0
-    gltf.scene.updateMatrixWorld(true)
-    const probe = new Box3().setFromObject(gltf.scene)
+    scene.scale.setScalar(s)
+    scene.position.y = 0
+    scene.updateMatrixWorld(true)
+    const probe = new Box3().setFromObject(scene)
     if (isFinite(probe.min.y)) {
-      gltf.scene.position.y = -probe.min.y
-      gltf.scene.updateMatrixWorld(true)
+      scene.position.y = -probe.min.y
+      scene.updateMatrixWorld(true)
     }
     // Extract (and hide) GLB anchor markers. For the FIAT demo van the GLB
     // anchors are unusable (authored 20 cm above the floor), so only the two
     // hardcoded floor anchors are exposed.
-    const anchors = hydrateAnchorsAndHide(gltf.scene)
+    const anchors = hydrateAnchorsAndHide(scene)
     const active = needsFiatFloor ? FIAT_FLOOR_ANCHORS : anchors
-    if (active.length > 0) setRuntimeAnchors(active)
-  }, [gltf.scene, data.scale, needsFiatFloor, setRuntimeAnchors])
+    setRuntimeAnchors(active)
+  }, [scene, data.scale, needsFiatFloor, setRuntimeAnchors])
   /* eslint-enable react-hooks/immutability */
 
   // Compute and publish enclosure world-space AABB once per GLB. Also tries
@@ -204,13 +207,15 @@ export function Enclosure({ data }: Props) {
   // When the GLB ships no native anchors, synthesize a handful on the
   // interior floor so the demo can showcase snap-to-anchor behaviour.
   useEffect(() => {
-    const box = new Box3().setFromObject(gltf.scene)
+    const box = new Box3().setFromObject(scene)
     setEnclosureBBox({
       min: [box.min.x, box.min.y, box.min.z],
       max: [box.max.x, box.max.y, box.max.z],
     })
-    const interior = needsFiatFloor ? null : gltf.scene.getObjectByName('Body_interior')
-    if (needsFiatFloor) {
+    const interior = needsFiatFloor ? null : scene.getObjectByName('Body_interior')
+    if (data.dimensions) {
+      setInteriorBBox({ min: [-data.dimensions[0] / 2, 0, -data.dimensions[2] / 2], max: [data.dimensions[0] / 2, data.dimensions[1], data.dimensions[2] / 2] })
+    } else if (needsFiatFloor) {
       // The FIAT GLB does not expose a Body_interior node. Use the visible
       // cargo floor footprint plus the vehicle top to create a conservative
       // inner collision box: products stay above the wooden floor and inside
@@ -225,7 +230,7 @@ export function Enclosure({ data }: Props) {
         min: [ibox.min.x, ibox.min.y, ibox.min.z],
         max: [ibox.max.x, ibox.max.y, ibox.max.z],
       })
-      const existing = useConfiguratorStore.getState().runtimeAnchors
+      const existing = storeApi.getState().runtimeAnchors
       if (existing.length === 0) {
         const inset = 0.15
         const wallInset = 0.05
@@ -274,7 +279,7 @@ export function Enclosure({ data }: Props) {
       setEnclosureBBox(null)
       setInteriorBBox(null)
     }
-  }, [gltf.scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors])
+  }, [scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors, data.dimensions, storeApi])
 
   // Target tracks `doorsOpen` as 0/1; the useFrame loop lerps the actual
   // rotation toward it so the swing is smooth and reversible mid-animation.
@@ -315,7 +320,7 @@ export function Enclosure({ data }: Props) {
 
   return (
     <group userData={{ exportable: true }}>
-      <primitive object={gltf.scene} />
+      <primitive object={scene} dispose={null} />
       {needsFiatFloor && <FiatNdc40H2Floor xrayEnabled={xrayEnabled} />}
     </group>
   )

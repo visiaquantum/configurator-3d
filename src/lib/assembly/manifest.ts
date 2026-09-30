@@ -11,6 +11,7 @@ import type {
   ProjectData,
   ProductAssemblyDefinition,
 } from '../types'
+import { worldPoint as worldPointOf, normalsOppose } from '../scene/geometry'
 import { canMate, snapsForItem } from '../scene/mating'
 
 const Vec3Schema = z.tuple([z.number(), z.number(), z.number()])
@@ -45,7 +46,7 @@ const ColliderSchema = z.object({
 })
 
 export const AssemblyManifestSchema = z.object({
-  version: z.number().int().nonnegative(),
+  version: z.literal(1),
   products: z.array(z.object({
     catalogId: z.string().min(1),
     connectors: z.array(ConnectorSchema),
@@ -106,9 +107,9 @@ export function parseAssemblyManifest(raw: unknown): AssemblyManifest {
   return result.data as AssemblyManifest
 }
 
-export async function loadAssemblyManifest(source: AssemblyManifest | string): Promise<AssemblyManifest> {
+export async function loadAssemblyManifest(source: AssemblyManifest | string, signal?: AbortSignal): Promise<AssemblyManifest> {
   if (typeof source !== 'string') return parseAssemblyManifest(source)
-  const response = await fetch(source)
+  const response = await fetch(source, { signal })
   if (!response.ok) throw new AssemblyManifestError(`Assembly manifest fetch failed: ${response.status}`)
   return parseAssemblyManifest(await response.text())
 }
@@ -129,27 +130,22 @@ export function connectorForSnap(
   )
 }
 
+export function connectorOwnsPoint(connector: ConnectorDefinition, point: ItemSnapPoint): boolean {
+  return connector.snapId ? connector.snapId === point.id : connector.snapKind === point.kind
+}
+
 export function connectorsCanMate(
   source: ConnectorDefinition,
   sourcePoint: ItemSnapPoint,
   target: ConnectorDefinition,
   targetPoint: ItemSnapPoint,
 ): boolean {
+  if (!connectorOwnsPoint(source, sourcePoint) || !connectorOwnsPoint(target, targetPoint)) return false
   const sourceAllowed = source.compatibleWith
   const targetAllowed = target.compatibleWith
   if (sourceAllowed && !sourceAllowed.includes(target.id) && !sourceAllowed.includes(targetPoint.kind)) return false
   if (targetAllowed && !targetAllowed.includes(source.id) && !targetAllowed.includes(sourcePoint.kind)) return false
   return canMate(sourcePoint.kind, targetPoint.kind)
-}
-
-function worldPointOf(item: PlacedItem, local: Vec3, height: number): Vec3 {
-  const cos = Math.cos(item.rotation[1])
-  const sin = Math.sin(item.rotation[1])
-  return [
-    item.position[0] + local[0] * cos + local[2] * sin,
-    item.position[1] + height / 2 + local[1],
-    item.position[2] - local[0] * sin + local[2] * cos,
-  ]
 }
 
 /**
@@ -172,6 +168,7 @@ export function connectionsAtPose(
     items: PlacedItem[]
     itemSnaps: Record<string, ItemSnapPoint[]>
     itemRules?: Record<string, ItemRule[]>
+    itemSizes?: Record<string, Vec3>
     manifest?: AssemblyManifest | null
     /** Collider height: the datum a snap point's Y is measured from. */
     heightOf: (item: PlacedItem) => number
@@ -184,7 +181,8 @@ export function connectionsAtPose(
   const height = context.heightOf(posed)
   const others = context.items.filter((other) => other.id !== item.id)
   // One target point takes one joint; capacity is checked again on validation.
-  const taken = new Set<string>()
+  const taken = new Map<string, number>()
+  const sourceTaken = new Map<string, number>()
   const connections: Connection[] = []
   for (const mine of snapsForItem(posed, context.itemSnaps, rules)) {
     const connector = connectorForSnap(definition, mine)
@@ -194,15 +192,17 @@ export function connectionsAtPose(
       const otherDefinition = definitionFor(context.manifest, other.catalogId)
       if (!otherDefinition) continue
       const match = snapsForItem(other, context.itemSnaps, rules).find((theirs) => {
-        if (taken.has(`${other.id}:${theirs.id}`)) return false
         const otherConnector = connectorForSnap(otherDefinition, theirs)
         if (!otherConnector || !connectorsCanMate(connector, mine, otherConnector, theirs)) return false
+        if (!normalsOppose(mine.normal, posed.rotation, theirs.normal, other.rotation)) return false
+        if ((taken.get(`${other.id}:${theirs.id}`) ?? 0) >= (otherConnector.capacity ?? 1)) return false
         const limit = Math.min(connector.snapTolerance ?? 0.002, otherConnector.snapTolerance ?? 0.002)
         const there = worldPointOf(other, theirs.position, context.heightOf(other))
         return Math.hypot(there[0] - world[0], there[1] - world[1], there[2] - world[2]) <= limit
       })
       if (!match) continue
-      taken.add(`${other.id}:${match.id}`)
+      taken.set(`${other.id}:${match.id}`, (taken.get(`${other.id}:${match.id}`) ?? 0) + 1)
+      sourceTaken.set(mine.id, (sourceTaken.get(mine.id) ?? 0) + 1)
       connections.push({
         sourceItemId: item.id,
         sourceConnectorId: connector.id,
@@ -212,7 +212,7 @@ export function connectionsAtPose(
         targetPointId: match.id,
         resolvedTransform: { position: pose.position, rotation: pose.rotation },
       })
-      break
+      if ((sourceTaken.get(mine.id) ?? 0) >= (connector.capacity ?? 1)) break
     }
   }
   return connections

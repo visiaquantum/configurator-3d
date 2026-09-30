@@ -1,6 +1,7 @@
+import { useSceneTools } from '../scene/useSceneTools'
 import { useMemo, useState } from 'react'
 import { nanoid } from 'nanoid'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import {
   computePartnerPlacement,
   MIRROR_PAIR_RULE,
@@ -18,15 +19,14 @@ import {
   jointsSurvivingMove,
   itemSnapConstraintFor,
   positionForItemSnap,
-  resolveSnappedChildren,
+  
   rotateGroupPatches,
   snapKindLabel,
   snapPointLabel,
   snapsForItem,
-  worldSnapPosition,
+  
   yawToMate,
 } from '../scene/mating'
-import { colliderSizeOf, getItem } from '../scene/itemRegistry'
 import { connectionsAtPose, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
 import { validateConfiguration } from '../assembly/validation'
 import type { Connection, Euler, ItemSnapPoint, PlacedItem } from '../types'
@@ -82,7 +82,9 @@ function groupByKind(points: ItemSnapPoint[]): Array<[string, ItemSnapPoint[]]> 
   return [...byKind]
 }
 
-export function Inspector({ readOnly }: Props) {
+export function Inspector({ readOnly: hostReadOnly }: Props) {
+  const storeApi = useConfiguratorStoreApi()
+  const { getItem, colliderSizeOf, worldSnapPosition, resolveSnappedChildren } = useSceneTools()
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const project = useConfiguratorStore((s) => s.project)
   const removeItem = useConfiguratorStore((s) => s.removeItem)
@@ -124,7 +126,7 @@ export function Inspector({ readOnly }: Props) {
         .filter((it) => it.id !== item?.id && getItem(it.id))
         .map((it) => ({ item: it, points: snapsForItem(it, itemSnaps, itemRules) }))
         .filter((e) => e.points.length > 0),
-    [project?.items, item?.id, itemSnaps, itemRules],
+    [project?.items, item?.id, itemSnaps, itemRules, getItem],
   )
 
   const targetEntry = targetItems.find((e) => e.item.id === targetItemId)
@@ -134,6 +136,7 @@ export function Inspector({ readOnly }: Props) {
 
   if (!item) return null
 
+  const readOnly = hostReadOnly || item.locked || !!project?.items.some((member) => member.locked && assemblyGroup(item.id, project.items, project.connections ?? []).has(member.id))
   const cat = catalog[item.catalogId]
   const [x, y, z] = item.position
   const size = cat?.size
@@ -298,7 +301,7 @@ export function Inspector({ readOnly }: Props) {
    * that seat as a collision and the whole pair went red.
    */
   const connectionsAfterMove = (moved: PlacedItem[]): Connection[] => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     if (!s.project) return []
     const byId = new Map(moved.map((it) => [it.id, it]))
     // Joints that straddle the move are broken by it; the rest stand, and what
@@ -307,7 +310,7 @@ export function Inspector({ readOnly }: Props) {
     const context = {
       items: s.project.items.map((it) => byId.get(it.id) ?? it),
       itemSnaps: s.itemSnaps,
-      itemRules: s.itemRules,
+      itemRules: s.itemRules, itemSizes: s.itemSizes,
       manifest: assemblyManifest,
       // A twin that was only just created has no live group yet, so its
       // collider is not registered: the catalogue size is the same box.
@@ -344,7 +347,7 @@ export function Inspector({ readOnly }: Props) {
     const position = positionForItemSnap(sourcePoint.position, rotation[1], size[1], world)
     const link = itemSnapConstraintFor(toItemId, sourcePoint.id, targetPoint.id)
     const kept = item.constraints?.filter((c) => c.type === 'mirrorPair') ?? []
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const targetDefinition = definitionFor(assemblyManifest, targetItem.catalogId)
     const sourceConnector = connectorForSnap(definitionFor(assemblyManifest, item.catalogId), sourcePoint)
     const targetConnector = connectorForSnap(targetDefinition, targetPoint)
@@ -367,7 +370,7 @@ export function Inspector({ readOnly }: Props) {
       ? connectionsAtPose(item, { position, rotation }, {
           items: s.project?.items ?? [],
           itemSnaps: s.itemSnaps,
-          itemRules: s.itemRules,
+          itemRules: s.itemRules, itemSizes: s.itemSizes,
           manifest: assemblyManifest,
           heightOf: (placed) => colliderSizeOf(placed.id)?.[1] ?? 0,
         })
@@ -389,7 +392,7 @@ export function Inspector({ readOnly }: Props) {
       : null
     const problems = validateConfiguration(preview, s.catalog, assemblyManifest, {
       itemSnaps: s.itemSnaps,
-      itemRules: s.itemRules,
+      itemRules: s.itemRules, itemSizes: s.itemSizes,
       enclosureBounds: interiorBBox,
     }).filter((candidate) => candidate.level === 'error' && candidate.itemIds.includes(item.id))
     // Sticking out of the van does not make the joint wrong, and refusing over
@@ -430,7 +433,7 @@ export function Inspector({ readOnly }: Props) {
 
   /** Break the link but leave the item where it is. */
   const handleUnjoin = () => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const connections = (s.project?.connections ?? []).filter(
       (connection) => connection.sourceItemId !== item.id && connection.targetItemId !== item.id,
     )
@@ -452,7 +455,7 @@ export function Inspector({ readOnly }: Props) {
    * around it. Rigid, so every joint keeps the fit it had.
    */
   const handleRotate = (step: number) => {
-    const s = useConfiguratorStore.getState()
+    const s = storeApi.getState()
     const items = s.project?.items ?? []
     const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
     const patches = rotateGroupPatches(items, members, item.position, step)

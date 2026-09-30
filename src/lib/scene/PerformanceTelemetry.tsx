@@ -1,9 +1,10 @@
 import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStoreApi } from '../state/store'
 
 /** Reports a bounded, local frame-time sample every two seconds when enabled. */
 export function PerformanceTelemetry() {
+  const storeApi = useConfiguratorStoreApi()
   const accumulatedMs = useRef(0)
   const frames = useRef(0)
 
@@ -12,7 +13,7 @@ export function PerformanceTelemetry() {
     frames.current += 1
     if (accumulatedMs.current < 2000) return
     const elapsed = accumulatedMs.current
-    useConfiguratorStore.getState().reportTelemetry({
+    storeApi.getState().reportTelemetry({
       type: 'frame-time',
       outcome: 'success',
       durationMs: elapsed / frames.current,

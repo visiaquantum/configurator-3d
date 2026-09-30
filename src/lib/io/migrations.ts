@@ -38,11 +38,14 @@ export class MigrationError extends Error {
  * registered migration in sequence. Idempotent at current version.
  */
 export function migrateProject(raw: unknown): ProjectData {
-  if (typeof raw !== 'object' || raw === null) {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
     throw new MigrationError(-1, PROJECT_SCHEMA_VERSION, 'project root is not an object')
   }
   let data = raw as RawProject
-  const startVersion = typeof data.version === 'number' ? data.version : 0
+  const startVersion = data.version === undefined ? 0 : data.version
+  if (typeof startVersion !== 'number' || !Number.isInteger(startVersion) || startVersion < 0) {
+    throw new MigrationError(-1, PROJECT_SCHEMA_VERSION, 'version must be a nonnegative integer')
+  }
   if (startVersion > PROJECT_SCHEMA_VERSION) {
     throw new MigrationError(
       startVersion,

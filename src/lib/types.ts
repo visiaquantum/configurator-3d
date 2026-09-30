@@ -168,6 +168,8 @@ export interface ValidationIssue {
 }
 
 export interface ValidationContext {
+  /** Hydrated body dimensions in metres, after catalog scale. */
+  itemSizes?: Record<string, Vec3>
   itemSnaps?: Record<string, ItemSnapPoint[]>
   itemRules?: Record<string, ItemRule[]>
   enclosureBounds?: { min: Vec3; max: Vec3 } | null
@@ -227,6 +229,10 @@ export interface ProjectData {
 }
 
 export interface Configurator3DProps {
+  /** Optional store for host UI. Each configurator owns an isolated store by default. */
+  store?: import('./state/store').ConfiguratorStore
+  /** Optional HDR URL provided by the host. No external environment is fetched by default. */
+  environmentUrl?: string | null
   /** Optional ref to the imperative handle (addItem, exports, undo/redo, ...). */
   ref?: React.Ref<ConfiguratorHandle>
   /**
