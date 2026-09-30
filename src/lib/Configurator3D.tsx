@@ -312,11 +312,13 @@ function ConfiguratorContent({
       style={{ position: 'relative', width: '100%', height: '100%', ...style }}
     >
       <Scene project={project} environmentUrl={environmentUrl} />
-      {showInspector && <Inspector readOnly={readOnly} />}
+      <div style={inspectorColumnStyle}>
+        {showInspector && <Inspector readOnly={readOnly} />}
+        <ValidationPanel issues={validationIssues} />
+      </div>
       {showHints && <Hints />}
       <ViewControls />
       <ClearanceOverlay />
-      <ValidationPanel issues={validationIssues} />
       <WalkHint />
       {catalogStatus.state === 'loading' && (
         <CatalogStatusBadge text="Caricamento catalogo…" tone="info" />
@@ -832,11 +834,22 @@ const clearanceStyle: React.CSSProperties = {
   color: '#ddd',
   minWidth: 140,
 }
-const validationStyle: React.CSSProperties = {
+const inspectorColumnStyle: React.CSSProperties = {
   position: 'absolute',
   left: 12,
   bottom: 12,
+  maxHeight: 'calc(100% - 96px)',
+  maxWidth: 'calc(100% - 24px)',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 8,
+  pointerEvents: 'none',
+}
+const validationStyle: React.CSSProperties = {
   maxWidth: 320,
+  flexShrink: 0,
+  pointerEvents: 'auto',
   padding: '7px 10px',
   background: 'rgba(15,15,20,0.92)',
   borderWidth: 1,

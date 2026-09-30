@@ -781,14 +781,14 @@ const inspectorControlStyles = `
 `
 
 const panelStyle: React.CSSProperties = {
-  position: 'absolute',
-  bottom: 12,
-  left: 12,
   width: 260,
-  // Anchored at the bottom, so the panel grows upward: without a cap it runs
-  // off the top of the canvas and silently hides whatever sits highest.
-  maxHeight: 'calc(100% - 24px)',
+  maxWidth: '100%',
+  // The parent reserves space for the toolbar and validation summary.
+  // Shrink and scroll the inspector rather than covering either control.
+  minHeight: 0,
+  flexShrink: 1,
   overflowY: 'auto',
+  pointerEvents: 'auto',
   background: 'rgba(15, 15, 20, 0.9)',
   color: '#ddd',
   border: '1px solid #2a2a35',
