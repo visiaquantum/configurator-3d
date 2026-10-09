@@ -2,6 +2,7 @@ import { Mesh, MeshStandardMaterial } from 'three'
 import type { Camera, Material, Object3D, Scene, WebGLRenderer } from 'three'
 import type { AssemblyManifest, CatalogItem, ProjectData, ValidationIssue } from '../types'
 import { definitionFor } from '../assembly/manifest'
+import { enclosureGeometryForExport } from '../scene/enclosureCutaway'
 
 export interface BomLine {
   code: string
@@ -73,6 +74,7 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
     clone.traverse((object) => {
       if (object.userData.configuratorHelper) helpers.push(object)
       if (!(object instanceof Mesh)) return
+      object.geometry = enclosureGeometryForExport(object.geometry)
       const copy = (material: Material) => {
         const result = material.clone()
         if (result instanceof MeshStandardMaterial && typeof material.userData.originalColor === 'number') result.color.set(material.userData.originalColor)

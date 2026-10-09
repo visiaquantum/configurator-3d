@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { Group, Mesh, MeshBasicMaterial, BoxGeometry, BufferGeometry, Float32BufferAttribute, Shape, Path, ShapeGeometry, Vector3, Euler } from 'three'
+import { Group, Mesh, MeshBasicMaterial, BoxGeometry, BufferGeometry, Float32BufferAttribute, Shape, Path, ShapeGeometry, Vector3, Euler, Box3, PerspectiveCamera, OrthographicCamera } from 'three'
 import {
   createConfiguratorStore, parseProject, serializeProject, parseCatalog,
   parseAssemblyManifest, validateConfiguration, connectionsAtPose,
@@ -8,6 +8,7 @@ import {
   extractAutoSnapGridFromObject, AUTO_SNAP_GRID_RULE, configurationStatus,
   positionForItemSnap, assemblyPosePatches, exportProjectPDF, exportSceneGLB,
   beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview,
+  createEnclosureCutaway,
 } from '../dist/configurator-3d.js'
 
 const item = (id, extra = {}) => ({ id, catalogId: 'part', position: [0, 0, 0], rotation: [0, 0, 0], ...extra })
@@ -19,6 +20,16 @@ const manifest = parseAssemblyManifest({ version: 1, products: [{ catalogId: 'pa
 const snap = { id: 'face', kind: 'laterale', position: [0, 0, 0] }
 const context = { itemSnaps: { part: [snap] }, enclosureBounds: bounds }
 const errors = (p, cats = catalog, m = manifest, ctx = context) => validateConfiguration(p, cats, m, ctx).filter((issue) => issue.level === 'error')
+
+function mockFileReader() {
+  // GLTFExporter uses the browser FileReader interface for binary buffers.
+  const previous = globalThis.FileReader
+  globalThis.FileReader = class {
+    readAsArrayBuffer(blob) { blob.arrayBuffer().then((result) => { this.result = result; this.onloadend?.() }) }
+    readAsDataURL(blob) { blob.arrayBuffer().then((buffer) => { this.result = `data:${blob.type};base64,${Buffer.from(buffer).toString('base64')}`; this.onloadend?.() }) }
+  }
+  return () => { globalThis.FileReader = previous }
+}
 
 // Keep models apart vertically without separating their snap positions.
 const joined = () => project([item('a'), item('b', { position: [0, 0, 0], catalogId: 'other' })], { connections: [connection()] })
@@ -75,6 +86,94 @@ test('reset using the same enclosure preserves anchors and floor bounds', () => 
   store.getState().setProject(project([], { enclosure: { glbUrl: '/another.glb' } }))
   assert.equal(store.getState().enclosureBBox, null)
   assert.deepEqual(store.getState().runtimeAnchors, [])
+})
+
+test('isometric views preserve project data and remain local to each configurator', () => {
+  const a = createConfiguratorStore(), b = createConfiguratorStore()
+  a.getState().setProject(project([item('a')]))
+  const before = serializeProject(a.getState().project)
+  for (const preset of ['iso', 'iso-front-left', 'iso-back-right', 'iso-back-left']) {
+    a.getState().setCameraPreset(preset)
+    a.getState().setCameraPreset(null)
+    assert.equal(a.getState().cameraProjection, 'orthographic')
+  }
+  assert.equal(b.getState().cameraProjection, 'perspective')
+  assert.equal(serializeProject(a.getState().project), before)
+  assert.equal(a.getState().past.length, 0)
+  for (const preset of ['perspective', 'front', 'side', 'top']) {
+    a.getState().setCameraPreset(preset)
+    assert.equal(a.getState().cameraProjection, 'perspective')
+  }
+})
+
+test('Walk and changing enclosure leave no pending isometric camera request', () => {
+  const store = createConfiguratorStore()
+  store.getState().setProject(project())
+  store.getState().setCameraPreset('iso')
+  store.getState().setWalkMode(true)
+  assert.equal(store.getState().cameraProjection, 'perspective')
+  assert.equal(store.getState().cameraPreset, null)
+  store.getState().setWalkMode(false)
+  assert.equal(store.getState().cameraProjection, 'perspective')
+  store.getState().setCameraPreset('iso-back-left')
+  store.getState().setProject(project([], { enclosure: { glbUrl: '/other.glb' } }))
+  assert.equal(store.getState().cameraProjection, 'perspective')
+  assert.equal(store.getState().cameraPreset, null)
+})
+
+test('cutaway follows either camera projection, keeps the floor and restores shared geometry', () => {
+  const root = new Group()
+  const original = new BoxGeometry(4, 2, 2)
+  const mesh = new Mesh(original, new MeshBasicMaterial())
+  const otherSceneMesh = new Mesh(original, new MeshBasicMaterial())
+  root.add(mesh)
+  const cutaway = createEnclosureCutaway(root, new Box3().setFromObject(root))
+  const views = []
+  for (const camera of [new PerspectiveCamera(), new OrthographicCamera()]) {
+    camera.position.set(5, 5, 5)
+    camera.lookAt(0, 0, 0)
+    cutaway.update(camera, true)
+    assert.equal(mesh.geometry.index.count, 24)
+    views.push(Array.from(mesh.geometry.index.array))
+    assert.equal(mesh.geometry.groups.filter((group) => [2, 3].includes(group.materialIndex)).reduce((count, group) => count + group.count, 0), 12)
+    assert.equal(otherSceneMesh.geometry, original)
+    assert.equal(original.index.count, 36)
+    camera.position.set(-5, 5, -5)
+    camera.lookAt(0, 0, 0)
+    cutaway.update(camera, true)
+    assert.equal(mesh.geometry.index.count, 24)
+    assert.notDeepEqual(Array.from(mesh.geometry.index.array), views[0])
+    cutaway.update(camera, false)
+    assert.equal(mesh.geometry, original)
+  }
+  assert.deepEqual(views[0], views[1])
+  cutaway.dispose()
+  assert.equal(mesh.geometry, original)
+})
+
+test('GLB export preserves every wall while a cutaway is active', async () => {
+  const root = new Group()
+  const original = new BoxGeometry(4, 2, 2)
+  const mesh = new Mesh(original, new MeshBasicMaterial())
+  root.add(mesh)
+  const cutaway = createEnclosureCutaway(root, new Box3().setFromObject(root))
+  const camera = new PerspectiveCamera()
+  camera.position.set(5, 5, 5)
+  camera.lookAt(0, 0, 0)
+  cutaway.update(camera, true)
+  const restoreFileReader = mockFileReader()
+  try {
+    const blob = await exportSceneGLB([root])
+    const buffer = await blob.arrayBuffer()
+    const view = new DataView(buffer)
+    const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 20, view.getUint32(12, true))))
+    const exportedIndexCount = json.meshes[0].primitives.reduce((count, primitive) => count + json.accessors[primitive.indices].count, 0)
+    assert.equal(exportedIndexCount, 36)
+    assert.equal(mesh.geometry.index.count, 24)
+  } finally {
+    cutaway.dispose()
+    restoreFileReader()
+  }
 })
 
 test('readonly blocks mutation, undo, redo and mirror creation', () => {
@@ -243,12 +342,7 @@ test('PDF pagination wraps long metadata and BOM descriptions', async () => {
 })
 
 test('GLB export excludes descendant helpers and preserves world transforms and materials', async () => {
-  // GLTFExporter uses the browser FileReader interface for binary buffers.
-  const previous = globalThis.FileReader
-  globalThis.FileReader = class {
-    readAsArrayBuffer(blob) { blob.arrayBuffer().then((result) => { this.result = result; this.onloadend?.() }) }
-    readAsDataURL(blob) { blob.arrayBuffer().then((buffer) => { this.result = `data:${blob.type};base64,${Buffer.from(buffer).toString('base64')}`; this.onloadend?.() }) }
-  }
+  const restoreFileReader = mockFileReader()
   try {
     const parent = new Group(); parent.position.x = 3
     const root = new Group(); root.name = 'product'; root.position.x = 2; parent.add(root)
@@ -260,7 +354,7 @@ test('GLB export excludes descendant helpers and preserves world transforms and 
     assert.ok(!json.nodes.some((node) => node.name === 'collision-helper'))
     assert.deepEqual(json.nodes.find((node) => node.name === 'product').matrix.slice(12, 15), [5, 0, 0])
     assert.equal(body.material.opacity, 0.5); assert.equal(root.children.length, 2)
-  } finally { globalThis.FileReader = previous }
+  } finally { restoreFileReader() }
 })
 
 test('scale is applied once to clearance offsets, box sizes and insertion depths', () => {

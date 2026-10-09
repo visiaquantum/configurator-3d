@@ -583,6 +583,8 @@ function ViewControls() {
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const xrayEnabled = useConfiguratorStore((s) => s.xrayEnabled)
   const setXray = useConfiguratorStore((s) => s.setXrayEnabled)
+  const cutawayEnabled = useConfiguratorStore((s) => s.cutawayEnabled)
+  const setCutaway = useConfiguratorStore((s) => s.setCutawayEnabled)
   const snapToGridEnabled = useConfiguratorStore((s) => s.snapToGridEnabled)
   const setGrid = useConfiguratorStore((s) => s.setSnapToGridEnabled)
   const gridStep = useConfiguratorStore((s) => s.gridStep)
@@ -597,10 +599,10 @@ function ViewControls() {
     <div className="cfg-view-controls" style={viewControlsStyle}>
       <div style={viewRowStyle}>
         <span style={viewLabelStyle}>vista</span>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('top')} title="Vista dall'alto">Alto</button>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('front')} title="Vista frontale">Fronte</button>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('side')} title="Vista laterale">Lato</button>
-        <button type="button" style={presetBtn} onClick={() => setCameraPreset('iso')} title="Vista isometrica">3D</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('top')} title="Vista dall'alto" aria-label="Vista dall'alto">Alto</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('front')} title="Vista frontale" aria-label="Vista frontale">Fronte</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('side')} title="Vista laterale" aria-label="Vista laterale">Lato</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('perspective')} title="Vista prospettica" aria-label="Vista prospettica">3D</button>
         <button
           type="button"
           style={presetBtn}
@@ -634,6 +636,17 @@ function ViewControls() {
         </button>
       </div>
       <div style={viewRowStyle}>
+        <span style={viewLabelStyle}>iso</span>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('iso')} title="Vista isometrica anteriore destra" aria-label="Vista isometrica anteriore destra">F DX</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('iso-front-left')} title="Vista isometrica anteriore sinistra" aria-label="Vista isometrica anteriore sinistra">F SX</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('iso-back-right')} title="Vista isometrica posteriore destra" aria-label="Vista isometrica posteriore destra">R DX</button>
+        <button type="button" style={presetBtn} disabled={!bbox || walkMode} onClick={() => setCameraPreset('iso-back-left')} title="Vista isometrica posteriore sinistra" aria-label="Vista isometrica posteriore sinistra">R SX</button>
+      </div>
+      <div style={viewRowStyle}>
+        <label style={toggleLabel} title="Nascondi automaticamente le pareti vicine alla camera per vedere l'interno">
+          <input type="checkbox" checked={cutawayEnabled} disabled={!bbox || walkMode} onChange={(e) => setCutaway(e.target.checked)} />
+          Pareti auto
+        </label>
         <label style={toggleLabel}>
           <input
             type="checkbox"

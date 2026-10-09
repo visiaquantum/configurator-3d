@@ -1,6 +1,7 @@
 export { Configurator3D } from './Configurator3D'
+export { createEnclosureCutaway } from './scene/enclosureCutaway'
 export { useConfiguratorStore, useConfiguratorStoreApi, createConfiguratorStore } from './state/store'
-export type { ConfiguratorStore, ConfiguratorState } from './state/store'
+export type { ConfiguratorStore, ConfiguratorState, CameraPreset, CameraProjection } from './state/store'
 export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview } from './scene/attachment'
 export type { AttachmentInteraction } from './scene/attachment'
 export { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'

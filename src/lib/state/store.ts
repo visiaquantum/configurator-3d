@@ -30,7 +30,8 @@ export interface CaptureRefs {
 
 export type GizmoMode = 'translate' | 'rotate'
 
-export type CameraPreset = 'top' | 'front' | 'side' | 'iso'
+export type CameraPreset = 'top' | 'front' | 'side' | 'perspective' | 'iso' | 'iso-front-left' | 'iso-back-right' | 'iso-back-left'
+export type CameraProjection = 'perspective' | 'orthographic'
 
 export interface EnclosureBBox {
   min: [number, number, number]
@@ -112,12 +113,16 @@ export interface ConfiguratorState {
   readOnly: boolean
   /** When true, enclosure renders semi-transparent so the interior is visible. */
   xrayEnabled: boolean
+  /** Hide exterior walls facing the orbit camera without changing project geometry. */
+  cutawayEnabled: boolean
   /** When true, drag positions snap to a discrete X/Z grid. */
   snapToGridEnabled: boolean
   /** Grid step (m) used when `snapToGridEnabled` is true. */
   gridStep: number
   /** One-shot camera preset request. CameraPresetBridge resets to null after applying. */
   cameraPreset: CameraPreset | null
+  /** Isometric presets use an orthographic camera; Walk always uses perspective. */
+  cameraProjection: CameraProjection
   /**
    * One-shot "center the orbit on the selected item" request, as a counter so
    * repeated clicks re-fire. SelectedOrbitTarget consumes it; selecting an item
@@ -159,6 +164,7 @@ export interface ConfiguratorState {
   setCaptureRefs: (refs: CaptureRefs | null) => void
   setReadOnly: (v: boolean) => void
   setXrayEnabled: (v: boolean) => void
+  setCutawayEnabled: (v: boolean) => void
   setSnapToGridEnabled: (v: boolean) => void
   setGridStep: (v: number) => void
   setCameraPreset: (p: CameraPreset | null) => void
@@ -264,9 +270,11 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     future: [],
     readOnly: false,
     xrayEnabled: false,
+    cutawayEnabled: false,
     snapToGridEnabled: false,
     gridStep: 0.05,
     cameraPreset: null,
+    cameraProjection: 'perspective',
     focusSelectedRequest: 0,
     enclosureBBox: null,
     interiorBBox: null,
@@ -289,7 +297,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
         past: [], future: [], selectedId: null, draggingItemId: null,
         dragClearance: null, neighborGap: null, walkMode: false,
         validationIssues: [], overlappingIds: new Set<string>(),
-        ...(sameAsset ? {} : { runtimeAnchors: [], enclosureBBox: null, interiorBBox: null }),
+        ...(sameAsset ? {} : { runtimeAnchors: [], enclosureBBox: null, interiorBBox: null, cameraPreset: null, cameraProjection: 'perspective' }),
       })
     },
 
@@ -338,9 +346,16 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     setReadOnly: (v) => { if (v) get().setAttachment(null); set({ readOnly: v }) },
 
     setXrayEnabled: (v) => set({ xrayEnabled: v }),
+    setCutawayEnabled: (v) => set({ cutawayEnabled: v }),
     setSnapToGridEnabled: (v) => set({ snapToGridEnabled: v }),
     setGridStep: (v) => { if (Number.isFinite(v) && v > 0) set({ gridStep: v }) },
-    setCameraPreset: (p) => set({ cameraPreset: p }),
+    setCameraPreset: (p) => set({
+      cameraPreset: p,
+      ...(p === null ? {} : {
+        cameraProjection: p === 'iso' || p.startsWith('iso-') ? 'orthographic' : 'perspective',
+        walkMode: false,
+      }),
+    }),
     requestFocusSelected: () =>
       set((s) => ({ focusSelectedRequest: s.focusSelectedRequest + 1 })),
     setEnclosureBBox: (b) => set({ enclosureBBox: b }),
@@ -352,6 +367,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     setWalkMode: (v) =>
       { get().setAttachment(null); set({
         walkMode: v,
+        ...(v ? { cameraProjection: 'perspective', cameraPreset: null } : {}),
         selectedId: v ? null : get().selectedId,
         draggingItemId: null,
         dragClearance: null,

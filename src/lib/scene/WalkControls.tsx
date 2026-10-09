@@ -37,7 +37,7 @@ export function WalkControls() {
   // enclosure, eye-height above the floor, looking forward (-Z). Mutating
   // camera transforms imperatively is the idiomatic Three.js pattern.
   useEffect(() => {
-    if (enteredRef.current) return
+    if (enteredRef.current || !('isPerspectiveCamera' in camera)) return
     const bbox = storeApi.getState().interiorBBox ?? storeApi.getState().enclosureBBox
     if (!bbox) return
     const cx = (bbox.min[0] + bbox.max[0]) / 2

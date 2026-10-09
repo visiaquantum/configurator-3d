@@ -6,6 +6,7 @@ import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { EnclosureData } from '../types'
 import { visibleBodyBounds } from './geometry'
+import { createEnclosureCutaway } from './enclosureCutaway'
 import { hydrateAnchorsAndHide } from '../io/anchors'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 
@@ -77,6 +78,7 @@ export function Enclosure({ data }: Props) {
     { node: Object3D; rig: DoorRig; basePos: [number, number, number]; baseRotation: number }[]
   >([])
   const targetOpenRef = useRef(0)
+  const cutawayRef = useRef<ReturnType<typeof createEnclosureCutaway> | null>(null)
 
   // Materials: if the GLB already ships its own materials (textured PBR, e.g.
   // the iveco model), keep them and only force DoubleSide. If it has none
@@ -293,6 +295,16 @@ export function Enclosure({ data }: Props) {
     }
   }, [scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors, data.dimensions, fiatFactor, storeApi])
 
+  // Build view-only wall indices after scale, lift, markers and bounds are ready.
+  useEffect(() => {
+    const cutaway = createEnclosureCutaway(scene, visibleBodyBounds(scene))
+    cutawayRef.current = cutaway
+    return () => {
+      cutaway.dispose()
+      cutawayRef.current = null
+    }
+  }, [scene, data.scale])
+
   // Target tracks `doorsOpen` as 0/1; the useFrame loop lerps the actual
   // rotation toward it so the swing is smooth and reversible mid-animation.
   useEffect(() => {
@@ -302,7 +314,9 @@ export function Enclosure({ data }: Props) {
   // Three.js scene-graph nodes are intentionally mutable; useFrame is the
   // supported way to drive per-frame transforms.
   /* eslint-disable react-hooks/immutability */
-  useFrame((_, dt) => {
+  useFrame(({ camera }, dt) => {
+    const { cutawayEnabled, walkMode } = storeApi.getState()
+    cutawayRef.current?.update(camera, cutawayEnabled && !walkMode)
     const doors = doorsRef.current
     if (doors.length === 0) return
     // Critically damped-ish lerp. dt is seconds; rate chosen for ~0.5s travel.

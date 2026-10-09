@@ -10,6 +10,7 @@ import { AttachmentVisuals } from './AttachmentVisuals'
 import { AnchorMarkers } from './AnchorMarkers'
 import { SceneCaptureBridge } from './SceneCaptureBridge'
 import { CameraPresetBridge } from './CameraPresetBridge'
+import { IsometricCamera } from './IsometricCamera'
 import { SelectedOrbitTarget } from './SelectedOrbitTarget'
 import { OverlapDetector } from './OverlapDetector'
 import { NeighborGapIndicator } from './NeighborGapIndicator'
@@ -31,6 +32,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
   const draggingItemId = useConfiguratorStore((s) => s.draggingItemId)
   const walkMode = useConfiguratorStore((s) => s.walkMode)
   const attachment = useConfiguratorStore((s) => s.attachment)
+  const cameraProjection = useConfiguratorStore((s) => s.cameraProjection)
   const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
   const effectiveAnchors =
     project.enclosure.anchors?.length ? project.enclosure.anchors : runtimeAnchors
@@ -58,6 +60,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
       shadows="percentage"
       onPointerMissed={() => { if (!attachment) select(null) }}
     >
+      {cameraProjection === 'orthographic' && <IsometricCamera />}
       <SceneCaptureBridge />
       <CameraPresetBridge />
       <SelectedOrbitTarget />
@@ -134,6 +137,8 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
         // clear of the camera `near` plane (0.05).
         minDistance={0.12}
         maxDistance={maxOrbitDistance}
+        minZoom={0.1}
+        maxZoom={100}
         // Wider range needs fewer scroll ticks to cross it.
         zoomSpeed={1.4}
       />
