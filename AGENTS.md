@@ -10,9 +10,10 @@ This is a React, TypeScript, and Vite package for a 3D configurator library. Pub
 - `npm run build:lib`: type-check and build the distributable library with declarations.
 - `npm run build:demo`: type-check and build the demo app.
 - `npm run lint`: run ESLint over the repository.
+- `npm test`: build the library, run Node regression tests, then verify snaps and pilot assemblies.
 - `npm run preview`: preview the built demo locally.
 
-There is currently no `npm test` script or committed test directory. Use `npm run lint` and the relevant build command as the minimum verification before submitting changes.
+Use `npm run lint`, `npm test`, and the relevant build command as the minimum verification before submitting changes.
 
 ## Coding Style & Naming Conventions
 
@@ -20,7 +21,7 @@ Use TypeScript and React function components. Follow the existing style: two-spa
 
 ## Testing Guidelines
 
-No test framework is configured yet. When adding tests, prefer colocating focused tests near the module or creating a top-level `tests/` directory, and use file names such as `serialize.test.ts` or `Configurator3D.test.tsx`. For rendering behavior, cover user-visible scene controls and exported project data rather than implementation details.
+Regression tests use the native Node test runner in `tests/*.test.mjs` against the built library. Keep focused domain tests there; real-asset scenarios live in `scripts/verify-*.mjs`. For rendering behavior, cover user-visible scene controls and exported project data rather than implementation details.
 
 ## Commit & Pull Request Guidelines
 

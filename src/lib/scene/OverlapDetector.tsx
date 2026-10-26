@@ -1,80 +1,30 @@
-import { useRef } from 'react'
-import { Box3 } from 'three'
-import { useFrame } from '@react-three/fiber'
-import { useConfiguratorStore } from '../state/store'
-import { listOtherItems, getWorldAABB, getItem } from './itemRegistry'
-
-const EPS = 1e-6
-const _a = new Box3()
-const _b = new Box3()
-
-function aabbOverlaps(a: Box3, b: Box3): boolean {
-  return (
-    a.max.x - b.min.x > EPS &&
-    b.max.x - a.min.x > EPS &&
-    a.max.y - b.min.y > EPS &&
-    b.max.y - a.min.y > EPS &&
-    a.max.z - b.min.z > EPS &&
-    b.max.z - a.min.z > EPS
-  )
-}
+import { useEffect } from 'react'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 
 /**
- * Recomputes the set of items whose AABB intersects another item's, and
- * pushes it into the store. O(N²) per frame on the placed-item count — fine
- * for a typical van layout (<50 items). Updates store only when the set
- * actually changes, so non-overlapping subscribers don't re-render.
+ * Mirrors the pure assembly validator into the scene's red collision tint.
+ *
+ * This deliberately does not perform a second, generic AABB pass: a pair of
+ * connected items is valid only when `validateConfiguration` proves that its
+ * intersection is inside the selected connector's declared clearance zone.
+ * Therefore the visual feedback and the BOM/export gate share one rule.
+ * Drag-time feedback is supplied by Item's green/red connection ghost.
  */
 export function OverlapDetector() {
-  const prevRef = useRef<Set<string>>(new Set())
+  const storeApi = useConfiguratorStoreApi()
+  const issues = useConfiguratorStore((state) => state.validationIssues)
 
-  useFrame(() => {
-    const state = useConfiguratorStore.getState()
-    const project = state.project
-    if (!project) return
-    const interior = state.interiorBBox
+  useEffect(() => {
     const next = new Set<string>()
-    for (let i = 0; i < project.items.length; i++) {
-      const a = getItem(project.items[i].id)
-      if (!a) continue
-      getWorldAABB(a, _a)
-      // Item vs. enclosure interior: any AABB face outside the cargo box means
-      // the item is clipping through the van body.
-      if (interior) {
-        if (
-          _a.min.x < interior.min[0] - EPS ||
-          _a.max.x > interior.max[0] + EPS ||
-          _a.min.y < interior.min[1] - EPS ||
-          _a.max.y > interior.max[1] + EPS ||
-          _a.min.z < interior.min[2] - EPS ||
-          _a.max.z > interior.max[2] + EPS
-        ) {
-          next.add(a.id)
-        }
-      }
-      for (const other of listOtherItems(a.id)) {
-        getWorldAABB(other, _b)
-        if (aabbOverlaps(_a, _b)) {
-          next.add(a.id)
-          next.add(other.id)
-        }
-      }
+    for (const issue of issues) {
+      if (issue.level !== 'error') continue
+      if (issue.code !== 'collision' && issue.code !== 'out-of-bounds') continue
+      issue.itemIds.forEach((id) => next.add(id))
     }
-    // Compare to previous; update store only on set change.
-    const prev = prevRef.current
-    if (prev.size === next.size) {
-      let same = true
-      for (const id of next) {
-        if (!prev.has(id)) {
-          same = false
-          break
-        }
-      }
-      if (same) return
-    }
-    prevRef.current = next
-    useConfiguratorStore.getState().setOverlappingIds(next)
-  })
+    const previous = storeApi.getState().overlappingIds
+    if (previous.size === next.size && [...next].every((id) => previous.has(id))) return
+    storeApi.getState().setOverlappingIds(next)
+  }, [issues, storeApi])
 
   return null
 }

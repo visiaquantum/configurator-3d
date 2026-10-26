@@ -5,31 +5,48 @@ import type { ExtractedSnapPoint } from './itemSnaps'
 
 export const AUTO_SNAP_GRID_RULE = 'auto-snap-grid'
 
+/** Mating family assigned to every generated hole centre. */
+export const AUTO_GRID_SNAP_KIND = 'foro'
+
+/**
+ * Generate product snap points from the perforations of a plate.
+ *
+ * Detection works on **boundary loops**, not on vertex patterns. For each
+ * external face we take the triangles lying in that plane, count how many
+ * triangles use each edge, and keep the edges used exactly once — those are
+ * the face's outlines. Chaining them yields closed loops: the big one is the
+ * plate's own silhouette, the small ones are the holes. The centre of each
+ * small loop becomes a snap point.
+ *
+ * The earlier heuristic looked for four coplanar vertices forming a rectangle.
+ * That fires on any regular tessellation, so a 52k-triangle extruded profile
+ * produced ~1800 phantom "holes" on a single face, and its cost was quadratic
+ * in the number of distinct coordinates — one 8.8k-triangle accessory never
+ * finished. Loop finding is linear in the triangle count and only reports
+ * geometry that really is a hole.
+ */
+
 type AxisIndex = 0 | 1 | 2
 type PlaneSide = 'min' | 'max'
-
-type Pair = {
-  a: number
-  b: number
-  center: number
-}
 
 type PlaneCandidate = {
   axis: AxisIndex
   uAxis: AxisIndex
   vAxis: AxisIndex
   coord: number
+  side: PlaneSide
   label: string
   planeTolerance: number
 }
 
 const AXES: AxisIndex[] = [0, 1, 2]
 const AXIS_NAMES = ['x', 'y', 'z'] as const
-const DEFAULT_MIN_HOLE_SIZE = 0.006
-const DEFAULT_MAX_HOLE_SIZE = 0.018
+/** Hole bbox must fall inside this window, on both in-plane axes (metres). */
+const DEFAULT_MIN_HOLE_SIZE = 0.003
+const DEFAULT_MAX_HOLE_SIZE = 0.030
 const DEFAULT_PLANE_TOLERANCE = 0.001
+/** Welding tolerance for vertices shared between triangles. */
 const DEFAULT_VERTEX_TOLERANCE = 0.00001
-const MIN_GRID_POINTS = 4
 
 function numParam(params: Record<string, unknown>, key: string, fallback: number) {
   const v = params[key]
@@ -41,6 +58,14 @@ function vecParam(params: Record<string, unknown>, key: string): Vec3 | null {
   return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number')
     ? (v as Vec3)
     : null
+}
+
+function vecListParam(params: Record<string, unknown>, key: string): Vec3[] {
+  const v = params[key]
+  if (!Array.isArray(v)) return []
+  return v.filter((entry): entry is Vec3 =>
+    Array.isArray(entry) && entry.length === 3 && entry.every((n) => typeof n === 'number'),
+  )
 }
 
 function dominantAxis(v: Vec3): AxisIndex {
@@ -55,49 +80,67 @@ function quantize(v: number, tolerance: number) {
   return Math.round(v / tolerance) * tolerance
 }
 
-function key(u: number, v: number, tolerance: number) {
-  return `${quantize(u, tolerance).toFixed(6)},${quantize(v, tolerance).toFixed(6)}`
-}
-
 function pointKey(p: Vec3, tolerance: number) {
   return p.map((n) => quantize(n, tolerance).toFixed(6)).join(',')
 }
 
-function closePairs(values: number[], minSize: number, maxSize: number): Pair[] {
-  const out: Pair[] = []
-  for (let i = 0; i < values.length - 1; i += 1) {
-    for (let j = i + 1; j < values.length; j += 1) {
-      const d = values[j] - values[i]
-      if (d > maxSize) break
-      if (d >= minSize) out.push({ a: values[i], b: values[j], center: (values[i] + values[j]) / 2 })
-    }
-  }
-  return out
-}
+// --- geometry collection ---------------------------------------------------
 
-function pushVertex(out: Vec3[], obj: Object3D, vertex: Vector3) {
-  vertex.applyMatrix4(obj.matrixWorld)
-  out.push([vertex.x, vertex.y, vertex.z])
-}
+type Triangle = [Vec3, Vec3, Vec3]
 
-function collectMeshVertices(root: Object3D): Vec3[] {
-  const out: Vec3[] = []
+/** World-space triangles of every visible mesh under `root`. */
+function collectTriangles(root: Object3D): Triangle[] {
+  const out: Triangle[] = []
   const v = new Vector3()
 
   root.updateWorldMatrix(true, true)
-  root.traverse((obj) => {
+  root.traverseVisible((obj) => {
     if (!obj.visible || !(obj instanceof Mesh)) return
     const pos = obj.geometry.getAttribute('position')
     if (!pos) return
     obj.updateWorldMatrix(true, false)
-    for (let i = 0; i < pos.count; i += 1) {
-      v.fromBufferAttribute(pos, i)
-      pushVertex(out, obj, v)
+
+    const index = obj.geometry.index
+    const count = index ? index.count : pos.count
+    const at = (i: number): Vec3 => {
+      v.fromBufferAttribute(pos, index ? index.getX(i) : i)
+      v.applyMatrix4(obj.matrixWorld)
+      return [v.x, v.y, v.z]
+    }
+    for (let i = 0; i + 2 < count; i += 3) {
+      out.push([at(i), at(i + 1), at(i + 2)])
     }
   })
 
   return out
 }
+
+/**
+ * A whole product's bounding box is unsuitable for a bracket assembled onto
+ * it: the bracket's lateral face is not necessarily also the product's outer
+ * face. Select matching meshes and analyse each in its own local bbox.
+ */
+function collectTriangleGroups(root: Object3D, meshNameIncludes: string[]): Triangle[][] {
+  if (meshNameIncludes.length === 0) return [collectTriangles(root)]
+  const groups: Triangle[][] = []
+  root.traverseVisible((obj) => {
+    if (!(obj instanceof Mesh) || !meshNameIncludes.some((value) => obj.name.includes(value))) return
+    const triangles = collectTriangles(obj)
+    if (triangles.length > 0) groups.push(triangles)
+  })
+  return groups
+}
+
+function trianglesBBox(tris: Triangle[]): Box3 {
+  const box = new Box3()
+  const v = new Vector3()
+  for (const t of tris) {
+    for (const p of t) box.expandByPoint(v.set(p[0], p[1], p[2]))
+  }
+  return box
+}
+
+// --- plane selection -------------------------------------------------------
 
 function makePlane(
   axis: AxisIndex,
@@ -111,28 +154,45 @@ function makePlane(
     uAxis: projectedAxes[0],
     vAxis: projectedAxes[1],
     coord,
+    side,
     label: `${AXIS_NAMES[axis]}${side}`,
     planeTolerance,
   }
 }
 
-function choosePrimaryPlane(vertices: Vec3[], min: Vec3, max: Vec3, size: Vec3, planeTolerance: number) {
-  const axis: AxisIndex = size[0] <= size[1] && size[0] <= size[2] ? 0 : size[1] <= size[2] ? 1 : 2
-  const minCount = vertices.filter((p) => Math.abs(p[axis] - min[axis]) <= planeTolerance).length
-  const maxCount = vertices.filter((p) => Math.abs(p[axis] - max[axis]) <= planeTolerance).length
-  const side: PlaneSide = maxCount >= minCount ? 'max' : 'min'
-  return makePlane(axis, side, side === 'max' ? max[axis] : min[axis], planeTolerance)
+/** Outward normal of a scanned face — the direction a mating part comes from. */
+function planeNormal(plane: PlaneCandidate): Vec3 {
+  const n: Vec3 = [0, 0, 0]
+  n[plane.axis] = plane.side === 'max' ? 1 : -1
+  return n
 }
 
-function choosePlanes(vertices: Vec3[], params: Record<string, unknown>): PlaneCandidate[] {
-  const bbox = new Box3()
-  for (const p of vertices) bbox.expandByPoint(new Vector3(...p))
-
-  const min: Vec3 = [bbox.min.x, bbox.min.y, bbox.min.z]
-  const max: Vec3 = [bbox.max.x, bbox.max.y, bbox.max.z]
-  const size: Vec3 = [bbox.max.x - bbox.min.x, bbox.max.y - bbox.min.y, bbox.max.z - bbox.min.z]
+function choosePlanes(box: Box3, params: Record<string, unknown>): PlaneCandidate[] {
+  const min: Vec3 = [box.min.x, box.min.y, box.min.z]
+  const max: Vec3 = [box.max.x, box.max.y, box.max.z]
+  const size: Vec3 = [
+    box.max.x - box.min.x,
+    box.max.y - box.min.y,
+    box.max.z - box.min.z,
+  ]
   const normal = vecParam(params, 'normal')
+  const normals = vecListParam(params, 'normals')
   const planeTolerance = numParam(params, 'planeTolerance', DEFAULT_PLANE_TOLERANCE)
+
+  // A product can have meaningful perforations on more than one face (for
+  // example four holes on each XDS end cap). This list is deliberately
+  // evaluated before the legacy single `normal` setting.
+  if (normals.length > 0) {
+    const seen = new Set<string>()
+    return normals.flatMap((candidate) => {
+      const axis = dominantAxis(candidate)
+      const side: PlaneSide = candidate[axis] >= 0 ? 'max' : 'min'
+      const key = `${axis}:${side}`
+      if (seen.has(key)) return []
+      seen.add(key)
+      return [makePlane(axis, side, side === 'max' ? max[axis] : min[axis], planeTolerance)]
+    })
+  }
 
   if (normal) {
     const axis = dominantAxis(normal)
@@ -140,9 +200,15 @@ function choosePlanes(vertices: Vec3[], params: Record<string, unknown>): PlaneC
     return [makePlane(axis, side, side === 'max' ? max[axis] : min[axis], planeTolerance)]
   }
 
-  // Default: scan all external faces. `faces: "primary"` keeps the original
-  // behaviour (only the densest face on the model's thinnest axis).
-  if (params.faces === 'primary') return [choosePrimaryPlane(vertices, min, max, size, planeTolerance)]
+  // `faces: "primary"` scans only the two faces of the model's thinnest axis —
+  // the flat sides of a plate. Default scans all six.
+  if (params.faces === 'primary') {
+    const axis: AxisIndex = size[0] <= size[1] && size[0] <= size[2] ? 0 : size[1] <= size[2] ? 1 : 2
+    return [
+      makePlane(axis, 'min', min[axis], planeTolerance),
+      makePlane(axis, 'max', max[axis], planeTolerance),
+    ]
+  }
 
   return AXES.flatMap((axis) => [
     makePlane(axis, 'min', min[axis], planeTolerance),
@@ -150,15 +216,118 @@ function choosePlanes(vertices: Vec3[], params: Record<string, unknown>): PlaneC
   ])
 }
 
-function sortedUnique(values: number[], tolerance: number) {
-  return [...new Set(values.map((v) => quantize(v, tolerance)))].sort((a, b) => a - b)
+// --- boundary loop detection ----------------------------------------------
+
+interface Loop {
+  polygon: Array<[number, number]>
+  /** In-plane bbox extent on the plane's u and v axes. */
+  du: number
+  dv: number
+  centerU: number
+  centerV: number
 }
 
-function groupValues(values: number[], tolerance: number) {
-  return sortedUnique(values, tolerance)
+/**
+ * Closed boundary loops of the triangles lying in `plane`.
+ *
+ * An edge shared by two triangles is interior; an edge used once bounds the
+ * surface, either at the plate's silhouette or around a hole. Walking the
+ * boundary edges through a vertex adjacency map recovers each loop.
+ */
+function boundaryLoops(
+  tris: Triangle[],
+  plane: PlaneCandidate,
+  vertexTolerance: number,
+): Loop[] {
+  const onPlane = (p: Vec3) => Math.abs(p[plane.axis] - plane.coord) <= plane.planeTolerance
+
+  // Edge use counts, keyed by the unordered pair of welded endpoints.
+  const edgeCount = new Map<string, number>()
+  const vertexPos = new Map<string, Vec3>()
+  const edgeEnds = new Map<string, [string, string]>()
+
+  const vkey = (p: Vec3) => pointKey(p, vertexTolerance)
+
+  for (const t of tris) {
+    if (!onPlane(t[0]) || !onPlane(t[1]) || !onPlane(t[2])) continue
+    const k = [vkey(t[0]), vkey(t[1]), vkey(t[2])]
+    vertexPos.set(k[0], t[0])
+    vertexPos.set(k[1], t[1])
+    vertexPos.set(k[2], t[2])
+    for (let i = 0; i < 3; i++) {
+      const a = k[i]
+      const b = k[(i + 1) % 3]
+      if (a === b) continue // degenerate after welding
+      const ek = a < b ? `${a}|${b}` : `${b}|${a}`
+      edgeCount.set(ek, (edgeCount.get(ek) ?? 0) + 1)
+      edgeEnds.set(ek, a < b ? [a, b] : [b, a])
+    }
+  }
+
+  // Adjacency over boundary edges only.
+  const adj = new Map<string, string[]>()
+  for (const [ek, count] of edgeCount) {
+    if (count !== 1) continue
+    const [a, b] = edgeEnds.get(ek)!
+    ;(adj.get(a) ?? adj.set(a, []).get(a)!).push(b)
+    ;(adj.get(b) ?? adj.set(b, []).get(b)!).push(a)
+  }
+
+  const loops: Loop[] = []
+  const visited = new Set<string>()
+
+  for (const start of adj.keys()) {
+    if (visited.has(start)) continue
+
+    const polygon: Array<[number, number]> = []
+    let closed = false
+    let simple = true
+    let minU = Infinity
+    let maxU = -Infinity
+    let minV = Infinity
+    let maxV = -Infinity
+    let node: string | null = start
+    let prev: string | null = null
+
+    while (node && !visited.has(node)) {
+      visited.add(node)
+      if (adj.get(node)?.length !== 2) simple = false
+      const p = vertexPos.get(node)!
+      const u = p[plane.uAxis]
+      const v = p[plane.vAxis]
+      polygon.push([u, v])
+      if (u < minU) minU = u
+      if (u > maxU) maxU = u
+      if (v < minV) minV = v
+      if (v > maxV) maxV = v
+
+      const next: string | undefined = (adj.get(node) ?? []).find((n) => n !== prev)
+      if (next === start) closed = true
+      prev = node
+      node = next ?? null
+    }
+
+    if (minU === Infinity || !closed || !simple || polygon.length < 3) continue
+    loops.push({
+      polygon,
+      du: maxU - minU,
+      dv: maxV - minV,
+      centerU: (minU + maxU) / 2,
+      centerV: (minV + maxV) / 2,
+    })
+  }
+
+  return loops
 }
 
-function makePoint(uAxis: AxisIndex, vAxis: AxisIndex, planeAxis: AxisIndex, u: number, v: number, plane: number): Vec3 {
+function makePoint(
+  uAxis: AxisIndex,
+  vAxis: AxisIndex,
+  planeAxis: AxisIndex,
+  u: number,
+  v: number,
+  plane: number,
+): Vec3 {
   const p: Vec3 = [0, 0, 0]
   p[uAxis] = u
   p[vAxis] = v
@@ -166,80 +335,116 @@ function makePoint(uAxis: AxisIndex, vAxis: AxisIndex, planeAxis: AxisIndex, u: 
   return p
 }
 
-function detectGridOnPlane(
-  vertices: Vec3[],
+/** Distinct values, merged when closer together than `tolerance`. */
+function clusterValues(values: number[], tolerance: number): number[] {
+  const sorted = [...values].sort((a, b) => a - b)
+  const out: number[] = []
+  for (const v of sorted) {
+    if (out.length === 0 || v - out[out.length - 1] > tolerance) out.push(v)
+  }
+  return out
+}
+
+function detectHolesOnPlane(
+  tris: Triangle[],
   plane: PlaneCandidate,
   minHoleSize: number,
   maxHoleSize: number,
   vertexTolerance: number,
 ): ExtractedSnapPoint[] {
-  const face = vertices.filter((p) => Math.abs(p[plane.axis] - plane.coord) <= plane.planeTolerance)
-  if (face.length === 0) return []
-
-  const pointSet = new Set(face.map((p) => key(p[plane.uAxis], p[plane.vAxis], vertexTolerance)))
-  const uValues = sortedUnique(face.map((p) => p[plane.uAxis]), vertexTolerance)
-  const vValues = sortedUnique(face.map((p) => p[plane.vAxis]), vertexTolerance)
-  const uPairs = closePairs(uValues, minHoleSize, maxHoleSize)
-  const vPairs = closePairs(vValues, minHoleSize, maxHoleSize)
-  const centers = new Map<string, Vec3>()
-
-  for (const up of uPairs) {
-    for (const vp of vPairs) {
-      const hasCorners =
-        pointSet.has(key(up.a, vp.a, vertexTolerance)) &&
-        pointSet.has(key(up.b, vp.a, vertexTolerance)) &&
-        pointSet.has(key(up.a, vp.b, vertexTolerance)) &&
-        pointSet.has(key(up.b, vp.b, vertexTolerance))
-      if (!hasCorners) continue
-      const p = makePoint(plane.uAxis, plane.vAxis, plane.axis, up.center, vp.center, plane.coord)
-      centers.set(pointKey(p, vertexTolerance), p)
+  const loops = boundaryLoops(tris, plane, vertexTolerance)
+  const containsPoint = (polygon: Array<[number, number]>, point: [number, number]) => {
+    let inside = false
+    for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+      const a = polygon[i]
+      const b = polygon[j]
+      if ((a[1] > point[1]) !== (b[1] > point[1]) && point[0] < (b[0] - a[0]) * (point[1] - a[1]) / (b[1] - a[1]) + a[0]) inside = !inside
     }
+    return inside
+  }
+  const holes = loops.filter(
+    (l) =>
+      // A hole has an odd number of enclosing boundaries. Standalone small
+      // faces and open/non-manifold chains are never drilling locations.
+      loops.filter((outer) => outer !== l && containsPoint(outer.polygon, l.polygon[0])).length % 2 === 1 &&
+      l.du >= minHoleSize &&
+      l.du <= maxHoleSize &&
+      l.dv >= minHoleSize &&
+      l.dv <= maxHoleSize,
+  )
+  if (holes.length === 0) return []
+
+  // Row/column indices purely for readable ids ("Foro r3 c2"). Cluster at half
+  // the max hole size so holes of one row land on the same index.
+  const tol = maxHoleSize / 2
+  const rows = clusterValues(holes.map((h) => h.centerV), tol)
+  const cols = clusterValues(holes.map((h) => h.centerU), tol)
+  const nearest = (arr: number[], v: number) => {
+    let best = 0
+    let bestD = Infinity
+    for (let i = 0; i < arr.length; i++) {
+      const d = Math.abs(arr[i] - v)
+      if (d < bestD) {
+        bestD = d
+        best = i
+      }
+    }
+    return best
   }
 
-  if (centers.size < MIN_GRID_POINTS) return []
+  const normal = planeNormal(plane)
+  return holes.map((h) => ({
+    id: `auto-grid-${plane.label}-r${nearest(rows, h.centerV)}-c${nearest(cols, h.centerU)}`,
+    kind: AUTO_GRID_SNAP_KIND,
+    position: makePoint(plane.uAxis, plane.vAxis, plane.axis, h.centerU, h.centerV, plane.coord),
+    normal,
+  }))
+}
 
-  const points = [...centers.values()].sort(
-    (a, b) => a[plane.vAxis] - b[plane.vAxis] || a[plane.uAxis] - b[plane.uAxis],
-  )
-  const rows = groupValues(points.map((p) => p[plane.vAxis]), vertexTolerance)
-  const cols = groupValues(points.map((p) => p[plane.uAxis]), vertexTolerance)
-
-  return points.map((position) => {
-    const row = rows.findIndex((v) => Math.abs(v - quantize(position[plane.vAxis], vertexTolerance)) <= vertexTolerance)
-    const col = cols.findIndex((v) => Math.abs(v - quantize(position[plane.uAxis], vertexTolerance)) <= vertexTolerance)
-    return {
-      id: `auto-grid-${plane.label}-r${row}-c${col}`,
-      position,
-    }
+function withUniqueIds(points: ExtractedSnapPoint[]): ExtractedSnapPoint[] {
+  const count = new Map<string, number>()
+  return points.map((point) => {
+    const occurrence = count.get(point.id) ?? 0
+    count.set(point.id, occurrence + 1)
+    return occurrence === 0 ? point : { ...point, id: `${point.id}-${occurrence + 1}` }
   })
 }
 
 /**
- * Generate product snap points from regular rectangular perforations.
+ * Generate product snap points from the perforations of a plate.
  *
- * The GLB only has to declare a rule `{ kind:'rule', rule:'auto-snap-grid' }`.
- * By default all six external faces are scanned, so side/top/bottom holes are
- * included too. Optional params can tune detection: `normal`, `faces`,
- * `minHoleSize`, `maxHoleSize`, `planeTolerance`, `vertexTolerance`.
+ * The GLB only has to declare a rule `{ kind:'rule', rule:'auto-snap-grid' }`
+ * (or a node named `RULE_AUTOSNAPGRID`). By default all six external faces are
+ * scanned. Optional params tune detection: `normal`, `normals`, `faces`,
+ * `meshNameIncludes`, `minHoleSize`, `maxHoleSize`, `planeTolerance`,
+ * `vertexTolerance`.
  */
-export function extractAutoSnapGridFromObject(root: Object3D, rules: ItemRule[]): ExtractedSnapPoint[] {
+export function extractAutoSnapGridFromObject(
+  root: Object3D,
+  rules: ItemRule[],
+): ExtractedSnapPoint[] {
   const rule = rules.find((r) => r.rule === AUTO_SNAP_GRID_RULE)
   if (!rule) return []
 
   const params = rule.params ?? {}
-  const vertices = collectMeshVertices(root)
-  if (vertices.length === 0) return []
-
   const minHoleSize = numParam(params, 'minHoleSize', DEFAULT_MIN_HOLE_SIZE)
   const maxHoleSize = numParam(params, 'maxHoleSize', DEFAULT_MAX_HOLE_SIZE)
   const vertexTolerance = numParam(params, 'vertexTolerance', DEFAULT_VERTEX_TOLERANCE)
   const all = new Map<string, ExtractedSnapPoint>()
 
-  for (const plane of choosePlanes(vertices, params)) {
-    for (const sp of detectGridOnPlane(vertices, plane, minHoleSize, maxHoleSize, vertexTolerance)) {
-      all.set(`${sp.id}:${pointKey(sp.position, vertexTolerance)}`, sp)
+  const meshNameIncludes = Array.isArray(params.meshNameIncludes)
+    ? params.meshNameIncludes.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : []
+  const groups = collectTriangleGroups(root, meshNameIncludes)
+  if (groups.length === 0) return []
+  for (const group of groups) {
+    const box = trianglesBBox(group)
+    for (const plane of choosePlanes(box, params)) {
+      for (const sp of detectHolesOnPlane(group, plane, minHoleSize, maxHoleSize, vertexTolerance)) {
+        all.set(pointKey(sp.position, vertexTolerance), sp)
+      }
     }
   }
 
-  return [...all.values()]
+  return withUniqueIds([...all.values()])
 }

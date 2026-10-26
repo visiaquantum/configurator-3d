@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "products": [
+    {
+      "catalogId": "ysi12836",
+      "connectors": [
+        {
+          "id": "upright-holes",
+          "snapKind": "foro",
+          "compatibleWith": ["shelf-face", "accessory-face"],
+          "capacity": 1,
+          "insertionDepth": 0.04,
+          "insertionAxis": [0, 0, 1],
+          "clearance": [{ "id": "hole-seat", "center": [0, 0, 0], "size": [0.08, 0.12, 0.08] }]
+        },
+        {
+          "id": "upright-shelf-seat",
+          "snapKind": "laterale",
+          "compatibleWith": ["shelf-end"],
+          "capacity": 1,
+          "insertionDepth": 0.035,
+          "clearance": [{ "id": "shelf-slot", "center": [0, 0, -0.015], "size": [0.37, 0.09, 0.04] }]
+        },
+        {
+          "id": "upright-rail-hook",
+          "snapKind": "frontale",
+          "compatibleWith": ["rail-end"],
+          "capacity": 1,
+          "insertionDepth": 0.03,
+          "clearance": [{ "id": "rail-slot", "center": [0, 0, -0.0132], "size": [0.06, 0.045, 0.032] }]
+        }
+      ],
+      "colliders": [{ "id": "upright-body", "center": [0, 0, 0], "size": [0.36, 1.008, 0.03] }],
+      "bom": { "code": "YSI12836", "label": "Montante YSI 12836" }
+    },
+    {
+      "catalogId": "xds40231km02",
+      "connectors": [
+        {
+          "id": "shelf-face",
+          "snapKind": "frontale",
+          "compatibleWith": ["upright-holes"],
+          "capacity": 1,
+          "insertionDepth": 0.04,
+          "insertionAxis": [0, 0, -1],
+          "clearance": [{ "id": "shelf-tab", "center": [0, 0, 0], "size": [0.08, 0.08, 0.08] }]
+        }
+      ],
+      "colliders": [{ "id": "shelf-body", "center": [0, 0, 0], "size": [1.011, 0.07, 0.307] }],
+      "bom": { "code": "XDS40231KM02", "label": "Orizzontale XDS 40231 KM02" }
+    },
+    {
+      "catalogId": "ptbm31",
+      "connectors": [
+        {
+          "id": "accessory-face",
+          "snapKind": "frontale",
+          "compatibleWith": ["upright-holes"],
+          "capacity": 1,
+          "insertionDepth": 0.03,
+          "insertionAxis": [0, 0, -1],
+          "clearance": [{ "id": "accessory-tab", "center": [0, 0, 0], "size": [0.06, 0.06, 0.06] }]
+        }
+      ],
+      "colliders": [{ "id": "accessory-body", "center": [0, 0, 0], "size": [0.31, 0.14, 0.09] }],
+      "bom": { "code": "PTBM-31", "label": "Accessorio PTBM-31" }
+    },
+    {
+      "catalogId": "kit01",
+      "connectors": [],
+      "colliders": [{ "id": "kit-body", "center": [0, 0, 0], "size": [0.36, 0.864, 1.014] }],
+      "bom": { "code": "KIT01", "label": "Kit 01" }
+    },
+    {
+      "catalogId": "xds40236km02",
+      "connectors": [
+        {
+          "id": "shelf-end",
+          "snapKind": "laterale",
+          "compatibleWith": ["upright-shelf-seat"],
+          "capacity": 1,
+          "insertionDepth": 0.035
+        }
+      ],
+      "colliders": [{ "id": "shelf-body", "center": [0, 0, 0], "size": [1.013, 0.07117, 0.357] }],
+      "bom": { "code": "XDS40236KM02", "label": "Orizzontale XDS 40236 KM02" }
+    },
+    {
+      "catalogId": "xha40100",
+      "connectors": [
+        {
+          "id": "rail-end",
+          "snapKind": "frontale",
+          "compatibleWith": ["upright-rail-hook"],
+          "capacity": 1,
+          "insertionDepth": 0.03
+        }
+      ],
+      "colliders": [{ "id": "rail-body", "center": [0, 0, 0], "size": [0.05, 0.035, 1.00588] }],
+      "bom": { "code": "XHA40100", "label": "Traversa XHA 40100" }
+    }
+  ]
+}
