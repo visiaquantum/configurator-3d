@@ -1,0 +1,265 @@
+{
+  "id": "assieme-integrazione",
+  "version": 1,
+  "enclosure": {
+    "glbUrl": "models/FIAT-NDC40H2.glb",
+    "scale": 10,
+    "dimensions": [
+      3.4,
+      1.8,
+      1.8
+    ]
+  },
+  "items": [
+    {
+      "id": "upright-a",
+      "catalogId": "ysi12836",
+      "position": [
+        0,
+        0.04,
+        0.492
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "upright-b",
+      "catalogId": "ysi12836",
+      "position": [
+        1.4019951245220134e-16,
+        0.04000000000000002,
+        -0.4909999999999999
+      ],
+      "rotation": [
+        0,
+        3.141592653589793,
+        0
+      ]
+    },
+    {
+      "id": "shelf-top",
+      "catalogId": "xds40236km02",
+      "position": [
+        1.1102230246251565e-16,
+        0.616415,
+        0.000500000000000056
+      ],
+      "rotation": [
+        0,
+        1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "shelf-bottom",
+      "catalogId": "xds40236km02",
+      "position": [
+        1.1102230246251565e-16,
+        0.36441500000000004,
+        0.000500000000000056
+      ],
+      "rotation": [
+        0,
+        1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "rail-max",
+      "catalogId": "xha40100",
+      "position": [
+        0.155,
+        0.3275,
+        0.00045999999999990493
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "id": "rail-min",
+      "catalogId": "xha40100",
+      "position": [
+        -0.155,
+        0.3275,
+        0.00045999999999990493
+      ],
+      "rotation": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "sourceItemId": "shelf-top",
+      "sourceConnectorId": "shelf-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "upright-a",
+      "targetConnectorId": "upright-shelf-seat",
+      "targetPointId": "shelf-top",
+      "resolvedTransform": {
+        "position": [
+          1.1102230246251565e-16,
+          0.616415,
+          0.000500000000000056
+        ],
+        "rotation": [
+          0,
+          1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "shelf-bottom",
+      "sourceConnectorId": "shelf-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "upright-a",
+      "targetConnectorId": "upright-shelf-seat",
+      "targetPointId": "shelf-bottom",
+      "resolvedTransform": {
+        "position": [
+          1.1102230246251565e-16,
+          0.36441500000000004,
+          0.000500000000000056
+        ],
+        "rotation": [
+          0,
+          1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "rail-max",
+      "sourceConnectorId": "rail-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "upright-a",
+      "targetConnectorId": "upright-rail-hook",
+      "targetPointId": "rail-xmax",
+      "resolvedTransform": {
+        "position": [
+          0.155,
+          0.3275,
+          0.00045999999999990493
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "rail-min",
+      "sourceConnectorId": "rail-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "upright-a",
+      "targetConnectorId": "upright-rail-hook",
+      "targetPointId": "rail-xmin",
+      "resolvedTransform": {
+        "position": [
+          -0.155,
+          0.3275,
+          0.00045999999999990493
+        ],
+        "rotation": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "upright-b",
+      "sourceConnectorId": "upright-shelf-seat",
+      "sourcePointId": "shelf-top",
+      "targetItemId": "shelf-top",
+      "targetConnectorId": "shelf-end",
+      "targetPointId": "end-b",
+      "resolvedTransform": {
+        "position": [
+          1.4019951245220134e-16,
+          0.04000000000000002,
+          -0.4909999999999999
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "upright-b",
+      "sourceConnectorId": "upright-shelf-seat",
+      "sourcePointId": "shelf-bottom",
+      "targetItemId": "shelf-bottom",
+      "targetConnectorId": "shelf-end",
+      "targetPointId": "end-b",
+      "resolvedTransform": {
+        "position": [
+          1.4019951245220134e-16,
+          0.04000000000000002,
+          -0.4909999999999999
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "upright-b",
+      "sourceConnectorId": "upright-rail-hook",
+      "sourcePointId": "rail-xmax",
+      "targetItemId": "rail-min",
+      "targetConnectorId": "rail-end",
+      "targetPointId": "end-b",
+      "resolvedTransform": {
+        "position": [
+          1.4019951245220134e-16,
+          0.04000000000000002,
+          -0.4909999999999999
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "upright-b",
+      "sourceConnectorId": "upright-rail-hook",
+      "sourcePointId": "rail-xmin",
+      "targetItemId": "rail-max",
+      "targetConnectorId": "rail-end",
+      "targetPointId": "end-b",
+      "resolvedTransform": {
+        "position": [
+          1.4019951245220134e-16,
+          0.04000000000000002,
+          -0.4909999999999999
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "name": "Assieme completo di esempio",
+    "customer": "Esempio integrazione gestionale"
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "metadata": { "name": "Catalogo di integrazione — telaio a sei componenti" },
+  "items": [
+    {
+      "id": "ysi12836",
+      "label": "Montante YSI 12836",
+      "glbUrl": "models/MONTANTI/YSI12836.glb",
+      "size": [0.36, 1.008, 0.03],
+      "scale": 1,
+      "snapPoints": [
+        { "id": "shelf-top", "label": "Ripiano superiore", "kind": "laterale", "position": [0, 0.108, 0.015], "normal": [0, 0, -1] },
+        { "id": "shelf-bottom", "label": "Ripiano inferiore", "kind": "laterale", "position": [0, -0.144, 0.015], "normal": [0, 0, -1] },
+        { "id": "rail-xmax", "label": "Traversa destra", "kind": "frontale", "position": [0.155, -0.199, 0.0114], "normal": [0, 0, -1] },
+        { "id": "rail-xmin", "label": "Traversa sinistra", "kind": "frontale", "position": [-0.155, -0.199, 0.0114], "normal": [0, 0, -1] }
+      ]
+    },
+    {
+      "id": "xds40236km02",
+      "label": "Ripiano XDS 40236 KM02",
+      "glbUrl": "models/ORIZZONTALI/XDS40236KM02.glb",
+      "size": [1.013, 0.07117, 0.357],
+      "scale": 1,
+      "snapPoints": [
+        { "id": "end-a", "label": "Estremità A", "kind": "laterale", "position": [-0.5065, 0, 0], "normal": [-1, 0, 0] },
+        { "id": "end-b", "label": "Estremità B", "kind": "laterale", "position": [0.5065, 0, 0], "normal": [1, 0, 0] }
+      ]
+    },
+    {
+      "id": "xha40100",
+      "label": "Traversa XHA 40100",
+      "glbUrl": "models/ORIZZONTALI/XHA40100.glb",
+      "size": [0.05, 0.035, 1.00588],
+      "scale": 1,
+      "snapPoints": [
+        { "id": "end-a", "label": "Estremità A", "kind": "frontale", "position": [0, 0, 0.50294], "normal": [0, 0, 1] },
+        { "id": "end-b", "label": "Estremità B", "kind": "frontale", "position": [0, 0, -0.50294], "normal": [0, 0, -1] }
+      ]
+    }
+  ]
+}

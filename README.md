@@ -41,6 +41,11 @@ Il selettore **Chiaro / Scuro** nella testata della demo aggiorna interfaccia, s
 
 ## Integrazione
 
+Un progetto React indipendente, con libreria installata da pacchetto, catalogo JSON,
+quattro GLB, manifest e un assieme completo è disponibile in
+[examples/react-integration](examples/react-integration/README.md).
+Eseguire `npm run example:prepare`, poi seguire le istruzioni dell'esempio.
+
 ```tsx
 import { useRef } from 'react'
 import { Configurator3D } from '@visiaquantum/configurator-3d'

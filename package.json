@@ -34,6 +34,8 @@
     "verify:assembly": "node scripts/verify-assembly.mjs",
     "verify:pilot": "node scripts/verify-pilot-assembly.mjs",
     "verify:kit01": "node scripts/verify-kit01-composition.mjs",
+    "example:prepare": "npm run build:lib && node scripts/prepare-react-integration.mjs && npm run verify:integration",
+    "verify:integration": "node scripts/verify-react-integration.mjs",
     "preview": "vite preview",
     "prepublishOnly": "npm run build:lib",
     "test": "npm run build:lib && node --test tests/*.test.mjs && npm run verify:assembly && npm run verify:snaps && npm run verify:pilot && npm run verify:kit01"
