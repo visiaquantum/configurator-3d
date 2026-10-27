@@ -134,6 +134,15 @@ export function connectorOwnsPoint(connector: ConnectorDefinition, point: ItemSn
   return connector.snapId ? connector.snapId === point.id : connector.snapKind === point.kind
 }
 
+/** Max source/target snap distance of a committed joint when a connector does not say. */
+export const DEFAULT_SNAP_TOLERANCE = 0.002
+
+/**
+ * The manifest is the authority on what mates: when either connector lists
+ * `compatibleWith`, that list decides. The built-in kind table
+ * (`MATING_RULES`) only applies between connectors that declare nothing, so a
+ * new product family needs a manifest entry, not a code change.
+ */
 export function connectorsCanMate(
   source: ConnectorDefinition,
   sourcePoint: ItemSnapPoint,
@@ -145,7 +154,7 @@ export function connectorsCanMate(
   const targetAllowed = target.compatibleWith
   if (sourceAllowed && !sourceAllowed.includes(target.id) && !sourceAllowed.includes(targetPoint.kind)) return false
   if (targetAllowed && !targetAllowed.includes(source.id) && !targetAllowed.includes(sourcePoint.kind)) return false
-  return canMate(sourcePoint.kind, targetPoint.kind)
+  return !!sourceAllowed || !!targetAllowed || canMate(sourcePoint.kind, targetPoint.kind)
 }
 
 /**
@@ -196,7 +205,7 @@ export function connectionsAtPose(
         if (!otherConnector || !connectorsCanMate(connector, mine, otherConnector, theirs)) return false
         if (!normalsOppose(mine.normal, posed.rotation, theirs.normal, other.rotation)) return false
         if ((taken.get(`${other.id}:${theirs.id}`) ?? 0) >= (otherConnector.capacity ?? 1)) return false
-        const limit = Math.min(connector.snapTolerance ?? 0.002, otherConnector.snapTolerance ?? 0.002)
+        const limit = Math.min(connector.snapTolerance ?? DEFAULT_SNAP_TOLERANCE, otherConnector.snapTolerance ?? DEFAULT_SNAP_TOLERANCE)
         const there = worldPointOf(other, theirs.position, context.heightOf(other))
         return Math.hypot(there[0] - world[0], there[1] - world[1], there[2] - world[2]) <= limit
       })
@@ -216,6 +225,36 @@ export function connectionsAtPose(
     }
   }
   return connections
+}
+
+/**
+ * Resolve one pending joint against the manifest: both points must exist on
+ * the hydrated products and their connectors must accept each other. The
+ * resolved transform records the source pose the joint was confirmed at.
+ */
+export function resolveJoint(
+  joint: Pick<Connection, 'sourcePointId' | 'targetPointId'>,
+  source: PlacedItem,
+  target: PlacedItem,
+  manifest: AssemblyManifest,
+  itemSnaps: Record<string, ItemSnapPoint[]>,
+  itemRules: Record<string, ItemRule[]>,
+): Connection | null {
+  const sourcePoint = snapsForItem(source, itemSnaps, itemRules).find((point) => point.id === joint.sourcePointId)
+  const targetPoint = snapsForItem(target, itemSnaps, itemRules).find((point) => point.id === joint.targetPointId)
+  if (!sourcePoint || !targetPoint) return null
+  const sourceConnector = connectorForSnap(definitionFor(manifest, source.catalogId), sourcePoint)
+  const targetConnector = connectorForSnap(definitionFor(manifest, target.catalogId), targetPoint)
+  if (!sourceConnector || !targetConnector || !connectorsCanMate(sourceConnector, sourcePoint, targetConnector, targetPoint)) return null
+  return {
+    sourceItemId: source.id,
+    sourceConnectorId: sourceConnector.id,
+    sourcePointId: sourcePoint.id,
+    targetItemId: target.id,
+    targetConnectorId: targetConnector.id,
+    targetPointId: targetPoint.id,
+    resolvedTransform: { position: source.position, rotation: source.rotation },
+  }
 }
 
 /** Converts existing `snapToItem` constraints after their GLB points hydrate. */
@@ -238,22 +277,8 @@ export function inferLegacyConnections(
     const legacy = source.constraints?.find((constraint) => constraint.type === 'snapToItem')
     if (!legacy?.target || !legacy.point || !legacy.targetPoint) continue
     const target = byId.get(legacy.target)
-    if (!target) continue
-    const sourcePoint = snapsForItem(source, itemSnaps, itemRules).find((point) => point.id === legacy.point)
-    const targetPoint = snapsForItem(target, itemSnaps, itemRules).find((point) => point.id === legacy.targetPoint)
-    if (!sourcePoint || !targetPoint) continue
-    const sourceConnector = connectorForSnap(definitionFor(manifest, source.catalogId), sourcePoint)
-    const targetConnector = connectorForSnap(definitionFor(manifest, target.catalogId), targetPoint)
-    if (!sourceConnector || !targetConnector || !connectorsCanMate(sourceConnector, sourcePoint, targetConnector, targetPoint)) continue
-    connections.push({
-      sourceItemId: source.id,
-      sourceConnectorId: sourceConnector.id,
-      sourcePointId: sourcePoint.id,
-      targetItemId: target.id,
-      targetConnectorId: targetConnector.id,
-      targetPointId: targetPoint.id,
-      resolvedTransform: { position: source.position, rotation: source.rotation },
-    })
+    const resolved = target && resolveJoint({ sourcePointId: legacy.point, targetPointId: legacy.targetPoint }, source, target, manifest, itemSnaps, itemRules)
+    if (resolved) connections.push(resolved)
   }
   return connections
 }

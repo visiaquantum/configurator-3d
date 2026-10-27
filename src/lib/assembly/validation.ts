@@ -12,9 +12,10 @@ import type {
   ValidationIssue,
   Vec3,
 } from '../types'
-import { connectorsCanMate, definitionFor } from './manifest'
+import { DEFAULT_SNAP_TOLERANCE, connectorsCanMate, definitionFor } from './manifest'
 import { worldPoint, transformedBounds, rotateVector, normalsOppose } from '../scene/geometry'
 import { mirrorScaleFor, snapsForItem } from '../scene/mating'
+import { pendingJoints } from './graph'
 
 interface Bounds {
   min: Vec3
@@ -176,9 +177,12 @@ export function validateConfiguration(
       if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!constraint.target || !byId.has(constraint.target) || constraint.target === item.id)) {
         issues.push({ level: 'error', code: 'connection', message: 'Vincolo con item non valido', itemIds: [item.id] })
       }
-      if (constraint.type === 'snapToItem' && project.connections !== undefined && !connections.some((c) => c.sourceItemId === item.id && c.targetItemId === constraint.target && c.sourcePointId === constraint.point && c.targetPointId === constraint.targetPoint)) {
-        issues.push({ level: 'error', code: 'connection', message: 'Vincolo legacy privo di connessione tecnica', itemIds: [item.id] })
-      }
+    }
+  }
+  // Without a manifest no joint can be certified; the warning above says so.
+  if (manifest) {
+    for (const joint of pendingJoints(project)) {
+      if (byId.has(joint.targetItemId)) issues.push({ level: 'error', code: 'connection', message: 'Collegamento non riconosciuto dal manifest tecnico', itemIds: [joint.sourceItemId, joint.targetItemId] })
     }
   }
   const validConnections: Connection[] = []
@@ -227,7 +231,7 @@ export function validateConfiguration(
       const sourceWorld = worldPoint(source, sourcePoint.position, productSize(source, catalog, manifest, context)[1])
       const targetWorld = worldPoint(target, targetPoint.position, productSize(target, catalog, manifest, context)[1])
       const distance = Math.hypot(sourceWorld[0] - targetWorld[0], sourceWorld[1] - targetWorld[1], sourceWorld[2] - targetWorld[2])
-      const tolerance = Math.min(sourceConnector.snapTolerance ?? 0.002, targetConnector.snapTolerance ?? 0.002)
+      const tolerance = Math.min(sourceConnector.snapTolerance ?? DEFAULT_SNAP_TOLERANCE, targetConnector.snapTolerance ?? DEFAULT_SNAP_TOLERANCE)
       if (distance > tolerance) {
         jointValid = false
         issues.push({ level: 'error', code: 'connection', message: `Snap non allineati (${(distance * 1000).toFixed(1)} mm)`, itemIds: [source.id, target.id] })

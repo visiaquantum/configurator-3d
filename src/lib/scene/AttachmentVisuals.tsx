@@ -1,11 +1,13 @@
 import { useEffect, useMemo } from 'react'
 import { Mesh, MeshBasicMaterial } from 'three'
+import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore } from '../state/store'
+import { selectAssemblyView } from '../state/selectors'
 import { computeAttachmentPreview } from './attachment'
 
 /** Ghosts never enter the item registry or mutate the live assembly. */
 export function AttachmentVisuals() {
-  const state = useConfiguratorStore((value) => value)
+  const state = useConfiguratorStore(useShallow(selectAssemblyView))
   const interaction = state.attachment
   const sourceId = interaction?.sourceItemId
   const sourcePoint = interaction?.sourcePointId

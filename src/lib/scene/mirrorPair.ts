@@ -1,4 +1,4 @@
-import type { Euler, ItemConstraint, ItemRule, PlacedItem, Vec3 } from '../types'
+import type { Euler, ItemRule, PlacedItem, Vec3 } from '../types'
 
 /**
  * Math for the `mirror-pair` GLB rule: two identical instances of the same
@@ -113,14 +113,4 @@ export function pairDistanceForSpan(rule: ItemRule, span: number, localPoint: Ve
 /** The mirrorPair constraint on an item, if any. */
 export function mirrorPairConstraint(item: PlacedItem) {
   return item.constraints?.find((c) => c.type === 'mirrorPair')
-}
-
-/**
- * Merge a new snap-to-anchor constraint (or none) with the item's existing
- * constraints, preserving any mirrorPair link. Commit paths in Item.tsx use
- * this instead of overwriting `constraints` wholesale.
- */
-export function withSnapConstraint(item: PlacedItem, snap: ItemConstraint | null) {
-  const kept = item.constraints?.filter((c) => c.type !== 'snapToAnchor' && c.type !== 'snapToItem') ?? []
-  return snap ? [...kept, snap] : kept
 }

@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
+import { selectAssemblyView } from '../state/selectors'
 import { attachmentPoints, attachmentTargetIds, backAttachment, chooseAttachmentPoint, chooseAttachmentTarget, computeAttachmentPreview } from '../scene/attachment'
 import { snapPointLabel, snapsForItem } from '../scene/mating'
 import { Icon } from './Icon'
@@ -8,7 +10,11 @@ const steps = ['Punto iniziale', 'Destinatario', 'Punto finale']
 
 export function AttachmentOverlay() {
   const store = useConfiguratorStoreApi()
-  const state = useConfiguratorStore((value) => value)
+  const view = useConfiguratorStore(useShallow(selectAssemblyView))
+  const interactionNotice = useConfiguratorStore((value) => value.interactionNotice)
+  // Actions never change; reading them from the live state keeps the view the only subscription.
+  const { setAttachment, requestFocusSelected } = store.getState()
+  const state = { ...view, interactionNotice, setAttachment, requestFocusSelected }
   const interaction = state.attachment
   const menuRef = useRef<HTMLDivElement>(null)
   useEffect(() => {

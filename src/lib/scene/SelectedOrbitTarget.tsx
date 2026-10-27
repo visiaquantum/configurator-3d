@@ -32,14 +32,12 @@ export function SelectedOrbitTarget() {
 
     // Read once, untracked: the effect must run when the request counter
     // changes, not whenever the item moves.
-    const { selectedId, project, catalog } = storeApi.getState()
+    const { selectedId, project, itemSizes } = storeApi.getState()
     if (!selectedId || !project) return
     const item = project.items.find((it) => it.id === selectedId)
     if (!item) return
 
-    const cat = catalog[item.catalogId]
-    const scale = cat?.scale ?? 1
-    const height = cat?.size ? cat.size[1] * scale : 0
+    const height = itemSizes[item.catalogId]?.[1] ?? 0
 
     controls.target.set(
       item.position[0],
