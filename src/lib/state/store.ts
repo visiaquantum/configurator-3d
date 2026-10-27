@@ -5,7 +5,8 @@ import { createItemRegistry } from '../scene/itemRegistry'
 import type { ItemRegistry } from '../scene/itemRegistry'
 import { parseProject } from '../io/serialize'
 import { parseCatalog } from '../io/catalog'
-import { applyItemPatch, removeProjectItems, reconcileConstraints } from './projectGraph'
+import { resolveLegacyProject } from '../io/resolveLegacyProject'
+import { applyItemPatch, removeProjectItems, withConnections } from './projectGraph'
 import type { Camera, Object3D, Scene as ThreeScene, WebGLRenderer } from 'three'
 import type {
   Anchor,
@@ -21,6 +22,7 @@ import type {
 } from '../types'
 import type { NeighborGap } from '../scene/neighborGap'
 import type { AttachmentInteraction } from '../scene/attachment'
+import type { ProductMetadata } from '../io/productMetadata'
 
 export interface CaptureRefs {
   gl: WebGLRenderer
@@ -73,6 +75,7 @@ export interface ConfiguratorState {
   loadingManifest: boolean
   catalogError: string | null
   manifestError: string | null
+  hydrateProduct: (product: CatalogItem, metadata: ProductMetadata) => void
   hydrateItemPosition: (id: string, position: [number, number, number]) => void
   setItemSize: (catalogId: string, size: [number, number, number]) => void
   setAssetError: (id: string, error: string | null) => void
@@ -215,15 +218,42 @@ export interface ConfiguratorState {
 }
 
 export const createConfiguratorStore = () => createStore<ConfiguratorState>((set, get) => {
-  // Snapshot current project into past, clear future. Call BEFORE mutating.
-  const pushHistory = () => {
-    const cur = get().project
-    if (!cur) return
-    get().setAttachment(null)
-    set((s) => ({
-      past: [...s.past, cur].slice(-HISTORY_LIMIT),
+  // Validate before publishing anything: observers see the edit, its undo entry
+  // and attachment cleanup together, or see no change at all on failure.
+  const commitProject = (next: ProjectData, selection?: string | null) => {
+    const state = get()
+    if (!state.project || state.readOnly) return
+    const project = resolveLegacyProject(parseProject(next).project, state)!
+    set({
+      project,
+      past: [...state.past, state.project].slice(-HISTORY_LIMIT),
       future: [],
-    }))
+      attachment: null,
+      ...(state.attachment && state.attachment.stage !== 'menu' && state.xrayEnabled
+        ? { xrayEnabled: state.attachment.previousXray } : {}),
+      ...(selection !== undefined ? { selectedId: selection } : {}),
+    })
+  }
+
+  const commitPatches = (
+    patches: Array<{ id: string; patch: Partial<PlacedItem> }>,
+    connections?: Connection[],
+  ) => {
+    const state = get()
+    if (!state.project || state.readOnly || (patches.length === 0 && connections === undefined)) return
+    const itemsById = new Map(state.project.items.map((item) => [item.id, item]))
+    if (patches.some(({ id, patch }) => {
+      const item = itemsById.get(id)
+      return !item || !canPatchItem(item, patch)
+    })) return
+    const byId = new Map(patches.map(({ id, patch }) => [id, patch]))
+    const items = state.project.items.map((item) => {
+      const patch = byId.get(item.id)
+      return patch ? applyItemPatch(item, patch) : item
+    })
+    commitProject(connections === undefined
+      ? { ...state.project, items }
+      : withConnections(state.project, items, connections))
   }
 
   return {
@@ -242,6 +272,19 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     loadingManifest: false,
     catalogError: null,
     manifestError: null,
+    hydrateProduct: (product, metadata) => set((state) => {
+      // A suspended/obsolete load must not republish data from an old catalog.
+      if (state.catalog[product.id] !== product) return state
+      const current = { size: state.itemSizes[product.id], snaps: state.itemSnaps[product.id], rules: state.itemRules[product.id] }
+      if (JSON.stringify(current) === JSON.stringify(metadata)) return state
+      const owned = structuredClone(metadata)
+      const updates = {
+        itemSizes: { ...state.itemSizes, [product.id]: owned.size },
+        itemSnaps: { ...state.itemSnaps, [product.id]: owned.snaps },
+        itemRules: { ...state.itemRules, [product.id]: owned.rules },
+      }
+      return { ...updates, project: resolveLegacyProject(state.project, { ...state, ...updates }) }
+    }),
     hydrateItemPosition: (id, position) => set((s) => {
       const item = s.project?.items.find((entry) => entry.id === id)
       if (!s.project || !item || !position.every(Number.isFinite) || item.position.every((value, index) => Math.abs(value - position[index]) < 1e-6)) return {}
@@ -285,7 +328,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     walkMode: false,
 
     setProject: (p) => {
-      const project = parseProject(p).project
+      const project = resolveLegacyProject(parseProject(p).project, get())!
       get().setAttachment(null)
       const previous = get().project?.enclosure
       const sameAsset = previous?.glbUrl === project.enclosure.glbUrl &&
@@ -316,13 +359,13 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
         itemSizes: keep(previous.itemSizes), assetEpoch: previous.assetEpoch + 1 })
     },
 
-    setAssemblyManifest: (manifest) => { get().setAttachment(null); set({ assemblyManifest: manifest }) },
+    setAssemblyManifest: (manifest) => { get().setAttachment(null); set((state) => ({ assemblyManifest: manifest, project: resolveLegacyProject(state.project, { ...state, assemblyManifest: manifest }) })) },
     setValidationIssues: (issues) => set({ validationIssues: issues }),
     setTelemetryListener: (listener) => set({ telemetryListener: listener }),
     reportTelemetry: (event) => {
       try { get().telemetryListener?.(event) } catch { /* Host instrumentation must not interrupt editing. */ }
     },
-    setConnections: (connections) => set((s) => s.project ? { project: { ...s.project, items: reconcileConstraints(s.project.items, connections), connections } } : {}),
+    setConnections: (connections) => set((s) => s.project ? { project: withConnections(s.project, s.project.items, connections) } : {}),
 
     addCatalogItem: (item) => {
       const current = get().catalog
@@ -334,10 +377,16 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
     setRuntimeAnchors: (anchors) => set({ runtimeAnchors: anchors }),
 
     setItemRules: (catalogId, rules) =>
-      set((s) => ({ itemRules: { ...s.itemRules, [catalogId]: rules } })),
+      set((state) => {
+        const itemRules = { ...state.itemRules, [catalogId]: rules }
+        return { itemRules, project: resolveLegacyProject(state.project, { ...state, itemRules }) }
+      }),
 
     setItemSnaps: (catalogId, snaps) =>
-      set((s) => ({ itemSnaps: { ...s.itemSnaps, [catalogId]: snaps } })),
+      set((state) => {
+        const itemSnaps = { ...state.itemSnaps, [catalogId]: snaps }
+        return { itemSnaps, project: resolveLegacyProject(state.project, { ...state, itemSnaps }) }
+      }),
 
     setDraggingItemId: (id) => set({ draggingItemId: id }),
 
@@ -391,54 +440,15 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       return s.project?.enclosure.anchors ?? []
     },
 
-    updateItem: (id, patch) => {
-      const s = get()
-      if (!s.project || s.readOnly) return
-      const item = s.project.items.find((entry) => entry.id === id)
-      if (!item || !canPatchItem(item, patch)) return
-      const project = parseProject({ ...s.project, items: s.project.items.map((it) => it.id === id ? applyItemPatch(it, patch) : it) }).project
-      pushHistory()
-      set({ project })
-    },
-
-    updateItems: (patches) => {
-      const s = get()
-      if (!s.project || s.readOnly || patches.length === 0 || patches.some(({ id, patch }) => { const item = s.project?.items.find((entry) => entry.id === id); return !item || !canPatchItem(item, patch) })) return
-      const byId = new Map(patches.map((p) => [p.id, p.patch]))
-      const project = parseProject({
-          ...s.project,
-          items: s.project.items.map((it) => {
-            const patch = byId.get(it.id)
-            return patch ? applyItemPatch(it, patch) : it
-          }),
-      }).project
-      pushHistory()
-      set({ project })
-    },
-
-    commitAssembly: (patches, connections) => {
-      const s = get()
-      if (!s.project || s.readOnly || patches.some(({ id, patch }) => { const item = s.project?.items.find((entry) => entry.id === id); return !item || !canPatchItem(item, patch) })) return
-      const byId = new Map(patches.map((p) => [p.id, p.patch]))
-      const project = parseProject({
-          ...s.project,
-          items: reconcileConstraints(s.project.items.map((it) => {
-            const patch = byId.get(it.id)
-            return patch ? applyItemPatch(it, patch) : it
-          }), connections),
-          connections: structuredClone(connections),
-      }).project
-      pushHistory()
-      set({ project })
-    },
+    updateItem: (id, patch) => commitPatches([{ id, patch }]),
+    updateItems: (patches) => commitPatches(patches),
+    commitAssembly: (patches, connections) => commitPatches(patches, connections),
 
     addItem: (item) => {
       const s = get()
       if (!s.project || s.readOnly) return
       if (s.project.items.some((existing) => existing.id === item.id)) throw new Error('ID item duplicato')
-      const validated = parseProject({ ...s.project, items: [...s.project.items, item] }).project
-      pushHistory()
-      set({ project: validated })
+      commitProject({ ...s.project, items: [...s.project.items, item] })
     },
 
     removeItem: (id) => {
@@ -448,9 +458,8 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       const partnerId = item.constraints?.find((c) => c.type === 'mirrorPair')?.target
       if (s.project.items.find((entry) => entry.id === partnerId)?.locked) return
       const removed = new Set(partnerId ? [id, partnerId] : [id])
-      pushHistory()
-      set({ project: removeProjectItems(s.project, removed),
-        selectedId: s.selectedId && removed.has(s.selectedId) ? null : s.selectedId })
+      commitProject(removeProjectItems(s.project, removed),
+        s.selectedId && removed.has(s.selectedId) ? null : s.selectedId)
     },
 
     createMirrorPair: (sourceId, twin, distance, connections) => {
@@ -459,34 +468,30 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       const source = s.project.items.find((it) => it.id === sourceId)
       if (!source || source.locked || s.readOnly || source.constraints?.some((constraint) => constraint.type === 'mirrorPair') || s.project.items.some((item) => item.id === twin.id)) return
       if (!Number.isFinite(distance) || distance <= 0) throw new Error('Distanza coppia non valida')
-      pushHistory()
       const link = (target: string) => ({ type: 'mirrorPair' as const, target, distance })
-      set({
-        project: {
-          ...s.project,
-          items: [
-            ...s.project.items.map((it) =>
-              it.id === sourceId
-                ? {
-                    ...it,
-                    constraints: [
-                      ...(it.constraints?.filter((c) => c.type !== 'mirrorPair') ?? []),
-                      link(twin.id),
-                    ],
-                  }
-                : it,
-            ),
-            {
-              ...twin,
-              constraints: [
-                ...(twin.constraints?.filter((c) => c.type !== 'mirrorPair') ?? []),
-                link(sourceId),
-              ],
-            },
+      const items = [
+        ...s.project.items.map((it) =>
+          it.id === sourceId
+            ? {
+                ...it,
+                constraints: [
+                  ...(it.constraints?.filter((c) => c.type !== 'mirrorPair') ?? []),
+                  link(twin.id),
+                ],
+              }
+            : it,
+        ),
+        {
+          ...twin,
+          constraints: [
+            ...(twin.constraints?.filter((c) => c.type !== 'mirrorPair') ?? []),
+            link(sourceId),
           ],
-          connections: connections ?? s.project.connections,
         },
-      })
+      ]
+      commitProject(connections === undefined
+        ? { ...s.project, items }
+        : withConnections(s.project, items, connections))
     },
 
     removeMirrorPair: (id) => {
@@ -496,9 +501,8 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       const partner = s.project?.items.find((entry) => entry.id === partnerId)
       if (!s.project || s.readOnly || !item || !partner || item.locked || partner.locked) return
       const removeId = partner.mirrored ? partner.id : item.mirrored ? item.id : partner.id
-      pushHistory()
-      set({ project: removeProjectItems(s.project, new Set([removeId])),
-        selectedId: s.selectedId === removeId ? null : s.selectedId })
+      commitProject(removeProjectItems(s.project, new Set([removeId])),
+        s.selectedId === removeId ? null : s.selectedId)
     },
 
     select: (id) => set({ selectedId: id }),
@@ -511,7 +515,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       get().setAttachment(null)
       const prev = past[past.length - 1]
       set({
-        project: prev,
+        project: resolveLegacyProject(prev, get()),
         interactionNotice: null,
         past: past.slice(0, -1),
         future: [project, ...future].slice(0, HISTORY_LIMIT),
@@ -525,7 +529,7 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
       get().setAttachment(null)
       const next = future[0]
       set({
-        project: next,
+        project: resolveLegacyProject(next, get()),
         interactionNotice: null,
         past: [...past, project].slice(-HISTORY_LIMIT),
         future: future.slice(1),

@@ -2,9 +2,10 @@ import { nanoid } from 'nanoid'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { useSceneTools } from '../scene/useSceneTools'
 import { computePartnerPlacement, MIRROR_PAIR_RULE, mirrorPairConstraint, mirrorPairDistances, pairDistanceForSpan } from '../scene/mirrorPair'
-import { assemblyGroup, assemblyPosePatches, canMate, dedupeJoints, jointsSurvivingMove, rotateGroupPatches } from '../scene/mating'
+import { assemblyGroup, assemblyPosePatches, canMate, dedupeJoints, jointsSurvivingMove } from '../scene/mating'
 import { connectionsAtPose, definitionFor } from '../assembly/manifest'
 import { attachmentPoints, beginAttachment } from '../scene/attachment'
+import { assemblyCanMove, rotateAssembly } from '../scene/itemMovement'
 import { Icon } from './Icon'
 import type { Connection, ItemSnapPoint, PlacedItem } from '../types'
 
@@ -22,14 +23,14 @@ function certifiedPoints(
 
 export function Inspector({ readOnly: hostReadOnly }: Props) {
   const storeApi = useConfiguratorStoreApi()
-  const { getItem, colliderSizeOf } = useSceneTools()
+  const { colliderSizeOf } = useSceneTools()
   const state = useConfiguratorStore((value) => value)
   const { project, catalog, itemRules, itemSnaps, assemblyManifest, selectedId,
     updateItem, updateItems, commitAssembly, createMirrorPair, removeMirrorPair, removeItem, select } = state
   const item = project?.items.find((entry) => entry.id === selectedId)
   if (!item || state.attachment) return null
   const members = assemblyGroup(item.id, project!.items, project!.connections ?? [])
-  const readOnly = hostReadOnly || state.readOnly || !!project?.items.some((member) => members.has(member.id) && (member.locked || member.constraints?.some((constraint) => constraint.type === 'lockAxis')))
+  const readOnly = hostReadOnly || !assemblyCanMove(state, item.id)
   const cat = catalog[item.catalogId]
   const [x, y, z] = item.position
   const size = state.itemSizes[item.catalogId] ?? cat?.size
@@ -142,28 +143,7 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
     }
   }
 
-  const handleRotate = (step: number) => {
-    const s = storeApi.getState()
-    const items = s.project?.items ?? []
-    const members = assemblyGroup(item.id, items, s.project?.connections ?? [])
-    const patches = rotateGroupPatches(items, members, item.position, step)
-    for (const patch of patches) {
-      const reg = getItem(patch.id)
-      const position = patch.patch.position
-      const rotation = patch.patch.rotation
-      if (!reg || !position || !rotation) continue
-      reg.group.position.set(
-        position[0],
-        position[1] + (colliderSizeOf(patch.id)?.[1] ?? 0) / 2,
-        position[2],
-      )
-      reg.group.rotation.set(rotation[0], rotation[1], rotation[2])
-      reg.group.updateWorldMatrix(true, false)
-    }
-    // The group is closed under its joints, so turning all of it changes none
-    // of them: every seat swings with the part it holds.
-    updateItems(patches)
-  }
+  const handleRotate = (step: number) => rotateAssembly(storeApi, item.id, step)
 
   const handlePairDistance = (distance: number) => {
     if (!pairRule) return

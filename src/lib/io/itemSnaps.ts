@@ -40,7 +40,7 @@ import type { Vec3 } from '../types'
 const NAME_PREFIX_RE = /^snap[_:](.+?)(?:-\d+)?(?:_\d+)?$/i
 
 /** Snap point in the model root's coordinate space (including the root's
- * own scale). scene/Item.tsx converts it into the item's local frame. */
+ * own scale). scene/productAsset.ts converts it into the item's local frame. */
 export interface ExtractedSnapPoint {
   /** Unique within the model. Bare `kind`, or `kind-N` when kind repeats. */
   id: string

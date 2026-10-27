@@ -1,10 +1,10 @@
 import type { ConfiguratorState, ConfiguratorStore } from '../state/store'
-import type { Connection, Euler, ItemSnapPoint, PlacedItem } from '../types'
-import { connectorForSnap, connectorsCanMate, connectionsAtPose, definitionFor } from '../assembly/manifest'
-import { validateConfiguration } from '../assembly/validation'
-import { assemblyGroup, assemblyPosePatches, canMate, dedupeJoints, itemSnapConstraintFor, jointsSurvivingMove, positionForItemSnap, snapsForItem, yawToMate } from './mating'
+import type { Connection, Euler, ItemSnapPoint } from '../types'
+import { connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { assemblyGroup, canMate, itemSnapConstraintFor, positionForItemSnap, snapsForItem, yawToMate } from './mating'
 import { worldPoint } from './geometry'
-import { reconcileConstraints } from '../state/projectGraph'
+import { itemHeight, previewAssemblyPlacement } from './assemblyPlacement'
+import { assemblyCanMove } from './itemMovement'
 
 export interface AttachmentInteraction {
   stage: 'menu' | 'source' | 'target' | 'point'
@@ -18,13 +18,7 @@ export interface AttachmentInteraction {
   error?: string
 }
 
-export function attachmentCanMove(state: ConfiguratorState, id: string): boolean {
-  if (!state.project || state.readOnly || state.walkMode) return false
-  const members = assemblyGroup(id, state.project.items, state.project.connections ?? [])
-  return state.project.items.some((item) => item.id === id) && !state.project.items.some((item) =>
-    members.has(item.id) && (item.locked || item.constraints?.some((constraint) => constraint.type === 'lockAxis')),
-  )
-}
+export const attachmentCanMove = assemblyCanMove
 
 /** Available interfaces, including reflected positions for mirrored products. */
 export function attachmentPoints(state: ConfiguratorState, itemId: string, source?: { itemId: string; pointId: string }): ItemSnapPoint[] {
@@ -59,10 +53,6 @@ export function attachmentTargetIds(state: ConfiguratorState): Set<string> {
   }).length > 0).map((item) => item.id))
 }
 
-function heightOf(state: ConfiguratorState, item: PlacedItem): number {
-  return state.itemSizes[item.catalogId]?.[1] ?? (state.catalog[item.catalogId]?.size?.[1] ?? 0) * (state.catalog[item.catalogId]?.scale ?? 1)
-}
-
 /** Pure preview: neither persisted poses nor live Three.js groups are changed. */
 export function computeAttachmentPreview(state: ConfiguratorState, sourceId: string, sourcePointId: string, targetId: string, targetPointId: string) {
   const project = state.project
@@ -74,13 +64,10 @@ export function computeAttachmentPreview(state: ConfiguratorState, sourceId: str
   const sourcePoint = attachmentPoints(state, sourceId).find((point) => point.id === sourcePointId)
   const targetPoint = attachmentPoints(state, targetId, { itemId: sourceId, pointId: sourcePointId }).find((point) => point.id === targetPointId)
   if (!sourcePoint || !targetPoint) return { valid: false as const, error: 'Punto occupato o connettori non compatibili', patches: [], connections: [] }
-  const targetWorld = worldPoint(target, targetPoint.position, heightOf(state, target))
+  const targetWorld = worldPoint(target, targetPoint.position, itemHeight(state, target))
   const yaw = yawToMate(sourcePoint.normal, targetPoint.normal, target.rotation[1])
   const rotation: Euler = yaw === null ? source.rotation : [source.rotation[0], yaw, source.rotation[2]]
-  const position = positionForItemSnap(sourcePoint.position, rotation, heightOf(state, source), targetWorld)
-  const patches = assemblyPosePatches(project.items, members, source, { position, rotation })
-  const byId = new Map(patches.map((entry) => [entry.id, entry.patch]))
-  const posedItems = project.items.map((item) => ({ ...item, ...byId.get(item.id) }))
+  const position = positionForItemSnap(sourcePoint.position, rotation, itemHeight(state, source), targetWorld)
   const sourceConnector = connectorForSnap(definitionFor(state.assemblyManifest, source.catalogId), sourcePoint)
   const targetConnector = connectorForSnap(definitionFor(state.assemblyManifest, target.catalogId), targetPoint)
   const connection: Connection | null = sourceConnector && targetConnector ? {
@@ -88,16 +75,7 @@ export function computeAttachmentPreview(state: ConfiguratorState, sourceId: str
     targetItemId: targetId, targetPointId, targetConnectorId: targetConnector.id,
     resolvedTransform: { position, rotation },
   } : null
-  const kept = jointsSurvivingMove(patches, project.connections ?? [])
-  const discovered = connection ? posedItems.filter((item) => members.has(item.id)).flatMap((item) => connectionsAtPose(item, item, {
-    items: posedItems, itemSnaps: state.itemSnaps, itemRules: state.itemRules, manifest: state.assemblyManifest,
-    heightOf: (placed) => heightOf(state, placed),
-  })) : []
-  const connections = dedupeJoints([...kept, ...discovered, ...(connection ? [connection] : [])])
-  const preview = { ...project, items: reconcileConstraints(posedItems, connections), connections }
-  const issues = validateConfiguration(preview, state.catalog, state.assemblyManifest, {
-    itemSnaps: state.itemSnaps, itemRules: state.itemRules, itemSizes: state.itemSizes, enclosureBounds: state.interiorBBox,
-  }).filter((issue) => issue.level === 'error' && issue.itemIds.some((id) => members.has(id)))
+  const { patches, connections, issues } = previewAssemblyPlacement(state, source, { position, rotation }, connection)
   // A frame can be built across the van and then rotated into place. Technical
   // containment stays visible in the validation panel and still blocks BOM.
   const blocking = issues.find((issue) => issue.code !== 'out-of-bounds')

@@ -1,11 +1,12 @@
 import { Suspense } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid, Environment, Lightformer, GizmoHelper, GizmoViewport } from '@react-three/drei'
-import type { ConfiguratorTheme, ProjectData } from '../types'
+import type { ConfiguratorTheme, PlacedItem, ProjectData } from '../types'
 import { sceneColors } from '../ui/theme'
 import { AssetBoundary } from './AssetBoundary'
 import { Enclosure } from './Enclosure'
-import { Item } from './Item'
+import { ProductInstances } from './ProductInstances'
+import { productAssetKey } from './productAsset'
 import { AttachmentVisuals } from './AttachmentVisuals'
 import { AnchorMarkers } from './AnchorMarkers'
 import { SceneCaptureBridge } from './SceneCaptureBridge'
@@ -36,6 +37,13 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
   const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
   const effectiveAnchors =
     project.enclosure.anchors?.length ? project.enclosure.anchors : runtimeAnchors
+
+  const products = new Map<string, PlacedItem[]>()
+  for (const item of project.items) {
+    const instances = products.get(item.catalogId) ?? []
+    instances.push(item)
+    products.set(item.catalogId, instances)
+  }
 
   // Pull-back limit: generous multiple of the enclosure size, with a floor so
   // small enclosures can still be framed from far out. Kept under the camera
@@ -78,15 +86,13 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
       <AssetBoundary id="enclosure" source={`${project.enclosure.glbUrl}:${project.enclosure.scale ?? 1}`}><Suspense fallback={null}>
         <Enclosure data={project.enclosure} />
       </Suspense></AssetBoundary>
-      {project.items.map((it) => (
-        <AssetBoundary key={it.id} id={it.id} source={catalog[it.catalogId]?.glbUrl ?? it.catalogId}><Suspense fallback={null}>
-          <Item
-            item={it}
-            catalog={catalog[it.catalogId]}
-            anchors={effectiveAnchors}
-          />
+      {[...products].map(([catalogId, items]) => {
+        const product = catalog[catalogId]
+        if (!product) return null
+        return <AssetBoundary key={catalogId} id={`product:${catalogId}`} source={productAssetKey(product)}><Suspense fallback={null}>
+          <ProductInstances catalog={product} items={items} anchors={effectiveAnchors} />
         </Suspense></AssetBoundary>
-      ))}
+      })}
       {effectiveAnchors.length > 0 && <AnchorMarkers anchors={effectiveAnchors} />}
       <AttachmentVisuals />
       {/* Reflections and diffuse fill are separate from the visible background.
