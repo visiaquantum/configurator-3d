@@ -9,6 +9,7 @@ import { attachmentPoints, beginAttachment } from '../scene/attachment'
 import { rotateAssembly } from '../scene/itemMovement'
 import { setMirrorPairDistance, snapAssemblyToAnchor, unjoinItem } from '../scene/commands'
 import { Icon } from './Icon'
+import { own } from '../util/record'
 
 interface Props { readOnly?: boolean }
 
@@ -28,9 +29,9 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   const { removeMirrorPair, removeItem, select } = storeApi.getState()
   const members = assemblyMembers(project.items, graph, item.id)
   const readOnly = hostReadOnly || !selectCanMove(state, item.id)
-  const cat = catalog[item.catalogId]
+  const cat = own(catalog, item.catalogId)
   const [x, y, z] = item.position
-  const size = state.itemSizes[item.catalogId] ?? cat?.size
+  const size = own(state.itemSizes, item.catalogId) ?? cat?.size
   const snapTarget = item.constraints?.find((constraint) => constraint.type === 'snapToAnchor')?.target
   const joints = graph.filter((joint) => joint.sourceItemId === item.id || joint.targetItemId === item.id)
   const canAttach = attachmentPoints(state, item.id).length > 0

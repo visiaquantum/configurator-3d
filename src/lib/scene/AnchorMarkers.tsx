@@ -1,5 +1,10 @@
 import type { Anchor } from '../types'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
+import { selectCanMove } from '../state/selectors'
+import { snapAssemblyToAnchor } from './commands'
+
+/** Pointer travel (px) above which a press over a marker was an orbit, not a click. */
+const CLICK_SLOP_PX = 4
 
 interface Props {
   anchors: Anchor[]
@@ -11,9 +16,10 @@ const RING_RADIUS_INNER = 0.032
 const RING_RADIUS_OUTER = 0.04
 
 export function AnchorMarkers({ anchors }: Props) {
+  const storeApi = useConfiguratorStoreApi()
   const selectedId = useConfiguratorStore((s) => s.selectedId)
   const project = useConfiguratorStore((s) => s.project)
-  const updateItem = useConfiguratorStore((s) => s.updateItem)
+  const canMove = useConfiguratorStore((s) => !!s.selectedId && selectCanMove(s, s.selectedId))
 
   const selectedItem = project?.items.find((it) => it.id === selectedId)
   const activeAnchorId = selectedItem?.constraints?.find((c) => c.type === 'snapToAnchor')?.target
@@ -30,13 +36,13 @@ export function AnchorMarkers({ anchors }: Props) {
           <group key={a.id} position={a.position}>
             <mesh
               renderOrder={999}
-              onPointerDown={(e) => {
-                if (!selectedItem || isActive) return
+              // The same command as the inspector: the whole assembly moves and
+              // keeps its joints and mirror pair. A click, not a press, so an
+              // orbit that starts over a marker never moves anything.
+              onClick={(e) => {
+                if (!selectedItem || isActive || !canMove || e.delta > CLICK_SLOP_PX) return
                 e.stopPropagation()
-                updateItem(selectedItem.id, {
-                  position: a.position,
-                  constraints: [{ type: 'snapToAnchor', target: a.id }],
-                })
+                snapAssemblyToAnchor(storeApi, selectedItem.id, a.id)
               }}
             >
               <sphereGeometry args={[CORE_RADIUS, 16, 16]} />

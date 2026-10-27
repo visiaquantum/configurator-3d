@@ -4,8 +4,11 @@ import type { CatalogItem } from '../types'
 export const CATALOG_SCHEMA_VERSION = 1
 
 const Vec3Schema = z.tuple([z.number(), z.number(), z.number()])
+const NonZeroVec3Schema = Vec3Schema.refine((v) => Math.hypot(...v) > 0, { message: 'Vector must not be zero' })
 const AutoSnapGridOptionsSchema = z.object({
-  normals: z.array(Vec3Schema).min(1).optional(),
+  normal: NonZeroVec3Schema.optional(),
+  normals: z.array(NonZeroVec3Schema).min(1).optional(),
+  faces: z.literal('primary').optional(),
   meshNameIncludes: z.array(z.string().min(1)).min(1).optional(),
   minHoleSize: z.number().positive().optional(),
   maxHoleSize: z.number().positive().optional(),

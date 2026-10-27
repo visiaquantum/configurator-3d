@@ -5,6 +5,7 @@ import { createItemRegistry } from '../scene/itemRegistry'
 import { endAttachment } from './reset'
 import { selectEffectiveAnchors } from './selectors'
 import type { GetState, ResourceActions, SceneResources, SetState } from './storeTypes'
+import { own } from '../util/record'
 
 /**
  * Loaded technical data and live scene handles. A metadata change may resolve
@@ -35,7 +36,7 @@ export function createResourceSlice(set: SetState, get: GetState): SceneResource
       if (JSON.stringify(previous.catalog) === JSON.stringify(catalog)) return
       // A changed product invalidates its hydrated metadata; the rest stays.
       const changed = new Set(Object.keys(previous.catalog).filter((id) =>
-        JSON.stringify(previous.catalog[id]) !== JSON.stringify(catalog[id]),
+        JSON.stringify(own(previous.catalog, id)) !== JSON.stringify(own(catalog, id)),
       ))
       const keep = <T,>(values: Record<string, T>) => Object.fromEntries(
         Object.entries(values).filter(([id]) => !changed.has(id)),
@@ -58,8 +59,8 @@ export function createResourceSlice(set: SetState, get: GetState): SceneResource
     hydrateProduct: (product, metadata) => set((state) => {
       // A suspended/obsolete load must not republish data from an old catalog.
       // Returning the same state object publishes nothing.
-    if (state.catalog[product.id] !== product) return state
-      const current = { size: state.itemSizes[product.id], snaps: state.itemSnaps[product.id], rules: state.itemRules[product.id] }
+    if (own(state.catalog, product.id) !== product) return state
+      const current = { size: own(state.itemSizes, product.id), snaps: own(state.itemSnaps, product.id), rules: own(state.itemRules, product.id) }
       if (JSON.stringify(current) === JSON.stringify(metadata)) return state
       const owned = structuredClone(metadata)
       const updates = {
@@ -83,7 +84,7 @@ export function createResourceSlice(set: SetState, get: GetState): SceneResource
     }),
 
     setAssetError: (id, error) => set((s) => {
-      if ((s.assetErrors[id] ?? null) === error) return s
+      if ((own(s.assetErrors, id) ?? null) === error) return s
       const next = { ...s.assetErrors }
       if (error) next[id] = error
       else delete next[id]

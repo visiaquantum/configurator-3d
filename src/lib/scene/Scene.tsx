@@ -1,4 +1,4 @@
-import { Suspense } from 'react'
+import { Suspense, useId } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid, Environment, Lightformer, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import type { ConfiguratorTheme, PlacedItem, ProjectData } from '../types'
@@ -18,6 +18,7 @@ import { WalkControls } from './WalkControls'
 import { PerformanceTelemetry } from './PerformanceTelemetry'
 import { useConfiguratorStore } from '../state/store'
 import { selectEffectiveAnchors } from '../state/selectors'
+import { own } from '../util/record'
 
 interface Props {
   project: ProjectData
@@ -27,6 +28,8 @@ interface Props {
 
 export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
   const colors = sceneColors[theme]
+  // Scopes pointer lock to this canvas: several configurators may share the page.
+  const canvasKey = useId()
   const select = useConfiguratorStore((s) => s.select)
   const catalog = useConfiguratorStore((s) => s.catalog)
   const effectiveAnchors = useConfiguratorStore(selectEffectiveAnchors)
@@ -62,6 +65,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
 
   return (
     <Canvas
+      data-cfg-canvas={canvasKey}
       camera={{ position: [5, 2.5, 5], fov: 45, near: 0.05, far: 150 }}
       shadows="percentage"
       onPointerMissed={() => { if (!attachment) select(null) }}
@@ -84,7 +88,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
         <Enclosure data={project.enclosure} />
       </Suspense></AssetBoundary>
       {[...products].map(([catalogId, items]) => {
-        const product = catalog[catalogId]
+        const product = own(catalog, catalogId)
         if (!product) return null
         return <AssetBoundary key={catalogId} id={`product:${catalogId}`} source={productAssetKey(product)}><Suspense fallback={null}>
           <ProductInstances catalog={product} items={items} anchors={effectiveAnchors} />
@@ -145,7 +149,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
         // Wider range needs fewer scroll ticks to cross it.
         zoomSpeed={1.4}
       />
-      {walkMode && <WalkControls />}
+      {walkMode && <WalkControls selector={`[data-cfg-canvas="${canvasKey}"]`} />}
       {!walkMode && (
         <GizmoHelper alignment="bottom-right" margin={[80, 80]}>
           <GizmoViewport labelColor="white" axisHeadScale={1} />

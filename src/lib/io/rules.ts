@@ -1,6 +1,7 @@
 import type { Object3D } from 'three'
 import { Quaternion, Vector3 } from 'three'
 import type { Vec3 } from '../types'
+import { own } from '../util/record'
 
 /**
  * Convention to declare rule nodes inside a product GLB (extras only):
@@ -58,7 +59,7 @@ const NAME_RULE_ALIASES: Record<string, string> = {
 function ruleIdFromName(name: string): string | null {
   const m = name.match(NAME_RULE_RE)
   if (!m) return null
-  return NAME_RULE_ALIASES[m[1].toLowerCase()] ?? null
+  return own(NAME_RULE_ALIASES, m[1].toLowerCase()) ?? null
 }
 
 export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
@@ -83,9 +84,11 @@ export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
     obj.getWorldPosition(worldPos)
     const position: Vec3 = [worldPos.x, worldPos.y, worldPos.z]
 
+    // An explicit axis is a direction: normalised, and ignored when it has none.
+    const explicit = isVec3(params.axis) ? Math.hypot(...params.axis) : 0
     let axis: Vec3
-    if (isVec3(params.axis)) {
-      axis = params.axis
+    if (isVec3(params.axis) && Number.isFinite(explicit) && explicit > 1e-9) {
+      axis = params.axis.map((value) => +(value / explicit).toFixed(6)) as Vec3
     } else {
       obj.getWorldQuaternion(worldQuat)
       worldAxis.copy(localAxis).applyQuaternion(worldQuat).normalize()

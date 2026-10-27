@@ -8,7 +8,7 @@ import {
   extractAutoSnapGridFromObject, AUTO_SNAP_GRID_RULE, configurationStatus,
   positionForItemSnap, assemblyPosePatches, exportProjectPDF, exportSceneGLB,
   beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview,
-  createEnclosureCutaway, assemblyGroup,
+  createEnclosureCutaway, assemblyGroup, canMate, snapsForItem, buildProjectBom, extractRulesFromObject,
 } from '../dist/configurator-3d.js'
 
 const item = (id, extra = {}) => ({ id, catalogId: 'part', position: [0, 0, 0], rotation: [0, 0, 0], ...extra })
@@ -715,4 +715,57 @@ test('the collision tint follows each validation report in the same notification
   const tint = store.getState().overlappingIds
   store.getState().setValidationIssues([...report])
   assert.equal(store.getState().overlappingIds, tint)
+})
+
+test('ids, kinds and catalog ids named like Object.prototype members read as missing', () => {
+  for (const name of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+    assert.equal(canMate(name, 'foro'), false)
+    assert.equal(canMate('frontale', name), false)
+    const p = parseProject(project([item('a', { catalogId: name, mirrored: true }), item(name, { position: [3, 0, 0] })], {
+      connections: [{ ...connection('a', name) }],
+    })).project
+    assert.doesNotThrow(() => validateConfiguration(p, catalog, manifest, context))
+    assert.deepEqual(snapsForItem(p.items[0], {}, {}), [])
+    const store = createConfiguratorStore()
+    store.getState().setProject(p)
+    store.setState({ captureRefs: {}, enclosureBBox: bounds })
+    assert.doesNotMatch(configurationStatus(store.getState()).message, /Errore modello/)
+  }
+  const rule = new Group(); rule.name = 'RULE_CONSTRUCTOR'
+  const root = new Group(); root.add(rule)
+  assert.deepEqual(extractRulesFromObject(root), [])
+})
+
+test('joint hardware is counted once per joint, whichever end was moved last', () => {
+  const screwManifest = parseAssemblyManifest({ version: 1, products: [
+    { catalogId: 'part', connectors: [{ id: 'seat', snapKind: 'laterale' }] },
+    { catalogId: 'other', connectors: [{ id: 'seat', snapKind: 'laterale', bomComponents: [{ code: 'SCREW', label: 'Vite', quantity: 2 }] }] },
+  ] })
+  const items = [item('a'), item('b', { catalogId: 'other' })]
+  const screws = (connections) => buildProjectBom(project(items, { connections }), Object.values(pairCatalog), screwManifest).find((line) => line.code === 'SCREW')?.quantity
+  assert.equal(screws([connection('a', 'b')]), 2)
+  assert.equal(screws([connection('b', 'a')]), 2)
+})
+
+test('a connector naming the point by snapId wins over one covering its kind, in any order', () => {
+  const definition = { catalogId: 'part', connectors: [{ id: 'generic', snapKind: 'frontale' }, { id: 'special', snapId: 'frontale-3', capacity: 2 }] }
+  assert.equal(connectorForSnap(definition, { id: 'frontale-3', kind: 'frontale', position: [0, 0, 0] }).id, 'special')
+  assert.equal(connectorForSnap(definition, { id: 'frontale-1', kind: 'frontale', position: [0, 0, 0] }).id, 'generic')
+})
+
+test('catalog hole detection keeps its face options and rejects a zero normal', () => {
+  const [parsed] = parseCatalog([{ ...catalog.part, autoSnapGrid: { faces: 'primary', normal: [0, 0, 1] } }])
+  assert.deepEqual(parsed.autoSnapGrid, { faces: 'primary', normal: [0, 0, 1] })
+  assert.throws(() => parseCatalog([{ ...catalog.part, autoSnapGrid: { normal: [0, 0, 0] } }]))
+})
+
+test('an explicit mirror-pair axis is normalised; a zero one falls back to the node orientation', () => {
+  const ruleNode = (axis) => {
+    const node = new Group()
+    node.userData = { kind: 'rule', rule: 'mirror-pair', params: { axis } }
+    const root = new Group(); root.add(node)
+    return extractRulesFromObject(root)[0].extracted.axis
+  }
+  assert.deepEqual(ruleNode([0, 0, -5]), [0, 0, -1])
+  assert.deepEqual(ruleNode([0, 0, 0]), [1, 0, 0])
 })

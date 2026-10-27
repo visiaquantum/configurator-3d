@@ -5,6 +5,7 @@ import { selectAssemblyView } from '../state/selectors'
 import { attachmentPoints, attachmentTargetIds, backAttachment, chooseAttachmentPoint, chooseAttachmentTarget, computeAttachmentPreview } from '../scene/attachment'
 import { snapPointLabel, snapsForItem } from '../scene/mating'
 import { Icon } from './Icon'
+import { own } from '../util/record'
 
 const steps = ['Punto iniziale', 'Destinatario', 'Punto finale']
 
@@ -28,7 +29,7 @@ export function AttachmentOverlay() {
   if (!interaction) return state.interactionNotice ? <div className="cfg-toast" role="status"><Icon name="check" />{state.interactionNotice}</div> : null
   const source = state.project?.items.find((item) => item.id === interaction.sourceItemId)
   if (!source) return null
-  const sourceLabel = state.catalog[source.catalogId]?.label ?? source.catalogId
+  const sourceLabel = own(state.catalog, source.catalogId)?.label ?? source.catalogId
   const selectedSourcePoint = snapsForItem(source, state.itemSnaps, state.itemRules).find((point) => point.id === interaction.sourcePointId)
   if (interaction.stage === 'menu') {
     return <>
@@ -60,12 +61,12 @@ export function AttachmentOverlay() {
     <div className="cfg-snap-feedback" role="status" aria-live="polite">
       {interaction.error || (preview && !preview.valid) ? <span className="cfg-error-text">{interaction.error ?? preview?.error}</span>
         : hovered ? <><span className="cfg-point-dot" />{snapPointLabel(hovered)}{preview?.valid && <span className="cfg-positive">Pronto per l’aggancio</span>}</>
-          : hoveredItem ? <><Icon name="cube" size={16} />{state.catalog[hoveredItem.catalogId]?.label ?? hoveredItem.catalogId}</> : <span>{sourceLabel}{selectedSourcePoint ? ` · ${snapPointLabel(selectedSourcePoint)}` : ' · scegli un punto'}</span>}
+          : hoveredItem ? <><Icon name="cube" size={16} />{own(state.catalog, hoveredItem.catalogId)?.label ?? hoveredItem.catalogId}</> : <span>{sourceLabel}{selectedSourcePoint ? ` · ${snapPointLabel(selectedSourcePoint)}` : ' · scegli un punto'}</span>}
     </div>
     {preview?.warning && <small className="cfg-warning-text">Dopo l’aggancio, sposta o ruota l’assieme per farlo rientrare nel vano.</small>}
     {interaction.stage === 'target' && targets.size === 0 && <small className="cfg-warning-text">Nessun destinatario disponibile per questo punto. Torna indietro per scegliere un altro punto, oppure annulla e aggiungi un componente compatibile.</small>}
     <details className="cfg-point-list"><summary>{interaction.stage === 'target' ? 'Elenco componenti compatibili' : `Elenco punti disponibili (${points.length})`}</summary><div>
-      {interaction.stage === 'target' ? (state.project?.items ?? []).filter((item) => targets.has(item.id)).map((item) => <button key={item.id} onClick={() => chooseAttachmentTarget(store, item.id)} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredItemId: item.id })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredItemId: undefined })}><Icon name="cube" size={15} />{state.catalog[item.catalogId]?.label ?? item.catalogId} · {item.id.slice(0, 4)}</button>)
+      {interaction.stage === 'target' ? (state.project?.items ?? []).filter((item) => targets.has(item.id)).map((item) => <button key={item.id} onClick={() => chooseAttachmentTarget(store, item.id)} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredItemId: item.id })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredItemId: undefined })}><Icon name="cube" size={15} />{own(state.catalog, item.catalogId)?.label ?? item.catalogId} · {item.id.slice(0, 4)}</button>)
         : points.map((point, number) => <button key={point.id} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredPointId: point.id, error: undefined })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredPointId: undefined })} onFocus={() => state.setAttachment({ ...interaction, hoveredPointId: point.id, error: undefined })} onClick={() => chooseAttachmentPoint(store, point.id)}><span>{number + 1}</span>{snapPointLabel(point)}</button>)}
     </div></details>
     <div className="cfg-attachment-footer"><button className="cfg-button cfg-quiet" disabled={index === 0} onClick={() => backAttachment(store)}><Icon name="back" size={16} />Indietro</button><span>Orbita la vista per vedere gli altri punti <kbd>Esc</kbd> per uscire</span></div>

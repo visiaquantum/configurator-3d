@@ -5,6 +5,7 @@ import { rotateVector } from './geometry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
 import { assemblyMembers, jointPartners, jointsFromParts } from '../assembly/graph'
+import { own } from '../util/record'
 
 /**
  * Which product snap points may be joined to which.
@@ -44,7 +45,7 @@ export const SNAP_KIND_LABELS: Record<string, string> = {
 }
 
 export function snapKindLabel(kind: string): string {
-  return SNAP_KIND_LABELS[kind] ?? kind
+  return own(SNAP_KIND_LABELS, kind) ?? kind
 }
 
 /** Readable name for one point: "Foro r3 c2", "Facciata 2", "Base a terra". */
@@ -65,12 +66,12 @@ export function snapPointLabel(p: ItemSnapPoint): string {
 
 /** True when some kind may join `kind`; reference-only kinds (`origine`) and unknown ones may not. */
 export function kindMatesWithAny(kind: string): boolean {
-  return (MATING_RULES[kind]?.length ?? 0) > 0 || Object.values(MATING_RULES).some((kinds) => kinds.includes(kind))
+  return (own(MATING_RULES, kind)?.length ?? 0) > 0 || Object.values(MATING_RULES).some((kinds) => kinds.includes(kind))
 }
 
 /** True when the two kinds are declared compatible (order-insensitive). */
 export function canMate(a: string, b: string): boolean {
-  return (MATING_RULES[a]?.includes(b) ?? false) || (MATING_RULES[b]?.includes(a) ?? false)
+  return (own(MATING_RULES, a)?.includes(b) ?? false) || (own(MATING_RULES, b)?.includes(a) ?? false)
 }
 
 /**
@@ -276,7 +277,7 @@ export function snapsForItem(
   itemSnaps: Record<string, ItemSnapPoint[]>,
   itemRules: Record<string, ItemRule[]>,
 ): ItemSnapPoint[] {
-  const snaps = itemSnaps[item.catalogId]
+  const snaps = own(itemSnaps, item.catalogId)
   if (!snaps) return []
   const mirrorScale = mirrorScaleFor(item, itemRules)
   return mirrorScale ? mirrorSnapPoints(snaps, mirrorScale) : snaps
@@ -294,7 +295,7 @@ export function mirrorScaleFor(
   itemRules: Record<string, ItemRule[]>,
 ): Vec3 | null {
   if (item.mirrored !== true) return null
-  const rule = itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
+  const rule = own(itemRules, item.catalogId)?.find((r) => r.rule === MIRROR_PAIR_RULE)
   return rule && mirrorAxisOf(rule) === 'z' ? [1, 1, -1] : [-1, 1, 1]
 }
 

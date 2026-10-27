@@ -16,6 +16,7 @@ import { DEFAULT_SNAP_TOLERANCE, connectorsCanMate, definitionFor } from './mani
 import { worldPoint, transformedBounds, rotateVector, normalsOppose } from '../scene/geometry'
 import { mirrorScaleFor, snapsForItem } from '../scene/mating'
 import { pendingJoints } from './graph'
+import { own } from '../util/record'
 
 interface Bounds {
   min: Vec3
@@ -27,14 +28,14 @@ const EPSILON = 1e-6
 function productSize(item: PlacedItem, catalog: Record<string, CatalogItem>, manifest?: AssemblyManifest | null, context: ValidationContext = {}): Vec3 {
   const hydrated = context.itemSizes?.[item.catalogId]
   if (hydrated) return hydrated
-  const size = catalog[item.catalogId]?.size ?? definitionFor(manifest, item.catalogId)?.colliders?.[0]?.size ?? [0.1, 0.1, 0.1]
-  const scale = catalog[item.catalogId]?.scale ?? 1
+  const size = own(catalog, item.catalogId)?.size ?? definitionFor(manifest, item.catalogId)?.colliders?.[0]?.size ?? [0.1, 0.1, 0.1]
+  const scale = own(catalog, item.catalogId)?.scale ?? 1
   return size.map((value) => value * scale) as Vec3
 }
 
 function boundsFor(item: PlacedItem, catalog: Record<string, CatalogItem>, manifest?: AssemblyManifest | null, context: ValidationContext = {}): Bounds[] {
   const definition = definitionFor(manifest, item.catalogId)
-  const scale = catalog[item.catalogId]?.scale ?? 1
+  const scale = own(catalog, item.catalogId)?.scale ?? 1
   const bodySize = productSize(item, catalog, manifest, context)
   const mirror = mirrorScaleFor(item, context.itemRules ?? {}) ?? [1, 1, 1]
   if (!definition?.colliders?.length) return [transformedBounds(item, bodySize[1], [0, 0, 0], bodySize)]
@@ -84,7 +85,7 @@ function clearanceBounds(
 ): Bounds[] {
   if (!point || !connector?.clearance?.length) return []
   const bodyHeight = productSize(item, catalog, manifest, context)[1]
-  const scale = catalog[item.catalogId]?.scale ?? 1
+  const scale = own(catalog, item.catalogId)?.scale ?? 1
   // The box is offset from the point in the catalogue's frame, so the mirrored
   // half needs it flipped too — otherwise the void sits on the far side of the
   // face and the joint its twin accepts reads as a collision here.
@@ -119,7 +120,7 @@ function allowedJointOverlap(
   const targetDefinition = definitionFor(manifest, target.catalogId)
   const sourceConnector = sourceDefinition?.connectors.find((c) => c.id === connection.sourceConnectorId)
   const targetConnector = targetDefinition?.connectors.find((c) => c.id === connection.targetConnectorId)
-  const depth = Math.max((sourceConnector?.insertionDepth ?? 0) * (catalog[source.catalogId]?.scale ?? 1), (targetConnector?.insertionDepth ?? 0) * (catalog[target.catalogId]?.scale ?? 1))
+  const depth = Math.max((sourceConnector?.insertionDepth ?? 0) * (own(catalog, source.catalogId)?.scale ?? 1), (targetConnector?.insertionDepth ?? 0) * (own(catalog, target.catalogId)?.scale ?? 1))
   if (depth <= 0) return false
   // A connector defined for a family of holes inherits the selected hole's
   // face normal. A fixed insertionAxis is still available for asymmetric

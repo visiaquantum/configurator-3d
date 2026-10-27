@@ -8,6 +8,7 @@ import type { Joint } from '../assembly/graph'
 import { worldPoint } from './geometry'
 import { itemHeight, previewAssemblyPlacement } from './assemblyPlacement'
 import { assemblyCanMove } from './itemMovement'
+import { own } from '../util/record'
 
 export interface AttachmentInteraction {
   stage: 'menu' | 'source' | 'target' | 'point'
@@ -24,7 +25,7 @@ export interface AttachmentInteraction {
 /** Available interfaces, including reflected positions for mirrored products. */
 export function attachmentPoints(state: AssemblyView, itemId: string, source?: { itemId: string; pointId: string }): ItemSnapPoint[] {
   const item = state.project?.items.find((entry) => entry.id === itemId)
-  if (!item || state.assetErrors[itemId] || !state.itemRegistry.has(itemId)) return []
+  if (!item || own(state.assetErrors, itemId) || !state.itemRegistry.has(itemId)) return []
   const definition = definitionFor(state.assemblyManifest, item.catalogId)
   const sourceItem = source ? state.project?.items.find((entry) => entry.id === source.itemId) : undefined
   const sourcePoint = sourceItem ? snapsForItem(sourceItem, state.itemSnaps, state.itemRules).find((point) => point.id === source?.pointId) : undefined
