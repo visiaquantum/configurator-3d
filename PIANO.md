@@ -1,146 +1,76 @@
-# Roadmap MVP avanzato — Configuratore tecnico di allestimenti 3D
+# Piano di semplificazione — tre passi finali
 
-## Sintesi
+## Stato di partenza
 
-Il prodotto ha già una base 3D valida: catalogo GLB, scena interattiva, persistenza JSON, snapping, vincoli padre-figlio, collisioni, BOM/PDF e controlli visuali. L’MVP deve ora diventare un configuratore di assiemi affidabile: un tecnico o commerciale deve poter partire da vano vuoto, costruire un allestimento valido e generare una BOM tecnica.
+I passi 1–4 sono completati: test dei comandi di movimento, aggiornamenti atomici del progetto, logica condivisa tra mouse/gizmo/Inspector e preparazione dei metadati per prodotto.
 
-Decisioni fissate:
+La migrazione legacy è già centralizzata nello store e attende metadati completi. Rimane però la doppia rappresentazione dei collegamenti tramite `connections` e vincoli `snapToItem`.
 
-| Decisione | Scelta |
-|---|---|
-| Utenti MVP | Tecnici interni e commerciali |
-| Catalogo | Pilota ristretto: un vano e 5–15 famiglie prodotto |
-| Output affidabile | Configurazione validata + BOM tecnica; niente pricing/ERP |
-| Dati incastro | Manifest esterno, versionato e validato |
-| Interazione primaria | Drag con anteprima di snap verde/rossa |
-| Materiali/texture | Fuori dall’MVP; dopo la correttezza meccanica |
+Questo documento descrive il lavoro ancora da eseguire. Procedere nell'ordine **5 → 6 → 7**, completando e verificando ciascun passo prima del successivo.
 
-## Stato dopo le correzioni
+## Passo 5 — Unificare i collegamenti
 
-Sono presenti manifest e connessioni esplicite, controllo di capacità e tolleranze, collisioni limitate dalle clearance, preview dell'intero assieme, ricerca catalogo e pannello errori. Ogni configuratore dispone di store e registro indipendenti. Gli asset sono clonati per istanza, il rilevamento dei fori usa una cache e la scena non richiede più un HDR esterno implicito. Import/export, readonly, reset, storia e rimozione dei collegamenti sono coperti da test automatici e CI.
+**Obiettivo:** avere una sola fonte di verità per i collegamenti tra pezzi durante l'editing, mantenendo leggibili i progetti esistenti.
 
-La documentazione operativa aggiornata è in [README.md](README.md). Restano obiettivi di prodotto da misurare nel pilota: asset budget, prove con utenti reali, prestazioni su hardware di riferimento e verifica CAD dei collider dichiarati. Le tabelle seguenti descrivono il piano originale e non costituiscono un elenco aggiornato di bug aperti.
+### Attività
 
-## Gap analysis e audit originari
+- [ ] Definire il modello interno del grafo e distinguere un grafo vuoto da un progetto legacy ancora da risolvere.
+- [x] Definire il comportamento in assenza di manifest o metadati: conservare i collegamenti non risolti senza convertirli in un grafo vuoto o perdere informazioni. Le scritture del grafo passano da `withConnections` (`state/projectGraph.ts`): su un progetto legacy non risolto i nuovi giunti diventano vincoli `snapToItem` e `connections` resta assente; `reconcileConstraints` rimuove solo i `snapToItem` derivati dal grafo precedente. Test: `tests/regressions.test.mjs` (tre casi sui collegamenti).
+- [ ] Centralizzare le operazioni sul grafo: aggiunta, rimozione, ricerca dei vicini e individuazione dei membri di un assieme.
+- [ ] Portare movimento, rotazione, aggancio guidato, aggancio magnetico, collisioni e validazione a leggere lo stesso modello.
+- [ ] Eliminare la sincronizzazione continua tra `connections` e `snapToItem` dal nucleo dell'editing. Gestire `snapToItem` negli adattatori di compatibilità per import/export e per le API pubbliche che lo espongono.
+- [ ] Conservare il comportamento delle coppie specchiate e degli ancoraggi al vano: non sono equivalenti ai collegamenti tra connettori.
+- [ ] Verificare importazione, esportazione e undo/redo con progetti legacy, moderni e assiemi con più giunti per pezzo.
 
-| Area | Stato attuale | Gap / rischio | Priorità |
-|---|---|---|---|
-| Connessioni | Snap point, compatibilità, orientamento e legami padre-figlio già esistono | Lo snap è un punto, non ancora un giunto con profondità, occupazione e volume d’incastro consentito | Must-have |
-| Collisioni | AABB, push-out e feedback rosso funzionano | Due item connessi escludono oggi tutta la collisione reciproca: consente anche compenetrazioni errate | Must-have |
-| Modello dati | Catalogo, progetto JSON e migrazioni esistono | Manca una definizione esterna di connettori, collider semplificati, capacità snap e regole d’assieme | Must-have |
-| UX di configurazione | Drag, Inspector, griglia, viste e walk mode | Mancano flusso “nuova configurazione”, ricerca catalogo, preview di aggancio e lista errori azionabile | Must-have |
-| Asset pipeline | GLB con marker e rilevamento fori; validatore iniziale presente | Dipendenza da naming CAD e rilevamento runtime; mancano asset budget, manifest e validazione completa in CI | Must-have |
-| Performance | GLTF cache/preload, Suspense separati e materiali PBR | Auto-rilevamento fori per istanza, cloni materiali, HDR 4K e collisioni O(N²) per frame limiteranno la scalabilità | Must-have |
-| Stato libreria | API e store funzionanti per la demo | Store globale e reset da props rendono fragile il riuso con più configuratori o host React complessi | Nice-to-have nel pilota, Must-have prima della diffusione |
-| Qualità | Script headless sugli snap | Non c’è una suite automatizzata di dominio, integrazione e scenari utente | Must-have |
+**Criteri di completamento:** ogni operazione sull'assieme consulta un'unica rappresentazione; nessuna modifica richiede di mantenere manualmente due strutture parallele; nessuna migrazione parziale viene salvata; i progetti esistenti mantengono i collegamenti.
 
-Il principale refactoring è separare il dominio “configurazione meccanica” dal renderer 3D:
+## Passo 6 — Separare lo stato per responsabilità
 
-```text
-Manifest catalogo + regole
-        ↓
-Motore di assieme e validazione
-        ↓
-Project JSON / BOM
-        ↓
-Three.js: visualizzazione, drag e preview
-```
+**Obiettivo:** rendere esplicito cosa viene salvato, cosa appartiene all'interazione corrente e cosa serve al rendering.
 
-## Benchmark e feature selezionate
+### Attività
 
-I configuratori enterprise convergono su configurazione guidata, regole di prodotto, visualizzazione in tempo reale, output di distinta e integrazioni commerciali. [Threekit Visual Configurator](https://www.threekit.com/visual-configurator), [Threekit + Oracle CPQ](https://www.threekit.com/ecommerce-platform-integration/oracle-cpq-integration) e [Autodesk Configured Designs BOM](https://www.autodesk.com/products/fusion-360/blog/september-2026-major-product-update-whats-new/) mostrano che regole, BOM e output downstream sono più importanti della sola resa grafica.
+- [ ] Classificare i campi dello store in progetto persistente, interazioni temporanee, risorse della scena e dati derivati.
+- [ ] Separare tipi, azioni e selettori in moduli dedicati, mantenendo un punto di composizione per ciascun configuratore. Non introdurre store indipendenti se rendono più difficile un aggiornamento atomico.
+- [ ] Concentrare la cronologia sulle modifiche persistenti del progetto: selezione, anteprime, caricamenti e riferimenti Three.js non devono generare passi di undo.
+- [ ] Definire esplicitamente il reset delle interazioni e delle risorse quando cambiano progetto, catalogo o modalità di sola lettura.
+- [ ] Ridurre le sottoscrizioni ampie nei componenti, usando selettori dei soli dati necessari.
+- [ ] Eliminare lo stato duplicato quando può essere derivato in modo affidabile; mantenere cache soltanto dove evitano elaborazioni costose.
+- [ ] Conservare l'API pubblica esistente mediante adattatori dove necessario e verificare l'isolamento tra più configuratori.
 
-| Feature di mercato | Valore | Decisione MVP |
-|---|---|---|
-| Composizione modulare da zero | È il caso d’uso centrale | Must-have |
-| Regole di compatibilità e configurazione guidata | Evita errori tecnici e accelera il commerciale | Must-have |
-| Snap con preview e validazione dell’incastro | Traduce la logica meccanica in interazione chiara | Must-have |
-| BOM tecnica automatica | Trasforma la scena in output operativo | Must-have |
-| Salvataggio/import/export progetto | Necessario per revisione e continuità operativa | Must-have |
-| PDF con immagine e BOM | Già presente, da rendere validato e professionale | Must-have |
-| Materiali/colori/texture in tempo reale | Alto valore estetico, non determina correttezza tecnica | Post-MVP |
-| Pricing, preventivo, ERP/CPQ | Alto valore commerciale ma richiede dati e ownership esterni | Post-MVP |
-| AR, collaborazione live, CAD automatico | Valuable ma non essenziale al pilota | Post-MVP |
+**Criteri di completamento:** ogni campo ha una responsabilità chiara; dati temporanei e oggetti della scena non entrano nel progetto esportato o nella cronologia; i comandi restano atomici; due configuratori non condividono stato modificabile.
 
-## Piano d’azione
+## Passo 7 — Alleggerire i componenti e isolare le regole dei prodotti
 
-| Fase | Obiettivo | Must-have | Nice-to-have | Metriche di successo |
-|---|---|---|---|---|
-| 1. Core architecture | Rendere ogni assieme deterministico e validabile | Manifest, connettori, collider, motore vincoli, validazione, migrazione JSON | Store per istanza | 100% delle connessioni del pilota dichiarate e validabili; riapertura progetto senza drift oltre la tolleranza del connettore |
-| 2. UX e performance 3D | Rendere veloce e comprensibile la costruzione da zero | Catalogo guidato, drag-preview, error panel, budget asset, cache e collisione efficiente | Viste salvate, scorciatoie avanzate | ≥80% degli utenti pilota completa uno scenario standard senza assistenza; scena interattiva ≥30 FPS al percentile 75 sul catalogo pilota |
-| 3. Output e hardening | Rendere l’output tecnicamente usabile e pronto al rilascio | BOM validata, PDF/JSON/GLB, test automatici, osservabilità errori | Link condivisibile e persistenza server | BOM corrisponde al 100% alla configurazione validata; zero errori bloccanti nei casi pilota |
+**Obiettivo:** lasciare ai componenti React la presentazione e il collegamento degli eventi, rendendo le decisioni di dominio verificabili separatamente.
 
-### 1. Core architecture e motore di assieme
+### Attività
 
-Requisiti tecnici:
+- [ ] Esaminare la logica rimasta in `Item`, `Configurator3D` e `Inspector`, distinguendo rendering, gestione degli eventi e decisioni di dominio.
+- [ ] Estrarre le decisioni residue in funzioni o comandi con ingressi e risultati espliciti; usare hook soltanto per comportamento legato al ciclo di vita React.
+- [ ] Far convergere le azioni equivalenti di mouse, gizmo, tastiera e Inspector sugli stessi comandi.
+- [ ] Individuare eventuali condizioni specifiche di un prodotto e spostarle in catalogo, manifest o regole validate, mantenendo le convenzioni dei GLB esistenti.
+- [ ] Rimuovere effetti di sincronizzazione, helper e percorsi di compatibilità interni resi superflui dai passi precedenti.
+- [ ] Documentare i confini tra moduli e il percorso necessario per aggiungere un prodotto o una regola.
+- [ ] Verificare nel browser trascinamento, rotazione, agganci, coppie specchiate, undo/redo, sola lettura, recupero dagli errori GLB ed esportazione.
 
-- Introdurre un manifest JSON versionato, sorgente di verità del catalogo pilota.
-- Ogni prodotto dichiara:
-  - connettori/snap stabili;
-  - famiglia e compatibilità;
-  - frame di innesto: posizione, normale, asse e profondità;
-  - capacità del connettore;
-  - collider solidi semplificati;
-  - zone di compenetrazione consentite per lo specifico innesto.
-- Sostituire il modello “item connessi non collidono” con collisione contestuale:
-  - i volumi solidi non possono intersecare;
-  - l’intersezione è ammessa soltanto dentro le clearance zone del connettore selezionato;
-  - un item collegato male resta invalido anche se è formalmente legato.
-- Estrarre un motore puro per:
-  - ricerca candidati compatibili;
-  - risoluzione di posizione/orientamento;
-  - controllo occupazione snap;
-  - propagazione degli assiemi;
-  - validazione globale e generazione issue.
-- Conservare compatibilità con il JSON corrente: `snapToItem` viene letto come connessione legacy e migrato alla nuova forma quando sono disponibili dati manifest.
+**Criteri di completamento:** le regole di dominio principali si verificano senza montare React; le azioni equivalenti usano lo stesso comando; aggiungere un prodotto con regole già supportate non richiede modifiche ai componenti generici.
 
-API/tipi pubblici minimi:
+## Verifiche per ogni passo implementato
 
-- `AssemblyManifest`: definizioni per prodotto, connettori, collider e regole.
-- `Connection`: riferimento a item sorgente, connettore sorgente, item target, connettore target e trasformazione risolta.
-- `ValidationIssue`: severità, item coinvolti, codice e messaggio risolvibile in UI.
-- `Configurator3DProps.assemblyManifest`: manifest inline o URL.
-- `ConfiguratorHandle.getValidation()` e `onValidationChange`: stato configurazione per host e workflow BOM.
+- [ ] Aggiungere o aggiornare test di regressione sui comportamenti interessati e sulla compatibilità dei dati.
+- [ ] Eseguire `npm run lint`.
+- [ ] Eseguire `npm test`, che include build della libreria, regressioni e verifiche degli asset reali.
+- [ ] Eseguire `npm run build:demo`.
+- [ ] Eseguire una verifica manuale nel browser per le interazioni o il rendering modificati, conservando una schermata o registrazione.
+- [ ] Documentare eventuali effetti su API pubbliche, catalogo, schema e file esportati.
 
-### 2. UX di configurazione e ottimizzazione 3D
+La riduzione della complessità si valuta soprattutto dal numero di rappresentazioni, percorsi decisionali ed effetti di sincronizzazione eliminati. La diminuzione delle righe nei componenti è un indicatore secondario: spostare codice tra file, da solo, non basta.
 
-Requisiti tecnici:
+## Avanzamento
 
-- Aggiungere un’azione esplicita “Nuova configurazione” che parte dal vano vuoto e non dipende da item iniziali.
-- Evolvere il catalogo pilota con categorie, ricerca, disponibilità/compatibilità contestuale e inserimento guidato.
-- Durante il drag:
-  - cercare solo candidati compatibili vicini;
-  - mostrare ghost nella trasformazione di innesto risolta;
-  - usare verde per innesto valido e rosso con causa quando un collider o una regola blocca l’azione;
-  - creare la `Connection` solo al rilascio su preview valida.
-- Mantenere l’Inspector come alternativa di precisione e debug, non come percorso principale.
-- Introdurre un pannello di validazione: collisioni, snap incompleti, item fuori vano, vincoli mancanti e azione suggerita.
-- Spostare rilevamento fori e metadati dal costo per istanza a una pipeline/precaricamento per tipo prodotto.
-- Stabilire budget per asset pilota: GLB compressi, texture compresse, LOD quando necessario, HDR a risoluzione adeguata e caricamento progressivo.
-- Limitare collisioni e aggiornamenti di store alle sole trasformazioni modificate; usare broad phase spaziale quando il pilota supera le poche decine di item.
-
-### 3. BOM, export e qualità di rilascio
-
-Requisiti tecnici:
-
-- Generare la BOM esclusivamente da una configurazione senza errori bloccanti.
-- Includere nella BOM: codice articolo, descrizione, quantità, varianti e componenti/giunti richiesti dal manifest.
-- Mantenere export JSON come fonte portabile; PDF con screenshot, dati progetto, esito validazione e distinta; GLB come output visuale.
-- Mostrare nel PDF e nella UI lo stato “validato” con versione di catalogo/manifest usata.
-- Aggiungere telemetria tecnica non invasiva: tempi asset load, frame time, errori manifest, fallimenti export e configurazioni non valide.
-- Rinviare link live, autenticazione, collaborazione, preventivo, prezzi ed ERP a una fase successiva con backend dedicato.
-
-## Test e criteri di accettazione
-
-- Test unitari del motore: compatibilità, orientamento, profondità, capacità snap, cicli, propagazione assieme e migrazione legacy.
-- Test collider: il montante–XDS può incastrarsi solo nelle clearance zone autorizzate; collisioni al di fuori restano bloccanti.
-- Test asset/CI: ogni GLB e manifest del pilota ha scala, connettori e collider validi; nessun ID duplicato o riferimento mancante.
-- Test end-to-end: creare da zero un allestimento campione, collegare montanti e XDS, salvare, riaprire, esportare PDF/JSON e verificare BOM.
-- Test performance: cold load, inserimento prodotto, drag con preview ed export su macchina desktop target.
-- Test di usabilità con tecnici e commerciali: completamento di uno scenario standard, tasso di configurazioni invalide e tempo di correzione.
-
-## Primi tre passaggi operativi
-
-1. Definire lo scenario pilota di riferimento e il manifest di un primo incastro reale montante–XDS: connettori, trasformazione, collider solidi e clearance consentite.
-2. Implementare e testare il motore di assieme/validazione puro, sostituendo l’esenzione globale dalle collisioni tra item collegati.
-3. Integrare drag con ghost-preview e pannello errori, poi validare il flusso completo “vano vuoto → assieme → BOM” con tecnici e commerciali.
+| Passo | Stato | Dipendenza |
+| --- | --- | --- |
+| 5. Collegamenti unificati | In corso; migrazione centralizzata, collegamenti non risolti preservati | Passi 1–4 completati |
+| 6. Stato separato per responsabilità | Da iniziare | Passo 5 verificato |
+| 7. Componenti e regole dei prodotti | Da iniziare | Passo 6 verificato |

@@ -534,3 +534,95 @@ test('catalog snap labels survive validation without changing stable IDs', () =>
   assert.equal(parsed[0].snapPoints[0].id, 'face')
   assert.equal(parsed[0].snapPoints[0].label, 'Ripiano superiore')
 })
+
+test('project edits publish project, history and attachment cleanup in one notification', () => {
+  const store = attachmentStore()
+  beginAttachment(store, 'source')
+  const before = store.getState().project
+  const observed = []
+  const unsubscribe = store.subscribe((state) => observed.push({ project: state.project, past: state.past, attachment: state.attachment, xray: state.xrayEnabled }))
+  store.getState().updateItem('source', { position: [4, 0, 0] })
+  unsubscribe()
+  assert.equal(observed.length, 1)
+  assert.deepEqual(observed[0].project.items[0].position, [4, 0, 0])
+  assert.deepEqual(observed[0].past, [before])
+  assert.equal(observed[0].attachment, null)
+  assert.equal(observed[0].xray, false)
+})
+
+test('invalid mirror creation preserves attachment, project and redo history', () => {
+  const store = attachmentStore()
+  store.getState().updateItem('source', { position: [4, 0, 0] })
+  store.getState().undo()
+  beginAttachment(store, 'source')
+  const before = store.getState()
+  let notifications = 0
+  const unsubscribe = store.subscribe(() => { notifications += 1 })
+  assert.throws(() => store.getState().createMirrorPair('source', item('twin', { position: [NaN, 0, 0] }), 1))
+  unsubscribe()
+  assert.equal(notifications, 0)
+  assert.equal(store.getState(), before)
+})
+
+test('multi-item edits reject the whole change when one member is locked', () => {
+  const store = createConfiguratorStore()
+  store.getState().setProject(project([item('a'), item('b', { locked: true })]))
+  const before = store.getState()
+  store.getState().updateItems([{ id: 'a', patch: { position: [1, 0, 0] } }, { id: 'b', patch: { position: [2, 0, 0] } }])
+  assert.equal(store.getState(), before)
+})
+
+const legacyLink = (target) => ({ type: 'snapToItem', target, point: 'face', targetPoint: 'face' })
+const pairLink = (target) => ({ type: 'mirrorPair', target, distance: 0.5 })
+const links = (p, id) => p.items.find((it) => it.id === id).constraints?.filter((c) => c.type === 'snapToItem') ?? []
+
+test('a graph edit keeps the links the graph never held', () => {
+  // Without a manifest, guided attachment records the join only as `snapToItem`.
+  const store = createConfiguratorStore()
+  store.getState().setProject(project([
+    item('a', { constraints: [legacyLink('b')] }), item('b', { position: [1, 0, 0] }),
+    item('c', { position: [3, 0, 0], constraints: [pairLink('d')] }),
+    item('d', { position: [4, 0, 0], mirrored: true, constraints: [pairLink('c')] }),
+  ]))
+  store.getState().commitAssembly([{ id: 'd', patch: { position: [5, 0, 0] } }], [])
+  assert.deepEqual(links(store.getState().project, 'a'), [legacyLink('b')])
+  // A link the graph did derive still goes when its joint is dropped.
+  store.getState().setProject(project([item('a', { constraints: [legacyLink('b')] }), item('b')], { connections: [connection('a', 'b')] }))
+  store.getState().commitAssembly([], [])
+  assert.deepEqual(links(store.getState().project, 'a'), [])
+})
+
+test('graph edits on an unresolved legacy project never save a partial graph', () => {
+  const store = createConfiguratorStore()
+  const legacy = project([item('a', { constraints: [legacyLink('b')] }), item('b'), item('c', { position: [3, 0, 0] })], { connections: undefined })
+  store.getState().setProject(legacy)
+  const before = structuredClone(store.getState().project)
+  store.getState().commitAssembly([{ id: 'c', patch: { position: [2, 0, 0] } }], [connection('c', 'b')])
+  assert.equal(store.getState().project.connections, undefined)
+  assert.deepEqual(links(store.getState().project, 'a'), [legacyLink('b')])
+  assert.deepEqual(links(store.getState().project, 'c'), [legacyLink('b')])
+  store.getState().undo()
+  assert.deepEqual(store.getState().project, before)
+
+  store.getState().createMirrorPair('c', item('twin', { position: [4, 0, 0], mirrored: true }), 0.5, [connection('twin', 'b')])
+  let p = store.getState().project
+  assert.equal(p.connections, undefined)
+  assert.deepEqual(links(p, 'a'), [legacyLink('b')])
+  assert.deepEqual(links(p, 'twin'), [legacyLink('b')])
+  // Once metadata hydrates, the resolver upgrades every link together.
+  store.getState().setItemSnaps('part', [snap])
+  store.getState().setItemRules('part', [])
+  store.getState().setAssemblyManifest(manifest)
+  p = store.getState().project
+  assert.deepEqual(p.connections.map((c) => [c.sourceItemId, c.targetItemId]).sort(), [['a', 'b'], ['twin', 'b']])
+})
+
+test('mirror pair joints on a resolved graph keep the legacy view in step', () => {
+  const store = createConfiguratorStore()
+  store.getState().setProject(project([item('a'), item('b', { position: [1, 0, 0] })]))
+  store.getState().createMirrorPair('a', item('twin', { position: [2, 0, 0], mirrored: true }), 0.5, [connection('twin', 'b')])
+  const p = store.getState().project
+  assert.equal(p.connections.length, 1)
+  assert.deepEqual(links(p, 'twin'), [legacyLink('b')])
+  assert.deepEqual(serializeProject(p), serializeProject(parseProject(serializeProject(p)).project))
+})

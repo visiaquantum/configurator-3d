@@ -15,6 +15,14 @@ npm run build:demo
 
 `npm test` compila la libreria, esegue i test di regressione con il test runner nativo di Node e i quattro script di verifica degli snap e degli assiemi sui GLB reali. La CI esegue lint, test e build della demo. `npm run build:lib` produce ESM, UMD e dichiarazioni in `dist/`; la demo viene compilata separatamente in `dist-demo/`. Entrambe le directory sono generate e ignorate da Git.
 
+`tests/movement.test.mjs` verifica anche i comandi condivisi da mouse, gizmo e Inspector: movimento rigido degli assiemi, annullamento dell'anteprima, agganci e undo. Usa lo store della libreria compilata e carica gli adattatori interni con Vite, senza aprire porte di rete o richiedere WebGL. I test controllano le pose Three.js e il progetto serializzato; gli eventi del browser restano oggetto della verifica manuale.
+
+`tests/product-metadata.test.mjs` copre la preparazione condivisa dei GLB, le coordinate di collider e snap, la cache per configurazione, l'isolamento tra store e la migrazione dei progetti legacy nei diversi ordini di caricamento. Include i modelli reali YSI12836 e KIT01.
+
+I prodotti usati nella scena vengono caricati per `catalogId`. `scene/productAsset.ts` prepara un modello condiviso senza modificarne la sorgente; `ProductInstances` pubblica dimensioni, snap e regole insieme attraverso `hydrateProduct`, prima di montare le istanze. Ogni istanza mantiene materiali e trasformazioni propri. La telemetria `asset-load` dei prodotti segnala il caricamento per prodotto, anziché per pezzo inserito.
+
+La conversione dei collegamenti legacy risiede in `io/resolveLegacyProject.ts` ed è attivata dallo store quando progetto, manifest e metadati sono disponibili, anche senza React. Non genera un passo di undo e non pubblica grafi parziali. I setter separati dei metadati restano compatibili; per la conversione occorrono sia snap sia regole (anche un array vuoto). Il formato dei progetti resta invariato: i vincoli `snapToItem` sono ancora supportati accanto a `connections`.
+
 Con il server locale attivo, `/tests/browser/index.html` permette di verificare due canvas indipendenti, scale del vano diverse, sola lettura, undo e recupero dopo un errore GLB. Il pulsante “Genera PDF” mostra il risultato dell'API di esportazione. Questo controllo è manuale e non fa parte della CI.
 
 Il pacchetto è `UNLICENSED`, pubblicato come restricted sul registry npm di GitHub. Non contiene i modelli del cliente né l'HDR della demo. Non occorrono credenziali di pubblicazione per modificare o verificare il codice locale.

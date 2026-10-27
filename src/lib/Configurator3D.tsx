@@ -11,7 +11,7 @@ import { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
 import { configurationStatus, validationForState } from './state/readiness'
 import { loadCatalog } from './io/catalog'
 import { hasBlockingIssues, validateConfiguration } from './assembly/validation'
-import { inferLegacyConnections, loadAssemblyManifest } from './assembly/manifest'
+import { loadAssemblyManifest } from './assembly/manifest'
 import {
   captureCanvasImage,
   downloadBlob,
@@ -226,16 +226,6 @@ function ConfiguratorContent({
       listeners.current.onValidationChange?.(structuredClone(issues))
     }
   }, [project, catalogEntries, manifest, itemSnaps, itemRules, itemSizes, interiorBBox, captureRefs, enclosureBBox, loadingCatalog, loadingManifest, catalogError, manifestError, assetErrors, storeApi])
-
-  useEffect(() => {
-    if (!project || project.connections !== undefined || !manifest) return
-    if (project.items.some((item) => !Object.hasOwn(itemSnaps, item.catalogId))) return
-    const inferred = inferLegacyConnections(project, manifest, itemSnaps, itemRules)
-    // Wait for GLB snap hydration; an empty result may simply mean that assets
-    // are still loading, so do not freeze migration prematurely.
-    const legacyCount = project.items.filter((item) => item.constraints?.some((c) => c.type === 'snapToItem')).length
-    if (inferred.length === legacyCount) storeApi.getState().setConnections(inferred)
-  }, [project, manifest, itemSnaps, itemRules, storeApi])
 
   // Global keyboard shortcuts
   useEffect(() => {

@@ -8,7 +8,7 @@ export function configurationStatus(state: ConfiguratorState) {
   if (!state.project) return fail('Nessun progetto')
   if (state.loadingCatalog || state.loadingManifest) return fail('Caricamento dati tecnici…')
   if (state.catalogError || state.manifestError) return fail(state.catalogError ?? state.manifestError!)
-  const assetError = state.assetErrors.enclosure ?? state.project.items.map((item) => state.assetErrors[item.id]).find(Boolean)
+  const assetError = state.assetErrors.enclosure ?? state.project.items.map((item) => state.assetErrors[item.id] ?? state.assetErrors[`product:${item.catalogId}`]).find(Boolean)
   if (assetError) return fail(`Errore modello: ${assetError}`)
   if (state.project.items.some((item) => !Object.hasOwn(state.catalog, item.catalogId))) return fail('Prodotto assente dal catalogo')
   if (!state.captureRefs || !state.enclosureBBox || state.project.items.some((item) =>

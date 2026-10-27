@@ -24,7 +24,7 @@ import type { Vec3 } from '../types'
  */
 
 /** Rule as extracted from the GLB, in the model root's coordinate space
- * (including the root's own scale). scene/Item.tsx converts it into the
+ * (including the root's own scale). scene/productAsset.ts converts it into the
  * item's local frame before storing it as an `ItemRule`. */
 export interface ExtractedRule {
   rule: string
