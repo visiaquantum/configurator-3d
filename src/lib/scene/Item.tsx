@@ -19,7 +19,7 @@ import { assemblyMembers, hasJoints, jointsOf } from '../assembly/graph'
 import { commitConnectionPreview, resolveConnectionPreview } from './connectionPreview'
 import type { ConnectionPreview } from './connectionPreview'
 import type { PreparedProductAsset } from './productAsset'
-import { anchoredBasePosition, dragClearance, finishItemMovement, restoreLiveItems, snappedRotation } from './itemMovement'
+import { anchoredBasePosition, dragClearance, finishItemMovement, pointerTurn, restoreLiveItems, snappedRotation } from './itemMovement'
 import { applyItemTint, disposeItemMaterials, enhanceItemMaterials, renderBothSides } from './itemMaterials'
 import { selectCanMove, selectCollisionBounds } from '../state/selectors'
 import { own } from '../util/record'
@@ -31,11 +31,8 @@ interface Props {
 }
 
 const DRAG_THRESHOLD_PX = 4 // mouse movement (px) before a pointerdown is treated as a drag
-const ROTATION_SENSITIVITY = 0.01 // radians of Y rotation per pixel of horizontal mouse delta
 const ROTATION_STEP = Math.PI / 2 // rotations snap to 90° increments
 const SNAP_POINT_MARKER_RADIUS = 0.006
-
-const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
 
 // Scratch instances reused across pointermove. Drag is single-threaded so this
 // is safe and saves ~100s of Vector3 allocations per second during a drag.
@@ -277,10 +274,6 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
     holdCamera(true)
   }
 
-  // Mutating the Group's transform is how Three.js drives the scene graph;
-  // the lint rule is correct that we're modifying a useState value, but in
-  // this case the value IS a mutable scene-graph node by design.
-  /* eslint-disable react-hooks/immutability */
   const handlePointerMove = (e: ThreeEvent<PointerEvent>) => {
     const d = dragRef.current
     if (!d || !group) return
@@ -295,8 +288,7 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
     if (d.mode === 'rotate') {
       updateConnectionPreview(null)
       group.position.copy(d.startPos)
-      group.rotation.y = snapAngle(d.startRotY + dx * ROTATION_SENSITIVITY)
-      group.rotation.x = snapAngle(d.startRotX + dy * ROTATION_SENSITIVITY)
+      group.rotation.set(...pointerTurn([d.startRotX, d.startRotY, item.rotation[2]], dx))
       if (!followAssemblyLive(state, item.id)) separateFreePart(state, item.id, NONE)
       return
     }
@@ -349,7 +341,6 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
     storeApi.getState().setDragClearance(null)
     updateConnectionPreview(null)
   }
-  /* eslint-enable react-hooks/immutability */
 
   return (
     <>
@@ -380,7 +371,6 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
           if (state.attachment?.hoveredItemId === item.id) state.setAttachment({ ...state.attachment, hoveredItemId: undefined })
         }}
         onPointerDown={handlePointerDown}
-        // eslint-disable-next-line react-hooks/immutability -- handler mutates group.position imperatively (three.js scene-graph)
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerCancel}

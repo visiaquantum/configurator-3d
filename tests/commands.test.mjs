@@ -161,3 +161,11 @@ test('the neighbour gap skips touching parts and the own assembly, and measures 
   assert.ok(Math.abs(gap.distance - 0.8) < 1e-9)
   assert.equal(computeNeighborGap('a', registryOf).otherId, 'member')
 })
+
+test('a Shift-drag turns the part about the vertical axis only, in quarter turns', () => {
+  assert.deepEqual(movement.pointerTurn([0, 0, 0], 0), [0, 0, 0])
+  assert.deepEqual(movement.pointerTurn([0, 0, 0], 160), [0, Math.PI / 2, 0])
+  assert.deepEqual(movement.pointerTurn([0, Math.PI / 2, 0], -320), [0, -Math.PI / 2, 0])
+  // Pitch and roll are whatever the part already had: pointer travel never tips it.
+  assert.deepEqual(movement.pointerTurn([Math.PI / 2, 0, Math.PI], 160), [Math.PI / 2, Math.PI / 2, Math.PI])
+})

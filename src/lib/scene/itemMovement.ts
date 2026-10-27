@@ -176,6 +176,17 @@ export function rotateAssembly(store: ConfiguratorStore, id: string, step: numbe
 }
 
 const QUARTER_TURN = Math.PI / 2
+/** Radians of turn per pixel of horizontal pointer travel during a Shift-drag. */
+const POINTER_TURN_PER_PIXEL = 0.01
+
+/**
+ * The rotation a Shift-drag shows after `dx` pixels of horizontal travel: a
+ * turn about the vertical axis only, in quarter turns. Vertical travel never
+ * tips the part; pitch and roll stay as they were.
+ */
+export function pointerTurn(start: Euler, dx: number): Euler {
+  return [start[0], Math.round((start[1] + dx * POINTER_TURN_PER_PIXEL) / QUARTER_TURN) * QUARTER_TURN, start[2]]
+}
 
 /** The rotation a gesture commits: every axis snapped to a quarter turn. */
 export function snappedRotation(rotation: { x: number; y: number; z: number }): Euler {
