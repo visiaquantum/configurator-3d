@@ -83,10 +83,20 @@ export const AssemblyManifestSchema = z.object({
   }),
 })
 
+export interface ManifestIssue {
+  level: 'error'
+  /** JSON path of the offending value, e.g. `$.products.0.connectors.1.id`. */
+  path: string
+  message: string
+}
+
+/** Like `ProjectParseError` and `CatalogParseError`: every problem, each with its path. */
 export class AssemblyManifestError extends Error {
-  constructor(message: string) {
+  issues: ManifestIssue[]
+  constructor(message: string, issues: ManifestIssue[] = []) {
     super(message)
     this.name = 'AssemblyManifestError'
+    this.issues = issues
   }
 }
 
@@ -96,12 +106,18 @@ export function parseAssemblyManifest(raw: unknown): AssemblyManifest {
     try {
       value = JSON.parse(raw)
     } catch (error) {
-      throw new AssemblyManifestError(`Assembly manifest JSON is malformed: ${(error as Error).message}`)
+      const message = `Assembly manifest JSON is malformed: ${(error as Error).message}`
+      throw new AssemblyManifestError(message, [{ level: 'error', path: '$', message }])
     }
   }
   const result = AssemblyManifestSchema.safeParse(value)
   if (!result.success) {
-    throw new AssemblyManifestError(`Assembly manifest failed validation: ${result.error.issues[0]?.message ?? 'invalid data'}`)
+    const issues = result.error.issues.map<ManifestIssue>((issue) => ({
+      level: 'error',
+      path: '$' + (issue.path.length ? '.' + issue.path.join('.') : ''),
+      message: issue.message,
+    }))
+    throw new AssemblyManifestError(`Assembly manifest failed validation: ${issues[0]?.message ?? 'invalid data'}`, issues)
   }
   return result.data as AssemblyManifest
 }

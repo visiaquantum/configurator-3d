@@ -1,6 +1,6 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { Group, Mesh, BoxGeometry, MeshStandardMaterial } from 'three'
+import { Group, Mesh, BoxGeometry, BufferGeometry, Float32BufferAttribute, MeshStandardMaterial } from 'three'
 import { readFile } from 'node:fs/promises'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { createConfiguratorStore } from '../src/lib/index.ts'
@@ -166,4 +166,37 @@ for (const path of ['MONTANTI/YSI12836.glb', 'KIT/KIT01.glb']) test(`real GLB pr
     assert.deepEqual(scaledMarkers[i].position, markers[i].position.map((value) => value * 2))
   }
   assert.equal(prepareProductAsset(gltf.scene, catalog), first)
+})
+
+test('GLB snap ids stay unique next to catalogue points, and autoSnapGrid: false drops a GLB grid rule', () => {
+  const root = new Group()
+  root.add(new Mesh(new BoxGeometry(1, 1, 1), new MeshStandardMaterial()))
+  for (const x of [-0.4, 0.4]) {
+    const marker = new Group()
+    marker.userData = { kind: 'snap', id: 'face', snapKind: 'laterale' }
+    marker.position.set(x, 0, 0)
+    root.add(marker)
+  }
+  const grid = new Group(); grid.name = 'RULE_AUTOSNAPGRID'; root.add(grid)
+  const declared = { id: 'face-2', kind: 'frontale', position: [0, 0, 0.5] }
+  const { metadata } = prepareProductAsset(root, { ...catalog, snapPoints: [declared] })
+  const ids = metadata.snaps.map((point) => point.id)
+  assert.equal(new Set(ids).size, ids.length)
+  assert.ok(ids.includes('face') && ids.includes('face-2') && ids.includes('face-3'))
+  assert.deepEqual(metadata.snaps.find((point) => point.id === 'face-2').kind, 'frontale')
+})
+
+test('catalogue autoSnapGrid: false switches off the hole grid a GLB declares', () => {
+  const positions = []
+  for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
+    if (i % 2 === 1 && j % 2 === 1 && i < 8 && j < 8) continue
+    const x0 = i * 0.01, x1 = x0 + 0.01, y0 = j * 0.01, y1 = y0 + 0.01
+    positions.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0)
+  }
+  const geometry = new BufferGeometry(); geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+  const root = new Group(); root.add(new Mesh(geometry, new MeshStandardMaterial()))
+  const grid = new Group(); grid.name = 'RULE_AUTOSNAPGRID'; grid.userData = { params: { normal: [0, 0, 1] } }; root.add(grid)
+  const holes = (product) => prepareProductAsset(root, product).metadata.snaps.filter((point) => point.kind === 'foro').length
+  assert.equal(holes({ ...catalog, id: 'on' }), 16)
+  assert.equal(holes({ ...catalog, id: 'off', autoSnapGrid: false }), 0)
 })

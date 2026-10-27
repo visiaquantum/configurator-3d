@@ -17,7 +17,6 @@ const migrations: Migration[] = [
         const i = it as Record<string, unknown>
         return { rotation: [0, 0, 0], ...i }
       }),
-      enclosure: data.enclosure ?? { glbUrl: '' },
     }
   },
 ]

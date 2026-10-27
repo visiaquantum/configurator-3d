@@ -27,6 +27,7 @@ export {
   connectorForSnap,
   connectorsCanMate,
 } from './assembly/manifest'
+export type { ManifestIssue } from './assembly/manifest'
 export { validateConfiguration, hasBlockingIssues } from './assembly/validation'
 export { VALIDATION_MESSAGES_IT } from './assembly/messages'
 export type { ValidationReason, ValidationParams } from './assembly/messages'
@@ -75,12 +76,13 @@ export {
 } from './io/autoSnapGrid'
 export {
   captureCanvasImage,
+  captureCanvasBlob,
   buildProjectBom,
   exportSceneGLB,
   exportProjectPDF,
   downloadBlob,
 } from './io/export'
-export type { ExportPdfOptions } from './io/export'
+export type { BomLine, ExportPdfOptions } from './io/export'
 export type {
   ProjectData,
   EnclosureData,

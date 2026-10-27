@@ -16,11 +16,14 @@ export function buildProjectBom(
   catalog: CatalogItem[],
   manifest?: AssemblyManifest | null,
 ): BomLine[] {
+  // Keyed by code and label: two different parts that happen to share a code
+  // stay two lines instead of one under the first label.
   const lines = new Map<string, BomLine>()
   const add = (code: string, label: string, quantity: number) => {
-    const existing = lines.get(code)
+    const key = JSON.stringify([code, label])
+    const existing = lines.get(key)
     if (existing) existing.quantity += quantity
-    else lines.set(code, { code, label, quantity })
+    else lines.set(key, { code, label, quantity })
   }
   for (const item of project.items) {
     const definition = definitionFor(manifest, item.catalogId)
@@ -59,6 +62,31 @@ export function captureCanvasImage(
 }
 
 /**
+ * Like `captureCanvasImage`, as a Blob. The canvas is copied when `toBlob` is
+ * called, right after the render, so no data URL round trip (and no
+ * `connect-src data:` in the host's CSP) is needed.
+ */
+export function captureCanvasBlob(
+  gl: WebGLRenderer,
+  scene: Scene,
+  camera: Camera,
+  mimeType: string = 'image/png',
+): Promise<Blob> {
+  gl.render(scene, camera)
+  return new Promise((resolve, reject) => gl.domElement.toBlob(
+    (blob) => (blob ? resolve(blob) : reject(new Error('Impossibile catturare l’immagine della scena'))),
+    mimeType,
+  ))
+}
+
+// Bookkeeping the editor stores on scene objects and materials; it must not
+// reach the exported file as glTF extras.
+const INTERNAL_OBJECT_KEYS = ['exportable', 'configuratorHelper']
+const INTERNAL_MATERIAL_KEYS = ['originalColor', 'configuratorMaterial']
+const withoutKeys = (data: Record<string, unknown>, keys: string[]) =>
+  Object.fromEntries(Object.entries(data).filter(([key]) => !keys.includes(key)))
+
+/**
  * Export the given Object3D roots as a binary glTF (.glb) Blob.
  * `roots` should be the exportable geometry only (enclosure + placed items),
  * not the whole scene — otherwise grid/environment/gizmo helpers leak in.
@@ -68,7 +96,9 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
   // loading keeps the initial configurator bundle focused on the 3D editor.
   const { GLTFExporter } = await import('three/examples/jsm/exporters/GLTFExporter.js')
   const exporter = new GLTFExporter()
-  const materials: Material[] = []
+  // One export copy per live material, shared by every mesh using it, so the
+  // exporter can still deduplicate materials.
+  const copies = new Map<Material, Material>()
   const cleaned = roots.map((root) => {
     root.updateWorldMatrix(true, true)
     const clone = root.clone(true)
@@ -76,14 +106,18 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
     const helpers: Object3D[] = []
     clone.traverse((object) => {
       if (object.userData.configuratorHelper) helpers.push(object)
+      object.userData = withoutKeys(object.userData, INTERNAL_OBJECT_KEYS)
       if (!(object instanceof Mesh)) return
       object.geometry = enclosureGeometryForExport(object.geometry)
       const copy = (material: Material) => {
+        const cached = copies.get(material)
+        if (cached) return cached
         const result = material.clone()
         if (result instanceof MeshStandardMaterial && typeof material.userData.originalColor === 'number') result.color.set(material.userData.originalColor)
         const original = material.userData.configuratorMaterial
         if (original) { result.transparent = original.transparent; result.opacity = original.opacity; result.depthWrite = original.depthWrite }
-        materials.push(result)
+        result.userData = withoutKeys(material.userData, INTERNAL_MATERIAL_KEYS)
+        copies.set(material, result)
         return result
       }
       object.material = Array.isArray(object.material) ? object.material.map(copy) : copy(object.material)
@@ -107,7 +141,7 @@ export async function exportSceneGLB(roots: Object3D[]): Promise<Blob> {
     )
     })
   } finally {
-    materials.forEach((material) => material.dispose())
+    copies.forEach((material) => material.dispose())
   }
 }
 

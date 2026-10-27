@@ -828,3 +828,71 @@ test('enclosure floor and doors are project data, validated on import', () => {
   assert.throws(() => parseProject(project([], { enclosure: { ...enclosure, floor: { size: [0, 1, 1], y: 0 } } })))
   assert.throws(() => parseProject(project([], { enclosure: { ...enclosure, doors: { Back: { kind: 'swing' } } } })))
 })
+
+test("the target connector's insertion axis turns with the target, not with the source", () => {
+  const axisManifest = parseAssemblyManifest({ version: 1, products: [{ catalogId: 'part', connectors: [
+    { id: 'tab', snapId: 'tab' },
+    { id: 'slot', snapId: 'slot', insertionAxis: [1, 0, 0], insertionDepth: 0.06, clearance: [{ id: 'slot-void', center: [0, 0, 0], size: [0.2, 1.2, 1.2] }] },
+  ] }] })
+  const points = [{ id: 'tab', kind: 'laterale', position: [0, 0, 0.475] }, { id: 'slot', kind: 'laterale', position: [-0.475, 0, 0] }]
+  // The source is turned a quarter: its tab faces +X, into the target's slot along X.
+  const p = project([item('a', { rotation: [0, Math.PI / 2, 0] }), item('b', { position: [0.95, 0, 0] })], {
+    connections: [{ sourceItemId: 'a', sourcePointId: 'tab', sourceConnectorId: 'tab', targetItemId: 'b', targetPointId: 'slot', targetConnectorId: 'slot' }],
+  })
+  const issues = errors(p, catalog, axisManifest, { itemSnaps: { part: points }, enclosureBounds: bounds })
+  assert.deepEqual(issues.map((issue) => issue.reason), [])
+})
+
+test('GLB grid parameters are sanitised: a zero or negative tolerance falls back to the default', () => {
+  const plate = () => {
+    const positions = []
+    for (let i = 0; i < 9; i++) for (let j = 0; j < 9; j++) {
+      if (i % 2 === 1 && j % 2 === 1 && i < 8 && j < 8) continue
+      const x0 = i * 0.01, x1 = x0 + 0.01, y0 = j * 0.01, y1 = y0 + 0.01
+      positions.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0)
+    }
+    const geometry = new BufferGeometry(); geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+    const root = new Group(); root.add(new Mesh(geometry)); return root
+  }
+  const rule = (params) => [{ rule: AUTO_SNAP_GRID_RULE, position: [0, 0, 0], axis: [1, 0, 0], params: { normal: [0, 0, 1], ...params } }]
+  const reference = extractAutoSnapGridFromObject(plate(), rule({})).length
+  assert.equal(reference, 16)
+  assert.equal(extractAutoSnapGridFromObject(plate(), rule({ vertexTolerance: 0 })).length, reference)
+  assert.equal(extractAutoSnapGridFromObject(plate(), rule({ vertexTolerance: -1e-5, minHoleSize: -1 })).length, reference)
+  assert.equal(extractAutoSnapGridFromObject(plate(), rule({ normal: [0, 0, 0] })).length > 0, true)
+})
+
+test('a manifest error lists every problem with its path', () => {
+  try {
+    parseAssemblyManifest({ version: 1, products: [{ catalogId: '', connectors: [{ id: 'x' }] }] })
+    assert.fail('expected a failure')
+  } catch (error) {
+    assert.ok(error.issues.length >= 2)
+    assert.ok(error.issues.every((issue) => issue.path.startsWith('$.products.0')))
+  }
+})
+
+test('GLB export shares one material per live material and drops editor bookkeeping', async () => {
+  const restoreFileReader = mockFileReader()
+  try {
+    const root = new Group(); root.name = 'product'; root.userData = { exportable: true, sku: 'X1' }
+    const shared = new MeshBasicMaterial(); shared.userData = { originalColor: 0xffffff, finish: 'matte' }
+    for (const name of ['left', 'right']) { const mesh = new Mesh(new BoxGeometry(), shared); mesh.name = name; root.add(mesh) }
+    const buffer = await (await exportSceneGLB([root])).arrayBuffer()
+    const view = new DataView(buffer)
+    const json = JSON.parse(new TextDecoder().decode(new Uint8Array(buffer, 20, view.getUint32(12, true))))
+    assert.equal(json.materials.length, 1)
+    assert.deepEqual(json.nodes.find((node) => node.name === 'product').extras, { sku: 'X1' })
+    assert.deepEqual(json.materials[0].extras, { finish: 'matte' })
+    assert.equal(root.userData.exportable, true)
+  } finally { restoreFileReader() }
+})
+
+test('BOM lines keep different parts apart even when their codes coincide', () => {
+  const bomManifest = parseAssemblyManifest({ version: 1, products: [
+    { catalogId: 'part', connectors: [], bom: { code: 'P-1', label: 'Montante' } },
+    { catalogId: 'other', connectors: [], bom: { code: 'P-1', label: 'Ripiano' } },
+  ] })
+  const lines = buildProjectBom(project([item('a'), item('b'), item('c', { catalogId: 'other' })]), Object.values(pairCatalog), bomManifest)
+  assert.deepEqual(lines.map((line) => [line.label, line.quantity]).sort(), [['Montante', 2], ['Ripiano', 1]])
+})

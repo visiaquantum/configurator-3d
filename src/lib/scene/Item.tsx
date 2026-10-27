@@ -42,6 +42,9 @@ const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
 const _hit = new Vector3()
 const _markerWorld = new Vector3()
 const _markerMatrix = new Matrix4()
+// Original material colours per item clone: a new clone (mirror toggle, new
+// model) gets a new map, and a discarded one releases its materials with it.
+const originalColorsByClone = new WeakMap<Object3D, Map<MeshStandardMaterial, Color>>()
 const NONE: ReadonlySet<string> = new Set()
 
 interface DragCtx {
@@ -137,9 +140,9 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
 
   // Tint the item when it is a candidate attachment target, or red when it
   // collides with another item or clips the enclosure.
-  const originalColorsRef = useRef<Map<MeshStandardMaterial, Color>>(new Map())
   useLayoutEffect(() => {
-    applyItemTint(cloned, originalColorsRef.current, isAttachmentTarget ? 'attachment-target' : isOverlapping ? 'collision' : null)
+    if (!originalColorsByClone.has(cloned)) originalColorsByClone.set(cloned, new Map())
+    applyItemTint(cloned, originalColorsByClone.get(cloned)!, isAttachmentTarget ? 'attachment-target' : isOverlapping ? 'collision' : null)
   }, [cloned, isOverlapping, isAttachmentTarget])
 
   const currentConnectionPreview = () => resolveConnectionPreview(storeApi.getState(), item.id)
@@ -431,15 +434,16 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
             // turn the user asked for, so the magnet stays out of that mode.
             const state = storeApi.getState()
             if (gizmoMode === 'translate') {
+              // Exactly the pointer drag: a seat in range wins; otherwise the
+              // part is kept clear of other products (its assembly excepted).
               const preview = currentConnectionPreview()
               updateConnectionPreview(preview)
-              if (holdInSeat(state, item.id, preview, item.rotation)) {
-                followAssemblyLive(state, item.id)
-                return
-              }
+              if (!holdInSeat(state, item.id, preview, item.rotation)) separateFreePart(state, item.id, followersOf())
+              followAssemblyLive(state, item.id)
+              return
             }
-            // The gizmo drags one object; the assembly it belongs to comes
-            // along every frame, or it only catches up on release.
+            // A turn: the assembly it belongs to comes along every frame, or
+            // it only catches up on release.
             if (!followAssemblyLive(state, item.id)) separateFreePart(state, item.id, NONE)
           }}
           onMouseUp={handleTransformEnd}

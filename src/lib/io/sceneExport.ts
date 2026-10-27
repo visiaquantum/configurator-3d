@@ -1,7 +1,7 @@
 import type { ConfiguratorStore } from '../state/store'
 import { configurationStatus } from '../state/readiness'
 import { hasBlockingIssues, validateConfiguration } from '../assembly/validation'
-import { captureCanvasImage, exportProjectPDF, exportSceneGLB } from './export'
+import { captureCanvasBlob, captureCanvasImage, exportProjectPDF, exportSceneGLB } from './export'
 
 export type SceneExportKind = 'png' | 'glb' | 'pdf'
 
@@ -41,8 +41,7 @@ async function performSceneExport(storeApi: ConfiguratorStore, kind: SceneExport
     let blob: Blob
     if (kind === 'png') {
       if (!refs) throw new Error('Scene not ready')
-      const dataUrl = captureCanvasImage(refs.gl, refs.scene, refs.camera)
-      blob = await (await fetch(dataUrl)).blob()
+      blob = await captureCanvasBlob(refs.gl, refs.scene, refs.camera)
     } else if (kind === 'glb') {
       const roots = s.collectExportRoots()
       if (roots.length === 0) throw new Error('No exportable geometry')
