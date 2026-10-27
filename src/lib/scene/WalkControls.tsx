@@ -1,8 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type ComponentRef } from 'react'
 import { Vector3 } from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { PointerLockControls } from '@react-three/drei'
-import type { PointerLockControls as PointerLockControlsImpl } from 'three-stdlib'
 import { useConfiguratorStoreApi } from '../state/store'
 
 const EYE_HEIGHT = 1.5 // meters above the floor
@@ -32,7 +31,7 @@ export function WalkControls({ selector }: {
 }) {
   const storeApi = useConfiguratorStoreApi()
   const { camera, gl } = useThree()
-  const lockRef = useRef<PointerLockControlsImpl | null>(null)
+  const lockRef = useRef<ComponentRef<typeof PointerLockControls> | null>(null)
   const keys = useRef<Record<string, boolean>>({})
   const enteredRef = useRef(false)
 

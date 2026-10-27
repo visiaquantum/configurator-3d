@@ -1,6 +1,6 @@
 # Configurator 3D
 
-Libreria React 19 e TypeScript per collocare prodotti GLB in un vano, comporre assiemi con connettori dichiarati e produrre JSON, PNG, GLB e distinta PDF. La demo usa il catalogo pilota in `public/models/` e il manifest in `public/assembly-manifest.json`.
+Libreria React 19 e TypeScript per collocare prodotti GLB in un vano, comporre assiemi con connettori dichiarati e produrre JSON, PNG, GLB e distinta PDF. La demo usa il catalogo pilota in `public/models/` e il manifest in `public/catalog/assembly-manifest.json`.
 
 ## Sviluppo e verifiche
 
@@ -13,7 +13,7 @@ npm test
 npm run build:demo
 ```
 
-`npm test` compila la libreria, esegue i test di regressione con il test runner nativo di Node e i quattro script di verifica degli snap e degli assiemi sui GLB reali. La CI esegue lint, test e build della demo. `npm run build:lib` produce ESM, UMD e dichiarazioni in `dist/`; la demo viene compilata separatamente in `dist-demo/`. Entrambe le directory sono generate e ignorate da Git.
+`npm test` compila la libreria, esegue i test di regressione con il test runner nativo di Node e i quattro script di verifica degli snap e degli assiemi sui GLB reali. `npm test` controlla anche che il bundle resti entro 60 kB gzip (`npm run check:size`). La CI, su ogni pull request e sui push in `main`, esegue audit delle dipendenze, lint, test, build della demo e la preparazione dell'esempio di integrazione, che viene installato dal pacchetto compilato e verificato con il suo `tsc`. `npm run build:lib` produce soltanto ESM e dichiarazioni in `dist/`; la demo viene compilata separatamente in `dist-demo/`. Entrambe le directory sono generate e ignorate da Git.
 
 `tests/movement.test.mjs` verifica anche i comandi condivisi da mouse, gizmo e Inspector: movimento rigido degli assiemi, annullamento dell'anteprima, agganci e undo. Usa lo store della libreria compilata e carica gli adattatori interni con Vite, senza aprire porte di rete o richiedere WebGL. I test controllano le pose Three.js e il progetto serializzato; gli eventi del browser restano oggetto della verifica manuale.
 
@@ -82,6 +82,26 @@ export function Editor() {
 }
 ```
 
+Il pacchetto è distribuito soltanto come modulo ES. Le dipendenze `react`, `react-dom`, `three`, `@react-three/fiber`, `@react-three/drei`, `zustand`, `zod` e `nanoid` vanno installate dall'host; le versioni supportate sono quelle dichiarate in `peerDependencies` (`three` fino a 0.184, finché non viene verificata una versione successiva). `jspdf` è facoltativa: serve solo per `exportPDF`, che senza di essa restituisce un errore esplicito. Per i tipi TypeScript installare anche `@types/three`.
+
+| Prop | Default | Uso |
+| --- | --- | --- |
+| `enclosure` | — (obbligatoria) | URL del GLB del vano oppure `EnclosureData` con `scale`, `dimensions`, `anchors`. |
+| `catalog` | — | Array di prodotti oppure URL di un catalogo JSON. |
+| `assemblyManifest` | — | Manifest tecnico inline oppure URL; senza manifest la validazione tecnica e la distinta non sono disponibili. |
+| `initialItems`, `projectId`, `metadata` | — | Dati iniziali del progetto; riferimenti stabili, un cambiamento ricrea il progetto. |
+| `store` | store proprio | Store esplicito per collegare pannelli esterni. |
+| `readOnly` | `false` | Blocca modifiche, undo e redo. |
+| `theme` | `light` | Palette `light` o `dark` di pannelli e scena. |
+| `environmentUrl` | ambiente procedurale | HDR per i riflessi; `null` li disattiva. |
+| `showInspector`, `showToolbar`, `showHints` | `true` | Mostrano proprietà del pezzo, barra Salva/Esporta e barra Sposta/Ruota/undo. |
+| `onChange`, `onSave` | — | Ricevono il progetto nella forma persistita. |
+| `onValidationChange` | — | Riceve il report di validazione a ogni cambiamento e al montaggio. |
+| `onCatalogLoaded`, `onCatalogError` | — | Esito del caricamento di un catalogo remoto. |
+| `onTelemetry` | — | Eventi locali di caricamento, export, validazione e tempo di frame. |
+| `className`, `style` | — | Applicati al contenitore. |
+| `ref` | — | Handle imperativo `ConfiguratorHandle` (`addItem`, `setProject`, `getProject`, export, undo/redo). |
+
 Ogni configuratore crea uno store e un registro degli oggetti indipendenti. Per collegare un pannello esterno usare uno store esplicito e il provider:
 
 ```tsx
@@ -111,7 +131,7 @@ store.getState().undo()
 
 Gli oggetti `enclosure`, `initialItems` e `metadata` devono avere riferimenti stabili: un cambiamento dei dati iniziali ricrea il progetto e azzera la cronologia. Per cambiare il progetto durante una sessione usare `ref.current.setProject(project)`. Il reset dello stesso GLB conserva i limiti e gli anchor già estratti. Un cambio di URL, scala o dimensioni ricalcola i dati del vano.
 
-`getProject()`, `exportProject()` e `onChange` forniscono copie dei dati, per evitare modifiche accidentali dello stato o della cronologia da parte dell'host. `readOnly` impedisce modifiche, undo e redo; i caricamenti e la validazione continuano. Gli item `locked` e i vincoli `lockAxis` sono rispettati dai comandi dello store. Un assieme che contiene un item bloccato o con assi vincolati è fisso per gesti, gizmo, aggancio guidato e Inspector; i comandi dello store possono ancora modificare le coordinate non vincolate.
+`getProject()` (handle), `store.getState().exportProject()` e `onChange` forniscono copie dei dati, per evitare modifiche accidentali dello stato o della cronologia da parte dell'host. `readOnly` impedisce modifiche, undo e redo; i caricamenti e la validazione continuano. Gli item `locked` e i vincoli `lockAxis` sono rispettati dai comandi dello store. Un assieme che contiene un item bloccato o con assi vincolati è fisso per gesti, gizmo, aggancio guidato e Inspector; i comandi dello store possono ancora modificare le coordinate non vincolate.
 
 Le posizioni risolte degli agganci al vano vengono sincronizzate nel progetto esportato senza aggiungere passi alla cronologia. Spostare un pezzo libera il vecchio anchor; un nuovo aggancio deve essere dichiarato esplicitamente nel comando.
 
