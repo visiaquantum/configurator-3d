@@ -44,7 +44,7 @@ resta utilizzabile senza la funzione.
 
 ## 2. Regola `mirror-pair` (coppia specchiata)
 
-Prodotti come **KSI12836** esistono solo in coppia: due istanze identiche,
+Prodotti come **YSI12836** esistono solo in coppia: due istanze identiche,
 specchiate, a distanze discrete (es. 30 / 60 / 90 cm), formano un blocco unico.
 
 ### Dichiarazione
@@ -67,8 +67,8 @@ modi (vale per tutte le regole, v. §1):
 - con `params.axis: [x, y, z]` negli extras (override esplicito, comodo in
   post-processing quando il CAD non controlla l'orientamento del marker).
 
-Esempio reale (nodo iniettato in `public/models/KSI12836.glb`, figlio del
-nodo prodotto): il KSI si accoppia **frontalmente** verso −Z, quindi il nodo
+Esempio reale (nodo iniettato in `public/models/MONTANTI/YSI12836.glb`, figlio del
+nodo prodotto): lo YSI si accoppia **frontalmente** verso −Z, quindi il nodo
 sta sulla faccia a −Z e dichiara `axis: [0, 0, -1]`:
 
 ```json

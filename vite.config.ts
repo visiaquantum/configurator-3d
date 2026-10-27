@@ -32,7 +32,7 @@ export default defineConfig(({ mode }) => {
         // (`files: []` + project references), so the plugin would find no input
         // files and emit an empty `index.d.ts`.
         dts({
-          tsconfigPath: resolve(__dirname, 'tsconfig.lib.json'),
+          tsconfigPath: resolve(import.meta.dirname, 'tsconfig.lib.json'),
           include: ['src/lib/**/*'],
           insertTypesEntry: true,
         }),
@@ -41,29 +41,15 @@ export default defineConfig(({ mode }) => {
       // package. Demo-only assets; the host app serves its own.
       publicDir: false,
       build: {
+        // ESM only: every peer is ESM-first, and a UMD/CJS build could not
+        // resolve the dynamic `jspdf` / GLTFExporter imports anyway.
         lib: {
-          entry: resolve(__dirname, 'src/lib/index.ts'),
-          name: 'Configurator3D',
-          fileName: (format) => `configurator-3d.${format === 'es' ? 'js' : 'umd.cjs'}`,
-          formats: ['es', 'umd'],
+          entry: resolve(import.meta.dirname, 'src/lib/index.ts'),
+          fileName: () => 'configurator-3d.js',
+          formats: ['es'],
         },
         rollupOptions: {
-          external: (id) => externalPattern.test(id) || id === 'react/jsx-runtime',
-          output: {
-            globals: (id: string) => {
-              if (id === 'react') return 'React'
-              if (id === 'react-dom') return 'ReactDOM'
-              if (id === 'react/jsx-runtime') return 'jsxRuntime'
-              if (id === 'three' || id.startsWith('three/')) return 'THREE'
-              if (id === '@react-three/fiber') return 'ReactThreeFiber'
-              if (id === '@react-three/drei') return 'ReactThreeDrei'
-              if (id === 'zustand' || id.startsWith('zustand/')) return 'zustand'
-              if (id === 'zod') return 'zod'
-              if (id === 'nanoid') return 'nanoid'
-              if (id === 'jspdf') return 'jspdf'
-              return id
-            },
-          },
+          external: (id) => externalPattern.test(id),
         },
         sourcemap: true,
         emptyOutDir: true,

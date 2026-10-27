@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process'
-import { copyFile, mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -26,5 +27,20 @@ try {
 } finally {
   await rm(temporary, { recursive: true, force: true })
 }
+
+// The example's lockfile pins the tarball's integrity and peer ranges. npm does
+// not refresh them for an unchanged `file:` version, so the delivered `npm ci`
+// would reject the package just packed: write them from the tarball itself.
+const tarball = await readFile(join(example, 'vendor/configurator-3d.tgz'))
+const manifest = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'))
+const lockPath = join(example, 'package-lock.json')
+const lock = JSON.parse(await readFile(lockPath, 'utf8'))
+const entry = lock.packages['node_modules/@visiaquantum/configurator-3d']
+entry.version = manifest.version
+entry.integrity = `sha512-${createHash('sha512').update(tarball).digest('base64')}`
+entry.peerDependencies = manifest.peerDependencies
+if (manifest.peerDependenciesMeta) entry.peerDependenciesMeta = manifest.peerDependenciesMeta
+else delete entry.peerDependenciesMeta
+await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`)
 
 console.log('Esempio pronto in examples/react-integration: libreria installabile e quattro GLB inclusi.')

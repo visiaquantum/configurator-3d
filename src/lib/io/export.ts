@@ -142,7 +142,10 @@ export async function exportProjectPDF(opts: ExportPdfOptions): Promise<Blob> {
   if (validationIssues.some((issue) => issue.level === 'error')) {
     throw new Error('Impossibile generare la BOM: correggi gli errori di configurazione')
   }
-  const { jsPDF } = await import('jspdf')
+  // `jspdf` is an optional peer: only hosts that export PDFs need to install it.
+  const { jsPDF } = await import('jspdf').catch(() => {
+    throw new Error('Esportazione PDF non disponibile: installare il pacchetto jspdf')
+  })
   const doc = new jsPDF({ unit: 'mm', format: 'a4' })
 
   const PAGE_W = 210

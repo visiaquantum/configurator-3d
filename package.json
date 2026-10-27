@@ -3,19 +3,21 @@
   "version": "0.1.0",
   "description": "React 3D configurator: place catalog GLBs inside an enclosure GLB, snap on vertices, export PDF/PNG/GLB.",
   "type": "module",
-  "main": "dist/configurator-3d.umd.cjs",
+  "main": "dist/configurator-3d.js",
   "module": "dist/configurator-3d.js",
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/configurator-3d.js",
-      "require": "./dist/configurator-3d.umd.cjs"
-    }
+      "default": "./dist/configurator-3d.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist"
   ],
+  "sideEffects": false,
   "publishConfig": {
     "registry": "https://npm.pkg.github.com",
     "access": "restricted"
@@ -37,19 +39,25 @@
     "example:prepare": "npm run build:lib && node scripts/prepare-react-integration.mjs && npm run verify:integration",
     "verify:integration": "node scripts/verify-react-integration.mjs",
     "preview": "vite preview",
-    "prepublishOnly": "npm run build:lib",
-    "test": "npm run build:lib && node --test tests/*.test.mjs && npm run verify:assembly && npm run verify:snaps && npm run verify:pilot && npm run verify:kit01"
+    "prepublishOnly": "npm test",
+    "test": "npm run build:lib && npm run check:size && node --test tests/*.test.mjs && npm run verify:assembly && npm run verify:snaps && npm run verify:pilot && npm run verify:kit01",
+    "check:size": "node scripts/check-size.mjs"
   },
   "peerDependencies": {
-    "@react-three/drei": ">=10",
-    "@react-three/fiber": ">=9",
-    "jspdf": ">=3",
-    "nanoid": ">=5",
+    "@react-three/drei": "^10",
+    "@react-three/fiber": "^9",
+    "jspdf": ">=3 <5",
+    "nanoid": "^5",
     "react": ">=19 <20",
     "react-dom": ">=19 <20",
-    "three": ">=0.180",
-    "zod": ">=4",
-    "zustand": ">=5"
+    "three": ">=0.180 <0.185",
+    "zod": "^4",
+    "zustand": "^5"
+  },
+  "peerDependenciesMeta": {
+    "jspdf": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

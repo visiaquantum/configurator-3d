@@ -6,7 +6,8 @@ import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
-  globalIgnores(['dist', 'dist-demo']),
+  // `**/` so the example's own build output and vendored tarball are skipped too.
+  globalIgnores(['**/dist', '**/dist-demo', '**/node_modules', 'examples/*/vendor']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -17,6 +18,14 @@ export default defineConfig([
     ],
     languageOptions: {
       globals: globals.browser,
+    },
+  },
+  {
+    // Node-side tests and verification scripts.
+    files: ['**/*.mjs'],
+    extends: [js.configs.recommended],
+    languageOptions: {
+      globals: globals.node,
     },
   },
 ])

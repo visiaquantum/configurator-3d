@@ -10,7 +10,7 @@ This is a React, TypeScript, and Vite package for a 3D configurator library. Pub
 - `npm run build:lib`: type-check and build the distributable library with declarations.
 - `npm run build:demo`: type-check and build the demo app.
 - `npm run lint`: run ESLint over the repository.
-- `npm test`: build the library, run Node regression tests, then verify snaps and pilot assemblies.
+- `npm test`: build the library, check the bundle size budget, run Node tests, then the assembly, snap, pilot and KIT01 verifiers on the real GLBs.
 - `npm run preview`: preview the built demo locally.
 
 Use `npm run lint`, `npm test`, and the relevant build command as the minimum verification before submitting changes.
