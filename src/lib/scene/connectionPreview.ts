@@ -42,7 +42,7 @@ export function resolveConnectionPreview(s: ConfiguratorState, itemId: string): 
     if (!sourceConnector) continue
     const sourceWorld = worldSnapPosition(item.id, source.position, s.itemRegistry)
     if (!sourceWorld) continue
-    for (const target of listMatingTargets(item.id, source.kind, snapsByItem, {}, s.itemRegistry)) {
+    for (const target of listMatingTargets(item.id, source.kind, snapsByItem, s.itemRegistry)) {
       const targetItem = s.project.items.find((placed) => placed.id === target.itemId)
       if (!targetItem) continue
       const targetConnector = connectorForSnap(

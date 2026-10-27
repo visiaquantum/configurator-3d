@@ -14,28 +14,33 @@ const EnclosureSchema = z.object({
   dimensions: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]).optional(),
   scale: z.number().positive().optional(),
   anchors: z.array(AnchorSchema).optional(),
+  floor: z.object({
+    size: z.tuple([z.number().positive(), z.number().positive(), z.number().positive()]),
+    y: z.number(),
+    color: z.string().min(1).optional(),
+  }).optional(),
+  doors: z.record(z.string().min(1), z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('rotate'), axis: z.enum(['y', 'z']), openAngle: z.number() }),
+    z.object({ kind: z.literal('slide'), axis: z.enum(['x', 'y', 'z']), distance: z.number() }),
+  ])).optional(),
 })
 
-// `snapToItem` was added after v1. Widening an enum is backward compatible —
-// every existing v1 document still validates — so no schema version bump.
-const ItemConstraintSchema = z.object({
-  type: z.enum(['snapToAnchor', 'snapToItem', 'lockAxis', 'noOverlap', 'mirrorPair']),
-  target: z.string().optional(),
-  axis: z.enum(['x', 'y', 'z']).optional(),
-  distance: z.number().positive().optional(),
-  corner: z.number().int().min(0).max(3).optional(),
-  point: z.string().optional(),
-  targetPoint: z.string().optional(),
-}).superRefine((constraint, ctx) => {
-  const required = constraint.type === 'snapToItem' ? ['target', 'point', 'targetPoint'] as const
-    : constraint.type === 'snapToAnchor' || constraint.type === 'mirrorPair' ? ['target'] as const : []
-  for (const field of required) {
-    if (!constraint[field]) ctx.addIssue({ code: 'custom', path: [field], message: 'Required constraint reference' })
-  }
-  if (constraint.type === 'lockAxis' && !constraint.axis) {
-    ctx.addIssue({ code: 'custom', path: ['axis'], message: 'Required locked axis' })
-  }
-})
+// One shape per constraint type, so a constraint cannot miss the fields its
+// type needs. Widening the set since v1 stays backward compatible.
+const Id = z.string().min(1)
+const ItemConstraintSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('snapToAnchor'), target: Id, corner: z.number().int().min(0).max(3).optional(), point: Id.optional() }),
+  z.object({ type: z.literal('snapToItem'), target: Id, point: Id, targetPoint: Id }),
+  z.object({ type: z.literal('lockAxis'), axis: z.enum(['x', 'y', 'z']) }),
+  z.object({ type: z.literal('mirrorPair'), target: Id, distance: z.number().positive().optional() }),
+])
+// `noOverlap` was declared by early v1 files but never had any effect: drop it.
+const ConstraintsSchema = z.preprocess(
+  (value) => Array.isArray(value)
+    ? value.filter((constraint) => !(constraint && typeof constraint === 'object' && (constraint as { type?: unknown }).type === 'noOverlap'))
+    : value,
+  z.array(ItemConstraintSchema),
+)
 
 const PlacedItemSchema = z.object({
   id: z.string().min(1),
@@ -44,7 +49,7 @@ const PlacedItemSchema = z.object({
   rotation: EulerSchema,
   locked: z.boolean().optional(),
   mirrored: z.boolean().optional(),
-  constraints: z.array(ItemConstraintSchema).optional(),
+  constraints: ConstraintsSchema.optional(),
 })
 
 const ConnectionSchema = z.object({
@@ -81,7 +86,7 @@ export const ProjectDataSchema = z.object({
   })
   project.items.forEach((item, index) => {
     item.constraints?.forEach((constraint, constraintIndex) => {
-      if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!constraint.target || !ids.has(constraint.target) || constraint.target === item.id)) {
+      if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!ids.has(constraint.target) || constraint.target === item.id)) {
         ctx.addIssue({ code: 'custom', path: ['items', index, 'constraints', constraintIndex, 'target'], message: 'Unknown or self-referencing item constraint' })
       }
     })

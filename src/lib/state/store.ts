@@ -31,12 +31,19 @@ export const createConfiguratorStore = () => createStore<ConfiguratorState>((set
 
 export type ConfiguratorStore = ReturnType<typeof createConfiguratorStore>
 export const ConfiguratorStoreContext = createContext<ConfiguratorStore | null>(null)
-const legacyStore = createConfiguratorStore()
-export const useConfiguratorStoreApi = (): ConfiguratorStore => useContext(ConfiguratorStoreContext) ?? legacyStore
 
-/** Outside a provider, static methods and selectors use the legacy standalone store. */
-function useScopedConfiguratorStore<T>(selector: (state: ConfiguratorState) => T): T {
-  return useStore(useConfiguratorStoreApi(), selector)
+/**
+ * The store of the enclosing `ConfiguratorStoreProvider` (every `Configurator3D`
+ * provides one). There is no global fallback: with several configurators on a
+ * page, a silent shared store would mix their state.
+ */
+export function useConfiguratorStoreApi(): ConfiguratorStore {
+  const store = useContext(ConfiguratorStoreContext)
+  if (!store) throw new Error('useConfiguratorStore va usato dentro ConfiguratorStoreProvider o Configurator3D')
+  return store
 }
 
-export const useConfiguratorStore = Object.assign(useScopedConfiguratorStore, legacyStore)
+/** Select from the enclosing configurator's store. */
+export function useConfiguratorStore<T>(selector: (state: ConfiguratorState) => T): T {
+  return useStore(useConfiguratorStoreApi(), selector)
+}

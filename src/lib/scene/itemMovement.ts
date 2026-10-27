@@ -247,7 +247,7 @@ export function finishItemMovement(
   group.rotation.set(...rotation)
   const bounds = state.interiorBBox ?? state.enclosureBBox
   const correctPosition = () => {
-    const pushed = pushOutOverlaps(id, 8, members, state.itemRegistry)
+    const pushed = pushOutOverlaps(id, state.itemRegistry, members)
     const clamped = clampItemToBounds(id, bounds, state.itemRegistry)
     return pushed || clamped
   }

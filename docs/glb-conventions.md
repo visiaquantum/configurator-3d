@@ -219,9 +219,11 @@ Aggancio a un altro prodotto:
 ```
 
 `point` è il punto **di questo** item, `targetPoint` quello dell'item di
-destinazione. Muovere l'item di destinazione trascina tutti gli item agganciati,
-ricorsivamente (`resolveSnappedChildren`). Trascinare a mano l'item agganciato
-rompe il legame.
+destinazione. Nel file salvato è la forma compatibile di un giunto: la
+libreria lo converte in un collegamento del grafo (`assembly/graph.ts`). Muovere
+o ruotare un qualsiasi pezzo dell'assieme sposta rigidamente tutti i pezzi
+collegati; un giunto si rompe solo con **Sgancia componente** o quando uno dei
+due pezzi resta fermo mentre l'altro si sposta.
 
 ### Incastro: orientamento e compenetrazione
 

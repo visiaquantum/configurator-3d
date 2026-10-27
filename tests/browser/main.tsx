@@ -2,11 +2,11 @@ import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import { Vector3 } from 'three'
 import { Configurator3D, ConfiguratorStoreProvider, createConfiguratorStore, configurationStatus, useConfiguratorStore } from '../../src/lib'
-import type { CatalogItem, ConfiguratorHandle } from '../../src/lib'
+import type { CatalogItem, ConfiguratorHandle, EnclosureData } from '../../src/lib'
 
 const stores = [createConfiguratorStore(), createConfiguratorStore()]
-const enclosure = { glbUrl: '/models/FIAT-NDC40H2.glb', scale: 10 }
-const halfScaleEnclosure = { ...enclosure, scale: 5 }
+const enclosure: EnclosureData = { glbUrl: '/models/FIAT-NDC40H2.glb', scale: 10, floor: { size: [3.45, 0.035, 1.82], y: 0.02 } }
+const halfScaleEnclosure: EnclosureData = { glbUrl: enclosure.glbUrl, scale: 5, floor: { size: [1.725, 0.0175, 0.91], y: 0.01 } }
 const product: CatalogItem = { id: 'upright', label: 'Montante di prova', glbUrl: '/models/MONTANTI/YSI12836.glb', size: [0.36, 1.008, 0.03] }
 const validCatalog = [product]
 const brokenCatalog = [{ ...product, glbUrl: '/missing-model.glb' }]

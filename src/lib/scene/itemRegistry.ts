@@ -1,11 +1,9 @@
 import { Box3, Vector3, type Group } from 'three'
 
 /**
- * Registry of all live placed-item Three.js groups, keyed by item id.
- * Used by drag handlers (in scene/Item.tsx) to query other items' world
- * geometry for vertex-snapping and overlap push-out.
- *
- * Lives at module scope so it survives Item remounts.
+ * Registry of the live placed-item Three.js groups of one configurator, keyed
+ * by item id. Each store owns one (`state.itemRegistry`); snap, overlap and
+ * gap math read other items' world geometry from it.
  */
 
 export interface ItemRegistration {
@@ -17,21 +15,20 @@ export interface ItemRegistration {
 
 export type ItemRegistry = Map<string, ItemRegistration>
 export const createItemRegistry = (): ItemRegistry => new Map()
-export const defaultItemRegistry = createItemRegistry()
 
-export function registerItem(reg: ItemRegistration, registry = defaultItemRegistry): void {
+export function registerItem(reg: ItemRegistration, registry: ItemRegistry): void {
   registry.set(reg.id, reg)
 }
 
-export function unregisterItem(id: string, registry = defaultItemRegistry): void {
+export function unregisterItem(id: string, registry: ItemRegistry): void {
   registry.delete(id)
 }
 
-export function getItem(id: string, registry = defaultItemRegistry): ItemRegistration | undefined {
+export function getItem(id: string, registry: ItemRegistry): ItemRegistration | undefined {
   return registry.get(id)
 }
 
-export function listOtherItems(excludeId: string, registry = defaultItemRegistry): ItemRegistration[] {
+export function listOtherItems(excludeId: string, registry: ItemRegistry): ItemRegistration[] {
   const out: ItemRegistration[] = []
   for (const [id, reg] of registry) {
     if (id !== excludeId) out.push(reg)
@@ -44,7 +41,7 @@ export function listOtherItems(excludeId: string, registry = defaultItemRegistry
  * Lets snap math size an item without a catalog lookup (the fallback size is
  * derived from the GLB bbox, so the catalog may not know it).
  */
-export function colliderSizeOf(id: string, registry = defaultItemRegistry): [number, number, number] | null {
+export function colliderSizeOf(id: string, registry: ItemRegistry): [number, number, number] | null {
   const reg = registry.get(id)
   if (!reg) return null
   const c = reg.localCorners[7] // (+hx, +hy, +hz)

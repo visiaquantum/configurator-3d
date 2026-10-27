@@ -1,25 +1,12 @@
-import test from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { Group } from 'three'
-import { createServer } from 'vite'
-import { createConfiguratorStore, computeAttachmentPreview, serializeProject } from '../dist/configurator-3d.js'
+import { createConfiguratorStore, computeAttachmentPreview, serializeProject } from '../src/lib/index.ts'
+import * as movement from '../src/lib/scene/itemMovement.ts'
+import * as registry from '../src/lib/scene/itemRegistry.ts'
+import * as previews from '../src/lib/scene/connectionPreview.ts'
 
-// Exercise the internal scene adapters without adding them to the public package API.
-// The store and serialized projects still use the built library, as consumers do.
-const server = await createServer({
-  configFile: false,
-  server: { middlewareMode: true, ws: false, hmr: false, watch: null },
-  optimizeDeps: { noDiscovery: true, include: [] },
-  appType: 'custom',
-})
-let movement, registry, previews
-try {
-  movement = await server.ssrLoadModule('/src/lib/scene/itemMovement.ts')
-  registry = await server.ssrLoadModule('/src/lib/scene/itemRegistry.ts')
-  previews = await server.ssrLoadModule('/src/lib/scene/connectionPreview.ts')
-} finally {
-  await server.close()
-}
+// The common release operations called by both pointer and gizmo handlers, on a plain store.
 const { finishItemMovement, rotateAssembly, restoreLiveItems, applyLiveItemPatches, commitLiveItemPatches } = movement
 const part = (id, position = [0, 0, 0], extra = {}) => ({ id, catalogId: 'part', position, rotation: [0, 0, 0], ...extra })
 const joint = (a, b) => ({ sourceItemId: a, targetItemId: b, sourcePointId: 'left', targetPointId: 'right', sourceConnectorId: 'left', targetConnectorId: 'right' })
@@ -178,7 +165,7 @@ test('committing a magnetic seat matches the guided project and creates exactly 
   const preview = previews.resolveConnectionPreview(magneticStore.getState(), 'source')
   assert.equal(previews.commitConnectionPreview(magneticStore, preview), true)
   const guided = computeAttachmentPreview(guidedStore.getState(), 'source', 'left', 'target', 'right')
-  guidedStore.getState().commitAssembly(guided.patches, guided.connections)
+  guidedStore.getState().commitJoints(guided.patches, guided.joints)
   assert.equal(snapshot(magneticStore), snapshot(guidedStore))
   assert.deepEqual(live(magneticStore, 'source').position.toArray(), [1, 0.5, 0])
   assert.equal(magneticStore.getState().past.length, 1)

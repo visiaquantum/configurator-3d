@@ -1,11 +1,11 @@
 import { Box3, Vector3 } from 'three'
 import {
-  defaultItemRegistry,
   getItem,
   getWorldAABB,
   getWorldCorners,
   listOtherItems,
 } from './itemRegistry'
+import type { ItemRegistry } from './itemRegistry'
 
 /** Default vertex-to-vertex snap distance — 3 cm. */
 export const VERTEX_SNAP_RADIUS = 0.03
@@ -53,10 +53,10 @@ const _mtvVec = new Vector3()
  */
 export function findNearestVertexSnap(
   myId: string,
-  threshold = VERTEX_SNAP_RADIUS,
-  registry = defaultItemRegistry,
+  registry: ItemRegistry,
   /** Items travelling with `myId`: their corners move with it, so they are no target. */
   ignore?: ReadonlySet<string>,
+  threshold = VERTEX_SNAP_RADIUS,
 ): VertexSnapResult | null {
   const me = getItem(myId, registry)
   if (!me) return null
@@ -114,7 +114,7 @@ export function offsetForLockedCorners(
   myCornerIdx: number,
   otherId: string,
   otherCornerIdx: number,
-  registry = defaultItemRegistry,
+  registry: ItemRegistry,
 ): { offset: Vector3; dist: number } | null {
   const me = getItem(myId, registry)
   const other = getItem(otherId, registry)
@@ -143,9 +143,9 @@ export function offsetForLockedCorners(
  */
 export function pushOutOverlaps(
   myId: string,
-  maxIter = 8,
+  registry: ItemRegistry,
   ignore?: ReadonlySet<string>,
-  registry = defaultItemRegistry,
+  maxIter = 8,
 ): boolean {
   const me = getItem(myId, registry)
   if (!me) return false
@@ -178,7 +178,7 @@ export interface CollisionBounds {
  * its group. This prevents products from sinking into the floor or escaping
  * through the vehicle shell/interior cargo box.
  */
-export function clampItemToBounds(myId: string, bounds: CollisionBounds | null | undefined, registry = defaultItemRegistry): boolean {
+export function clampItemToBounds(myId: string, bounds: CollisionBounds | null | undefined, registry: ItemRegistry): boolean {
   const me = getItem(myId, registry)
   if (!me || !bounds) return false
   getWorldAABB(me, _myBox)

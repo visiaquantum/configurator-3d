@@ -178,8 +178,6 @@ export interface ProjectCommands {
   ) => void
   /** Unlink a mirror pair, removing the auto-created mirrored twin. */
   removeMirrorPair: (id: string) => void
-  /** @deprecated Replaces the graph without an undo entry; use `commitAssembly`. */
-  setConnections: (connections: Connection[]) => void
   /** Record the position an enclosure anchor resolves to. Derived: no undo entry. */
   hydrateItemPosition: (id: string, position: [number, number, number]) => void
   /**

@@ -1,21 +1,15 @@
-import test from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { Group } from 'three'
-import { createServer } from 'vite'
-import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAssemblyManifest } from '../dist/configurator-3d.js'
+import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAssemblyManifest } from '../src/lib/index.ts'
+import * as commands from '../src/lib/scene/commands.ts'
+import * as shortcuts from '../src/lib/state/shortcuts.ts'
+import * as spacing from '../src/lib/assembly/pairSpacing.ts'
+import * as movement from '../src/lib/scene/itemMovement.ts'
+import * as registry from '../src/lib/scene/itemRegistry.ts'
+import * as liveDrag from '../src/lib/scene/liveDrag.ts'
 
 // Domain commands and rules run against a plain store: no React, no WebGL.
-const server = await createServer({ configFile: false, server: { middlewareMode: true, ws: false, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom' })
-let commands, shortcuts, spacing, movement, registry, liveDrag
-try {
-  commands = await server.ssrLoadModule('/src/lib/scene/commands.ts')
-  shortcuts = await server.ssrLoadModule('/src/lib/state/shortcuts.ts')
-  spacing = await server.ssrLoadModule('/src/lib/assembly/pairSpacing.ts')
-  movement = await server.ssrLoadModule('/src/lib/scene/itemMovement.ts')
-  registry = await server.ssrLoadModule('/src/lib/scene/itemRegistry.ts')
-  liveDrag = await server.ssrLoadModule('/src/lib/scene/liveDrag.ts')
-} finally { await server.close() }
-
 const part = (id, position = [0, 0, 0], extra = {}) => ({ id, catalogId: 'part', position, rotation: [0, 0, 0], ...extra })
 const joint = (a, b) => ({ sourceItemId: a, targetItemId: b, sourcePointId: 'left', targetPointId: 'right', sourceConnectorId: 'left', targetConnectorId: 'right' })
 function setup(items, connections = [], anchors) {

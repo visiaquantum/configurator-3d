@@ -113,6 +113,13 @@ const catalog: CatalogItem[] = catalogGroups.flatMap((g) => g.items)
 const ENCLOSURE: EnclosureData = {
   glbUrl: '/models/FIAT-NDC40H2.glb',
   scale: MODEL_SCALE,
+  // The FIAT model has no Body_interior node and its own anchor markers sit
+  // 20 cm above the floor: the cargo floor and its anchors are declared here.
+  floor: { size: [3.45, 0.035, 1.82], y: 0.02 },
+  anchors: [
+    { id: 'floor-back-side-a', position: [1.65, 0.04, -0.86], normal: [0, 1, 0] },
+    { id: 'floor-back-side-b', position: [1.65, 0.04, 0.86], normal: [0, 1, 0] },
+  ],
 }
 const PROJECT_METADATA: ProjectMetadata = {
   name: 'Demo — host-driven catalog',

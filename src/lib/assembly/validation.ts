@@ -6,6 +6,7 @@ import type {
   ConnectorDefinition,
   ItemRule,
   ItemSnapPoint,
+  MirrorPairConstraint,
   PlacedItem,
   ProjectData,
   ValidationContext,
@@ -16,6 +17,7 @@ import { DEFAULT_SNAP_TOLERANCE, connectorsCanMate, definitionFor } from './mani
 import { worldPoint, transformedBounds, rotateVector, normalsOppose } from '../scene/geometry'
 import { mirrorScaleFor, snapsForItem } from '../scene/mating'
 import { pendingJoints } from './graph'
+import { validationIssue } from './messages'
 import { own } from '../util/record'
 
 interface Bounds {
@@ -149,41 +151,36 @@ export function validateConfiguration(
 ): ValidationIssue[] {
   if (!project) return []
   const issues: ValidationIssue[] = []
-  if (project.items.length && !manifest) issues.push({ level: 'warning', code: 'incomplete-data', message: 'Manifest tecnico assente: verifica dei connettori non disponibile', itemIds: [] })
-  if (project.items.length && !context.enclosureBounds) issues.push({ level: 'warning', code: 'incomplete-data', message: 'Limiti interni del vano non disponibili: ingombro da verificare', itemIds: [] })
+  if (project.items.length && !manifest) issues.push(validationIssue('warning', 'incomplete-data', 'manifest-missing', []))
+  if (project.items.length && !context.enclosureBounds) issues.push(validationIssue('warning', 'incomplete-data', 'bounds-missing', []))
   const connections = project.connections ?? []
   const byId = new Map(project.items.map((item) => [item.id, item]))
 
   for (const item of project.items) {
     if (!Object.hasOwn(catalog, item.catalogId)) {
-      issues.push({
-        level: 'error',
-        code: 'unknown-product',
-        message: `Prodotto ${item.catalogId} non presente nel catalogo corrente`,
-        itemIds: [item.id],
-      })
+      issues.push(validationIssue('error', 'unknown-product', 'not-in-catalog', [item.id], { catalogId: item.catalogId }))
     }
   }
 
   for (const item of project.items) {
-    if (manifest && !definitionFor(manifest, item.catalogId)) issues.push({ level: 'error', code: 'unknown-product', message: `Prodotto ${item.catalogId} assente dal manifest tecnico`, itemIds: [item.id] })
+    if (manifest && !definitionFor(manifest, item.catalogId)) issues.push(validationIssue('error', 'unknown-product', 'not-in-manifest', [item.id], { catalogId: item.catalogId }))
     for (const constraint of item.constraints ?? []) {
-      if (constraint.type === 'mirrorPair' && byId.has(constraint.target ?? '')) {
-        const partner = byId.get(constraint.target!)!
-        const reciprocal = partner.constraints?.find((c) => c.type === 'mirrorPair' && c.target === item.id)
+      if (constraint.type === 'mirrorPair' && byId.has(constraint.target)) {
+        const partner = byId.get(constraint.target)!
+        const reciprocal = partner.constraints?.find((c): c is MirrorPairConstraint => c.type === 'mirrorPair' && c.target === item.id)
         if (!reciprocal || partner.catalogId !== item.catalogId || reciprocal.distance !== constraint.distance) {
-          issues.push({ level: 'error', code: 'connection', message: 'Coppia specchiata non reciproca o incoerente', itemIds: [item.id, partner.id] })
+          issues.push(validationIssue('error', 'connection', 'mirror-pair-mismatch', [item.id, partner.id]))
         }
       }
       if ((constraint.type === 'snapToItem' || constraint.type === 'mirrorPair') && (!constraint.target || !byId.has(constraint.target) || constraint.target === item.id)) {
-        issues.push({ level: 'error', code: 'connection', message: 'Vincolo con item non valido', itemIds: [item.id] })
+        issues.push(validationIssue('error', 'connection', 'invalid-item-reference', [item.id]))
       }
     }
   }
   // Without a manifest no joint can be certified; the warning above says so.
   if (manifest) {
     for (const joint of pendingJoints(project)) {
-      if (byId.has(joint.targetItemId)) issues.push({ level: 'error', code: 'connection', message: 'Collegamento non riconosciuto dal manifest tecnico', itemIds: [joint.sourceItemId, joint.targetItemId] })
+      if (byId.has(joint.targetItemId)) issues.push(validationIssue('error', 'connection', 'pending-joint', [joint.sourceItemId, joint.targetItemId]))
     }
   }
   const validConnections: Connection[] = []
@@ -194,12 +191,12 @@ export function validateConfiguration(
     const source = byId.get(connection.sourceItemId)
     const target = byId.get(connection.targetItemId)
     if (!source || !target || source.id === target.id) {
-      issues.push({ level: 'error', code: 'connection', message: 'Connessione con item non valido', itemIds: [connection.sourceItemId, connection.targetItemId] })
+      issues.push(validationIssue('error', 'connection', 'connection-item-invalid', [connection.sourceItemId, connection.targetItemId]))
       continue
     }
     const connectionKey = [`${source.id}:${connection.sourcePointId}`, `${target.id}:${connection.targetPointId}`].sort().join('|')
     if (seenConnections.has(connectionKey)) {
-      issues.push({ level: 'error', code: 'connection', message: 'Connessione duplicata', itemIds: [source.id, target.id] })
+      issues.push(validationIssue('error', 'connection', 'connection-duplicate', [source.id, target.id]))
     }
     seenConnections.add(connectionKey)
     const children = graph.get(source.id) ?? []
@@ -210,23 +207,23 @@ export function validateConfiguration(
     const sourceConnector = sourceDef?.connectors.find((c) => c.id === connection.sourceConnectorId)
     const targetConnector = targetDef?.connectors.find((c) => c.id === connection.targetConnectorId)
     if (!sourceConnector || !targetConnector) {
-      issues.push({ level: 'error', code: 'connection', message: 'Connettore assente dal manifest', itemIds: [source.id, target.id] })
+      issues.push(validationIssue('error', 'connection', 'connector-missing', [source.id, target.id]))
       continue
     }
     const sourcePoint = pointFor(source, connection.sourcePointId, context)
     const targetPoint = pointFor(target, connection.targetPointId, context)
     if (!sourcePoint || !targetPoint) {
-      issues.push({ level: 'error', code: 'connection', message: 'Punto di snap assente o non caricato', itemIds: [source.id, target.id] })
+      issues.push(validationIssue('error', 'connection', 'snap-point-missing', [source.id, target.id]))
       continue
     }
     let jointValid = true
     if (sourcePoint && targetPoint && !connectorsCanMate(sourceConnector, sourcePoint, targetConnector, targetPoint)) {
       jointValid = false
-      issues.push({ level: 'error', code: 'connection', message: 'Connettori non compatibili', itemIds: [source.id, target.id] })
+      issues.push(validationIssue('error', 'connection', 'connectors-incompatible', [source.id, target.id]))
     }
     if (!normalsOppose(sourcePoint.normal, source.rotation, targetPoint.normal, target.rotation)) {
       jointValid = false
-      issues.push({ level: 'error', code: 'connection', message: 'Normali dei connettori non opposte', itemIds: [source.id, target.id] })
+      issues.push(validationIssue('error', 'connection', 'normals-not-opposed', [source.id, target.id]))
     }
     if (sourcePoint && targetPoint) {
       const sourceWorld = worldPoint(source, sourcePoint.position, productSize(source, catalog, manifest, context)[1])
@@ -235,7 +232,7 @@ export function validateConfiguration(
       const tolerance = Math.min(sourceConnector.snapTolerance ?? DEFAULT_SNAP_TOLERANCE, targetConnector.snapTolerance ?? DEFAULT_SNAP_TOLERANCE)
       if (distance > tolerance) {
         jointValid = false
-        issues.push({ level: 'error', code: 'connection', message: `Snap non allineati (${(distance * 1000).toFixed(1)} mm)`, itemIds: [source.id, target.id] })
+        issues.push(validationIssue('error', 'connection', 'snaps-misaligned', [source.id, target.id], { distanceMm: distance * 1000 }))
       }
     }
     if (jointValid) validConnections.push(connection)
@@ -244,7 +241,7 @@ export function validateConfiguration(
     }
     if ((occupied.get(`${source.id}:${connection.sourcePointId}`) ?? 0) > (sourceConnector.capacity ?? 1) ||
         (occupied.get(`${target.id}:${connection.targetPointId}`) ?? 0) > (targetConnector.capacity ?? 1)) {
-      issues.push({ level: 'error', code: 'connector-capacity', message: 'Punto di snap già occupato', itemIds: [source.id, target.id] })
+      issues.push(validationIssue('error', 'connector-capacity', 'snap-point-occupied', [source.id, target.id]))
     }
   }
 
@@ -271,12 +268,7 @@ export function validateConfiguration(
   }
   graph.forEach((_, itemId) => visit(itemId))
   if (cycle) {
-    issues.push({
-      level: 'error',
-      code: 'connection',
-      message: 'Connessioni cicliche non consentite',
-      itemIds: cycle,
-    })
+    issues.push(validationIssue('error', 'connection', 'connection-cycle', cycle))
   }
 
   // Transform each collider once per validation pass, then prune separated pairs on X.
@@ -310,12 +302,7 @@ export function validateConfiguration(
         }
         if (invalid) break
       }
-      if (invalid) issues.push({
-        level: 'error',
-        code: 'collision',
-        message: `Collisione non consentita tra ${a.catalogId} e ${b.catalogId}`,
-        itemIds: [a.id, b.id],
-      })
+      if (invalid) issues.push(validationIssue('error', 'collision', 'collision', [a.id, b.id], { catalogId: a.catalogId, otherCatalogId: b.catalogId }))
     }
   }
   if (context.enclosureBounds) {
@@ -327,7 +314,7 @@ export function validateConfiguration(
           bounds.min[1] < enclosure.min[1] - EPSILON || bounds.max[1] > enclosure.max[1] + EPSILON ||
           bounds.min[2] < enclosure.min[2] - EPSILON || bounds.max[2] > enclosure.max[2] + EPSILON
         ) {
-          issues.push({ level: 'error', code: 'out-of-bounds', message: `Prodotto ${item.catalogId} fuori dal vano`, itemIds: [item.id] })
+          issues.push(validationIssue('error', 'out-of-bounds', 'out-of-bounds', [item.id], { catalogId: item.catalogId }))
           break
         }
       }

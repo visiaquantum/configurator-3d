@@ -1,5 +1,6 @@
 import type { ConfiguratorState } from './store'
 import { validateConfiguration } from '../assembly/validation'
+import { validationIssue } from '../assembly/messages'
 import type { ValidationIssue } from '../types'
 import { own } from '../util/record'
 
@@ -27,6 +28,6 @@ export function validationForState(state: ConfiguratorState): ValidationIssue[] 
     itemSnaps: state.itemSnaps, itemRules: state.itemRules, itemSizes: state.itemSizes, enclosureBounds: state.interiorBBox,
   })
   const status = configurationStatus(state)
-  if (state.project && !status.ready) issues.unshift({ level: 'error', code: 'incomplete-data', message: status.message, itemIds: [] })
+  if (state.project && !status.ready) issues.unshift(validationIssue('error', 'incomplete-data', 'not-ready', [], { status: status.message }))
   return issues
 }

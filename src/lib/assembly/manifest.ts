@@ -8,7 +8,6 @@ import type {
   ConnectorDefinition,
   ItemRule,
   ItemSnapPoint,
-  ProjectData,
   ProductAssemblyDefinition,
 } from '../types'
 import { worldPoint as worldPointOf, normalsOppose } from '../scene/geometry'
@@ -260,30 +259,4 @@ export function resolveJoint(
     targetPointId: targetPoint.id,
     resolvedTransform: { position: source.position, rotation: source.rotation },
   }
-}
-
-/** Converts existing `snapToItem` constraints after their GLB points hydrate. */
-export function inferLegacyConnections(
-  project: ProjectData,
-  manifest: AssemblyManifest,
-  itemSnaps: Record<string, ItemSnapPoint[]>,
-  itemRules: Record<string, ItemRule[]>,
-): Connection[] {
-  if (project.connections) return project.connections
-  const byId = new Map(project.items.map((item) => [item.id, item]))
-  // Never expose a partial migration: saving it would freeze unresolved links.
-  if (project.items.some((item) => item.constraints?.some((constraint) => {
-    if (constraint.type !== 'snapToItem') return false
-    const target = byId.get(constraint.target ?? '')
-    return !Object.hasOwn(itemSnaps, item.catalogId) || !target || !Object.hasOwn(itemSnaps, target.catalogId)
-  }))) return []
-  const connections: Connection[] = []
-  for (const source of project.items) {
-    const legacy = source.constraints?.find((constraint) => constraint.type === 'snapToItem')
-    if (!legacy?.target || !legacy.point || !legacy.targetPoint) continue
-    const target = byId.get(legacy.target)
-    const resolved = target && resolveJoint({ sourcePointId: legacy.point, targetPointId: legacy.targetPoint }, source, target, manifest, itemSnaps, itemRules)
-    if (resolved) connections.push(resolved)
-  }
-  return connections
 }

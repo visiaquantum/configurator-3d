@@ -42,6 +42,8 @@ export function ViewControls() {
   const bbox = useConfiguratorStore((s) => s.enclosureBBox)
   const doorsOpen = useConfiguratorStore((s) => s.doorsOpen)
   const setDoorsOpen = useConfiguratorStore((s) => s.setDoorsOpen)
+  // The toggle only exists for enclosures that declare animated doors.
+  const hasDoors = useConfiguratorStore((s) => Object.keys(s.project?.enclosure.doors ?? {}).length > 0)
 
   return (
     <div className="cfg-view-controls" style={viewControlsStyle}>
@@ -74,14 +76,14 @@ export function ViewControls() {
         >
           Interno
         </button>
-        <button
+        {hasDoors && <button
           type="button"
           style={{ ...presetBtn, background: doorsOpen ? 'var(--cfg-primary)' : presetBtn.background, color: doorsOpen ? 'var(--cfg-on-primary)' : presetBtn.color }}
           onClick={() => setDoorsOpen(!doorsOpen)}
-          title="Apri/chiudi le porte del furgone"
+          title="Apri/chiudi le porte del vano"
         >
           {doorsOpen ? 'Chiudi' : 'Apri'}
-        </button>
+        </button>}
       </div>
       <div style={viewRowStyle}>
         <span style={viewLabelStyle}>iso</span>

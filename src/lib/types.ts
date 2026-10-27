@@ -7,13 +7,28 @@ export interface Anchor {
   normal?: Vec3
 }
 
+/** A door the "Apri" toggle animates: a hinge turn or a slide, in the node's own units. */
+export type EnclosureDoor =
+  | { kind: 'rotate'; axis: 'y' | 'z'; openAngle: number }
+  | { kind: 'slide'; axis: 'x' | 'y' | 'z'; distance: number }
+
 export interface EnclosureData {
   glbUrl: string
+  /** Inner cargo volume in metres, centred on X/Z with its base at Y = 0. */
   dimensions?: Vec3
+  /** Snap anchors in metres; they take priority over the anchors found in the GLB. */
   anchors?: Anchor[]
   /** Uniform scale applied to the loaded GLB. Use when the model was exported
    * at a non-meter scale (e.g. 0.1× → scale: 10). Default 1. */
   scale?: number
+  /**
+   * A cargo floor drawn inside the model, in metres: a box of `size` centred
+   * on X/Z at height `y`. Without `dimensions` or a `Body_interior` node it
+   * also bounds the cargo area, from its top up to the top of the model.
+   */
+  floor?: { size: Vec3; y: number; color?: string }
+  /** Doors the "Apri" toggle animates, keyed by GLB node name. */
+  doors?: Record<string, EnclosureDoor>
 }
 
 /** Product-level override for which perforated faces become snap points. */
@@ -54,33 +69,51 @@ export interface CatalogItem {
   snapPoints?: ItemSnapPoint[]
 }
 
-export interface ItemConstraint {
-  type: 'snapToAnchor' | 'snapToItem' | 'lockAxis' | 'noOverlap' | 'mirrorPair'
+/** The item rests on an enclosure anchor. */
+export interface SnapToAnchorConstraint {
+  type: 'snapToAnchor'
+  /** Enclosure anchor id. */
+  target: string
   /**
-   * For `snapToAnchor`: the enclosure anchor id.
-   * For `snapToItem` and `mirrorPair`: the other item's id.
-   */
-  target?: string
-  axis?: 'x' | 'y' | 'z'
-  /** For `mirrorPair`: distance (m) between the two rule reference points. */
-  distance?: number
-  /**
-   * For `snapToAnchor`: which bottom corner of the item collider sits on the
-   * anchor (index 0-3: -x-z, +x-z, -x+z, +x+z). Omitted = item center.
+   * Which bottom corner of the item collider sits on the anchor (index 0-3:
+   * -x-z, +x-z, -x+z, +x+z). Omitted = item center.
    */
   corner?: number
-  /**
-   * For `snapToAnchor` and `snapToItem`: id of this item's snap point
-   * (declared in the GLB, see io/itemSnaps.ts) that sits on the destination.
-   * Wins over `corner`.
-   */
+  /** Id of this item's snap point that sits on the anchor. Wins over `corner`. */
   point?: string
-  /**
-   * For `snapToItem`: id of the snap point on the target item that this
-   * item's `point` is joined to.
-   */
-  targetPoint?: string
 }
+
+/**
+ * A joint to another item's snap point in the legacy, connector-free form: a
+ * pending joint in memory, or the compatibility view of a resolved one in
+ * saved files (see assembly/graph.ts).
+ */
+export interface SnapToItemConstraint {
+  type: 'snapToItem'
+  /** The other item's id. */
+  target: string
+  /** This item's snap point. */
+  point: string
+  /** The other item's snap point that `point` is joined to. */
+  targetPoint: string
+}
+
+/** Gestures leave the item (and its assembly) in place; commands keep this axis unchanged. */
+export interface LockAxisConstraint {
+  type: 'lockAxis'
+  axis: 'x' | 'y' | 'z'
+}
+
+/** Reciprocal link between the two halves of a mirror pair. */
+export interface MirrorPairConstraint {
+  type: 'mirrorPair'
+  /** The other half's item id. */
+  target: string
+  /** Distance (m) between the two rule reference points. */
+  distance?: number
+}
+
+export type ItemConstraint = SnapToAnchorConstraint | SnapToItemConstraint | LockAxisConstraint | MirrorPairConstraint
 
 /**
  * A snap point declared inside a product GLB (`SNAP_*` node or extras
@@ -171,8 +204,14 @@ export interface Connection {
 
 export interface ValidationIssue {
   level: 'error' | 'warning'
+  /** Broad category, stable across versions. */
   code: 'collision' | 'connection' | 'connector-capacity' | 'unknown-product' | 'out-of-bounds' | 'incomplete-data'
+  /** The specific finding, stable across versions: translate from this, not from `message`. */
+  reason: import('./assembly/messages').ValidationReason
+  /** Default (Italian) text. */
   message: string
+  /** Values the message interpolates, for hosts that format their own text. */
+  params?: import('./assembly/messages').ValidationParams
   itemIds: string[]
 }
 

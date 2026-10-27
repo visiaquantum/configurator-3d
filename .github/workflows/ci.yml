@@ -26,9 +26,12 @@ jobs:
       # The library has no runtime dependencies of its own: audit the whole dev tree.
       - run: npm audit --audit-level=high
       - run: npm run lint -- --max-warnings=0
-      # Builds the library, checks the bundle budget, runs unit tests and the GLB verifiers.
+      # Builds the library, checks the bundle budget, runs unit tests with coverage floors and the GLB verifiers.
       - run: npm test
       - run: npm run build:demo
+      # Browser checks of the integration page, WebGL rendered in software.
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
       # The consumer example installs the packed tarball and type-checks against
       # the published declarations, as a host project would.
       - run: npm run example:prepare

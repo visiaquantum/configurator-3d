@@ -40,8 +40,11 @@
     "verify:integration": "node scripts/verify-react-integration.mjs",
     "preview": "vite preview",
     "prepublishOnly": "npm test",
-    "test": "npm run build:lib && npm run check:size && node --test tests/*.test.mjs && npm run verify:assembly && npm run verify:snaps && npm run verify:pilot && npm run verify:kit01",
-    "check:size": "node scripts/check-size.mjs"
+    "test": "npm run build:lib && npm run check:size && vitest run --coverage && npm run verify:assembly && npm run verify:snaps && npm run verify:pilot && npm run verify:kit01",
+    "check:size": "node scripts/check-size.mjs",
+    "test:unit": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "peerDependencies": {
     "@react-three/drei": "^10",
@@ -61,6 +64,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@types/node": "^24.12.3",
@@ -68,10 +72,12 @@
     "@types/react-dom": "^19.2.3",
     "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^6.0.1",
+    "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^10.3.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "nanoid": "^5.1.11",
     "react": "^19.2.6",
@@ -81,8 +87,8 @@
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12",
     "vite-plugin-dts": "^5.0.0",
+    "vitest": "^5.0.5",
     "zod": "^4.4.3",
-    "zustand": "^5.0.13",
-    "html2canvas": "^1.4.1"
+    "zustand": "^5.0.13"
   }
 }

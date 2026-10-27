@@ -13,7 +13,7 @@ export function useSceneTools() {
       registerItem: (registration: registryTools.ItemRegistration) => registryTools.registerItem(registration, registry),
       unregisterItem: (id: string) => registryTools.unregisterItem(id, registry),
       clampItemToBounds: (id: string, bounds: snapping.CollisionBounds | null | undefined) => snapping.clampItemToBounds(id, bounds, registry),
-      computeNeighborGap: (id: string, range?: number) => computeNeighborGap(id, range, registry),
+      computeNeighborGap: (id: string, range?: number) => computeNeighborGap(id, registry, range),
     }
   }, [store])
 }

@@ -1,17 +1,10 @@
-import test from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { Group, Mesh, BoxGeometry, MeshStandardMaterial } from 'three'
-import { createServer } from 'vite'
 import { readFile } from 'node:fs/promises'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { createConfiguratorStore } from '../dist/configurator-3d.js'
-
-const server = await createServer({ configFile: false, server: { middlewareMode: true, ws: false, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom' })
-let prepareProductAsset
-try {
-  const assets = await server.ssrLoadModule('/src/lib/scene/productAsset.ts')
-  prepareProductAsset = assets.prepareProductAsset
-} finally { await server.close() }
+import { createConfiguratorStore } from '../src/lib/index.ts'
+import { prepareProductAsset } from '../src/lib/scene/productAsset.ts'
 
 const catalog = { id: 'part', label: 'Part', glbUrl: '/part.glb' }
 const snap = { id: 'face', kind: 'laterale', position: [0, 0, 0] }

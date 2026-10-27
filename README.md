@@ -13,9 +13,9 @@ npm test
 npm run build:demo
 ```
 
-`npm test` compila la libreria, esegue i test di regressione con il test runner nativo di Node e i quattro script di verifica degli snap e degli assiemi sui GLB reali. `npm test` controlla anche che il bundle resti entro 60 kB gzip (`npm run check:size`). La CI, su ogni pull request e sui push in `main`, esegue audit delle dipendenze, lint, test, build della demo e la preparazione dell'esempio di integrazione, che viene installato dal pacchetto compilato e verificato con il suo `tsc`. `npm run build:lib` produce soltanto ESM e dichiarazioni in `dist/`; la demo viene compilata separatamente in `dist-demo/`. Entrambe le directory sono generate e ignorate da Git.
+`npm test` compila la libreria, esegue i test con Vitest (con soglie minime di copertura) e i quattro script di verifica degli snap e degli assiemi sui GLB reali. I test importano direttamente i sorgenti di `src/lib`; soltanto `tests/package.test.mjs` usa il bundle compilato, per verificare gli export pubblici e che importi solo le peer dependency dichiarate. `npm run test:coverage` produce il rapporto HTML in `coverage/`. `npm run test:e2e` avvia Vite e verifica con Playwright, in Chromium con WebGL software, la pagina `tests/browser`: due configuratori isolati, sola lettura, recupero da un errore GLB, esportazione PDF e inquadratura isometrica. La prima volta serve `npx playwright install chromium`. `npm test` controlla anche che il bundle resti entro 60 kB gzip (`npm run check:size`). La CI, su ogni pull request e sui push in `main`, esegue audit delle dipendenze, lint, test, build della demo, i test Playwright e la preparazione dell'esempio di integrazione, che viene installato dal pacchetto compilato e verificato con il suo `tsc`. `npm run build:lib` produce soltanto ESM e dichiarazioni in `dist/`; la demo viene compilata separatamente in `dist-demo/`. Entrambe le directory sono generate e ignorate da Git.
 
-`tests/movement.test.mjs` verifica anche i comandi condivisi da mouse, gizmo e Inspector: movimento rigido degli assiemi, annullamento dell'anteprima, agganci e undo. Usa lo store della libreria compilata e carica gli adattatori interni con Vite, senza aprire porte di rete o richiedere WebGL. I test controllano le pose Three.js e il progetto serializzato; gli eventi del browser restano oggetto della verifica manuale.
+`tests/movement.test.mjs` verifica anche i comandi condivisi da mouse, gizmo e Inspector: movimento rigido degli assiemi, annullamento dell'anteprima, agganci e undo. Non richiede WebGL: i test controllano le pose Three.js e il progetto serializzato. Gli eventi del browser sono coperti dai test Playwright e dalla verifica manuale.
 
 `tests/commands.test.mjs` verifica senza React né WebGL le regole di dominio estratte dai componenti: mappa delle scorciatoie, comandi dell'Inspector (rotazione, ancoraggio al vano, sgancio, distanza della coppia specchiata, aggiunta di prodotti), opzioni di distanza calcolate dal catalogo e compatibilità dichiarata dal manifest.
 
@@ -27,7 +27,7 @@ I collegamenti tra pezzi hanno un solo modello, il grafo di `assembly/graph.ts`:
 
 `assembly/resolveJoints.ts` risolve i giunti in sospeso appena i due prodotti di ciascun giunto hanno snap e regole idratati (anche un array vuoto) e il manifest è disponibile, senza passi di undo. Ogni giunto si risolve da solo: uno non risolvibile resta in sospeso, non viene mai scartato e non blocca gli altri. Con un manifest caricato viene segnalato come errore «Collegamento non riconosciuto dal manifest tecnico», che impedisce la distinta finché non lo si sgancia. Il formato dei file non cambia.
 
-Con il server locale attivo, `/tests/browser/index.html` permette di verificare due canvas indipendenti, scale del vano diverse, sola lettura, undo e recupero dopo un errore GLB. Il pulsante “Genera PDF” mostra il risultato dell'API di esportazione. Questo controllo è manuale e non fa parte della CI.
+Con il server locale attivo, `/tests/browser/index.html` permette di verificare a mano due canvas indipendenti, scale del vano diverse, sola lettura, undo e recupero dopo un errore GLB. Il pulsante “Genera PDF” mostra il risultato dell'API di esportazione. Gli stessi controlli girano in CI con `npm run test:e2e`.
 
 Il pacchetto è `UNLICENSED`, pubblicato come restricted sul registry npm di GitHub. Non contiene i modelli del cliente né l'HDR della demo. Non occorrono credenziali di pubblicazione per modificare o verificare il codice locale.
 
@@ -96,7 +96,7 @@ Il pacchetto è distribuito soltanto come modulo ES. Le dipendenze `react`, `rea
 | `environmentUrl` | ambiente procedurale | HDR per i riflessi; `null` li disattiva. |
 | `showInspector`, `showToolbar`, `showHints` | `true` | Mostrano proprietà del pezzo, barra Salva/Esporta e barra Sposta/Ruota/undo. |
 | `onChange`, `onSave` | — | Ricevono il progetto nella forma persistita. |
-| `onValidationChange` | — | Riceve il report di validazione a ogni cambiamento e al montaggio. |
+| `onValidationChange` | — | Riceve il report di validazione a ogni cambiamento e al montaggio. Ogni `ValidationIssue` ha un `reason` stabile e i `params` del messaggio, per tradurlo; `message` è il testo italiano di `VALIDATION_MESSAGES_IT`. |
 | `onCatalogLoaded`, `onCatalogError` | — | Esito del caricamento di un catalogo remoto. |
 | `onTelemetry` | — | Eventi locali di caricamento, export, validazione e tempo di frame. |
 | `className`, `style` | — | Applicati al contenitore. |
@@ -127,7 +127,7 @@ export function Workspace() {
 store.getState().undo()
 ```
 
-È anche possibile passare `store={store}` al componente. Il provider deve racchiudere i pannelli che leggono quello store; non condividere lo stesso store tra due canvas attivi. `useConfiguratorStoreApi()` restituisce lo store del provider corrente. Le vecchie proprietà statiche `useConfiguratorStore.getState()` si riferiscono soltanto allo store standalone legacy: sostituirle con `store.getState()` o con il nuovo hook quando si integra un canvas.
+È anche possibile passare `store={store}` al componente. Il provider deve racchiudere i pannelli che leggono quello store; non condividere lo stesso store tra due canvas attivi. `useConfiguratorStoreApi()` restituisce lo store del provider corrente; `useConfiguratorStore` e `useConfiguratorStoreApi` usati fuori da un provider (o da un `Configurator3D`) lanciano un errore, perché non esiste uno store globale condiviso. Fuori da React usare `store.getState()`.
 
 Gli oggetti `enclosure`, `initialItems` e `metadata` devono avere riferimenti stabili: un cambiamento dei dati iniziali ricrea il progetto e azzera la cronologia. Per cambiare il progetto durante una sessione usare `ref.current.setProject(project)`. Il reset dello stesso GLB conserva i limiti e gli anchor già estratti. Un cambio di URL, scala o dimensioni ricalcola i dati del vano.
 
@@ -169,7 +169,7 @@ Lo store di ogni configuratore compone le tre slice in un unico stato, così un 
 - Gli snap dichiarati in `catalog.snapPoints` sono già in metri, nel frame centrato del collider. Gli snap estratti dal GLB vengono scalati e trasformati in questo frame durante il caricamento.
 - Le dimensioni idratate del corpo stabiliscono il riferimento degli snap anche quando il manifest contiene piccoli collider locali. I centri dei collider e gli offset delle clearance vengono riflessi per gli item specchiati.
 - Tolleranze di aggancio e distanze delle regole mirror-pair sono in metri. L'aggancio usa la tolleranza più restrittiva dei due connettori e controlla che le normali, quando disponibili, siano opposte.
-- `enclosure.dimensions`, quando presente, definisce un volume interno in metri, centrato su X/Z con base Y=0. In alternativa vengono letti `Body_interior` o i limiti dedicati del vano pilota. Senza limiti interni la validazione segnala che l'ingombro richiede verifica.
+- `enclosure.dimensions`, quando presente, definisce un volume interno in metri, centrato su X/Z con base Y=0. In alternativa il volume è delimitato da `enclosure.floor` (un pavimento di carico in metri, disegnato nel modello: dalla sua faccia superiore fino alla sommità del modello) o dal nodo `Body_interior`. `enclosure.anchors` dichiara gli anchor in metri e prevale su quelli trovati nel GLB; `enclosure.doors` elenca i nodi porta che il pulsante **Apri** anima, che compare solo se il vano ne dichiara. Senza limiti interni la validazione segnala che l'ingombro richiede verifica.
 
 I collider sono AABB conservative dei box ruotati: non sostituiscono una verifica CAD delle superfici reali. La validazione verifica connettori, capacità, tolleranze, cicli, collider e clearance dichiarati nel manifest. La qualità dei dati tecnici resta necessaria per un risultato affidabile.
 

@@ -1,6 +1,7 @@
 import { Vector3, Euler as ThreeEuler, Quaternion } from 'three'
-import type { Connection, Euler, ItemConstraint, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
-import { colliderSizeOf, getItem, defaultItemRegistry } from './itemRegistry'
+import type { Connection, Euler, ItemRule, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
+import { getItem } from './itemRegistry'
+import type { ItemRegistry } from './itemRegistry'
 import { rotateVector } from './geometry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
@@ -114,7 +115,7 @@ export interface MatingTarget {
 const _v = new Vector3()
 
 /** World position of an item-local snap point, or null if the item is gone. */
-export function worldSnapPosition(itemId: string, local: Vec3, registry = defaultItemRegistry): Vec3 | null {
+export function worldSnapPosition(itemId: string, local: Vec3, registry: ItemRegistry): Vec3 | null {
   const reg = getItem(itemId, registry)
   if (!reg) return null
   reg.group.updateWorldMatrix(true, false)
@@ -134,8 +135,8 @@ export function listMatingTargets(
   sourceItemId: string,
   sourceKind: string,
   snapsByItem: Map<string, ItemSnapPoint[]>,
+  registry: ItemRegistry,
   opts: { all?: boolean } = {},
-  registry = defaultItemRegistry,
 ): MatingTarget[] {
   const out: MatingTarget[] = []
   for (const [itemId, points] of snapsByItem) {
@@ -167,104 +168,6 @@ export function positionForItemSnap(
 ): Vec3 {
   const offset = rotateVector(myPoint, typeof yaw === 'number' ? [0, yaw, 0] : yaw)
   return [target[0] - offset[0], target[1] - colliderHeight / 2 - offset[1], target[2] - offset[2]]
-}
-
-/** The `snapToItem` constraint on an item, if any. */
-export function itemSnapConstraint(item: PlacedItem): ItemConstraint | undefined {
-  return item.constraints?.find((c) => c.type === 'snapToItem')
-}
-
-/** Build the constraint recording a product-to-product join. */
-export function itemSnapConstraintFor(
-  targetItemId: string,
-  myPointId: string,
-  targetPointId: string,
-): ItemConstraint {
-  return {
-    type: 'snapToItem',
-    target: targetItemId,
-    point: myPointId,
-    targetPoint: targetPointId,
-  }
-}
-
-export interface AssemblyContext {
-  items: PlacedItem[]
-  /** That item's snap points in its own local frame, already mirrored. */
-  snapsFor: (item: PlacedItem) => ItemSnapPoint[]
-}
-
-/**
- * @deprecated Editing moves assemblies rigidly (`assemblyPosePatches`); this
- * follows `snapToItem` links only and is kept for existing callers.
- *
- * Re-place every item joined to `movedId` (and, transitively, everything
- * joined to those) so the assembly follows the piece that just moved.
- *
- * Live Three.js groups are updated as we go, because a child's own children
- * resolve against its refreshed world matrix. The returned patches commit the
- * same transforms to the store in one undo step — the same contract as
- * `pairSyncPatches` for mirror pairs.
- *
- * Cycles are impossible to express through the UI but cheap to guard against,
- * so a visited set caps the walk.
- */
-export function resolveSnappedChildren(
-  movedId: string,
-  ctx: AssemblyContext,
-  registry = defaultItemRegistry,
-): Array<{ id: string; patch: Partial<PlacedItem> }> {
-  const patches: Array<{ id: string; patch: Partial<PlacedItem> }> = []
-  const visited = new Set<string>([movedId])
-  const byId = new Map(ctx.items.map((it) => [it.id, it]))
-
-  const walk = (parentId: string) => {
-    const parent = byId.get(parentId)
-    if (!parent) return
-    const parentPoints = ctx.snapsFor(parent)
-
-    for (const child of ctx.items) {
-      if (visited.has(child.id)) continue
-      const c = itemSnapConstraint(child)
-      if (c?.target !== parentId || !c.point || !c.targetPoint) continue
-
-      const myPoint = ctx.snapsFor(child).find((p) => p.id === c.point)
-      const targetPoint = parentPoints.find((p) => p.id === c.targetPoint)
-      if (!myPoint || !targetPoint) continue
-
-      const targetWorld = worldSnapPosition(parentId, targetPoint.position, registry)
-      const size = colliderSizeOf(child.id, registry)
-      if (!targetWorld || !size) continue
-
-      // Re-derive the mating orientation from the two faces rather than
-      // tracking a rotation delta: turning the parent turns the child with it,
-      // and the result cannot drift over repeated moves.
-      const yaw = yawToMate(myPoint.normal, targetPoint.normal, parent.rotation[1])
-      const rotation: Euler =
-        yaw === null ? child.rotation : [child.rotation[0], yaw, child.rotation[2]]
-
-      const position = positionForItemSnap(
-        myPoint.position,
-        rotation,
-        size[1],
-        targetWorld,
-      )
-
-      const reg = getItem(child.id, registry)
-      if (reg) {
-        reg.group.position.set(position[0], position[1] + size[1] / 2, position[2])
-        reg.group.rotation.set(rotation[0], rotation[1], rotation[2])
-        reg.group.updateWorldMatrix(true, false)
-      }
-
-      visited.add(child.id)
-      patches.push({ id: child.id, patch: { position, rotation } })
-      walk(child.id)
-    }
-  }
-
-  walk(movedId)
-  return patches
 }
 
 /**

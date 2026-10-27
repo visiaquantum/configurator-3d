@@ -56,7 +56,7 @@ export function placeDraggedItem(
       return lock
     }
   }
-  const snap = findNearestVertexSnap(id, undefined, state.itemRegistry, travelling)
+  const snap = findNearestVertexSnap(id, state.itemRegistry, travelling)
   if (!snap) return null
   group.position.x += snap.offset.x
   group.position.z += snap.offset.z
@@ -109,6 +109,6 @@ export function followAssemblyLive(state: LiveState, id: string): boolean {
 
 /** A part on its own is pushed out of other products and kept inside the enclosure. */
 export function separateFreePart(state: LiveState, id: string, ignore: ReadonlySet<string>): void {
-  pushOutOverlaps(id, 8, ignore, state.itemRegistry)
+  pushOutOverlaps(id, state.itemRegistry, ignore)
   clampItemToBounds(id, selectCollisionBounds(state), state.itemRegistry)
 }

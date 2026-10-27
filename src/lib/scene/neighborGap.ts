@@ -1,6 +1,7 @@
 import { Box3 } from 'three'
 import type { Vec3 } from '../types'
-import { defaultItemRegistry, getItem, getWorldAABB, listOtherItems } from './itemRegistry'
+import { getItem, getWorldAABB, listOtherItems } from './itemRegistry'
+import type { ItemRegistry } from './itemRegistry'
 
 /**
  * Product-to-product distance measurement.
@@ -87,8 +88,8 @@ function sharedMid(aMin: number, aMax: number, bMin: number, bMax: number): numb
  */
 export function computeNeighborGap(
   itemId: string,
+  registry: ItemRegistry,
   maxRange = NEIGHBOR_GAP_MAX_RANGE,
-  registry = defaultItemRegistry,
 ): NeighborGap | null {
   const me = getItem(itemId, registry)
   if (!me) return null

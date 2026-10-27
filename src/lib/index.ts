@@ -23,12 +23,13 @@ export {
   AssemblyManifestError,
   parseAssemblyManifest,
   loadAssemblyManifest,
-  inferLegacyConnections,
   connectionsAtPose,
   connectorForSnap,
   connectorsCanMate,
 } from './assembly/manifest'
 export { validateConfiguration, hasBlockingIssues } from './assembly/validation'
+export { VALIDATION_MESSAGES_IT } from './assembly/messages'
+export type { ValidationReason, ValidationParams } from './assembly/messages'
 export {
   parseCatalog,
   loadCatalog,
@@ -43,13 +44,10 @@ export {
   assemblyPosePatches,
   canMate,
   dedupeJoints,
-  itemSnapConstraint,
   jointsSurvivingMove,
-  itemSnapConstraintFor,
   listMatingTargets,
   MATING_RULES,
   positionForItemSnap,
-  resolveSnappedChildren,
   rotateGroupPatches,
   snapKindLabel,
   snapPointLabel,
@@ -58,7 +56,7 @@ export {
   linkedPartners,
   yawToMate,
 } from './scene/mating'
-export type { AssemblyContext, MatingTarget } from './scene/mating'
+export type { MatingTarget } from './scene/mating'
 export { computePartnerPlacement, mirrorPairDistances, pairDistanceForSpan } from './scene/mirrorPair'
 export {
   extractItemSnapsFromObject,
@@ -90,6 +88,10 @@ export type {
   CatalogItem,
   Anchor,
   ItemConstraint,
+  SnapToAnchorConstraint,
+  SnapToItemConstraint,
+  LockAxisConstraint,
+  MirrorPairConstraint,
   ItemRule,
   ItemSnapPoint,
   ColliderBox,

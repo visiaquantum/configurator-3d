@@ -165,8 +165,6 @@ export function createProjectSlice(set: SetState, get: GetState): ProjectState &
         s.selectedId === removeId ? null : s.selectedId)
     },
 
-    setConnections: (connections) => set((s) => s.project ? { project: withJoints(s.project, s.project.items, connections) } : {}),
-
     hydrateItemPosition: (id, position) => set((s) => {
       const project = s.project && withItemPosition(s.project, id, position, false)
       return project ? { project } : s

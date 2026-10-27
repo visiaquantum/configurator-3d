@@ -1,15 +1,15 @@
-import test from 'node:test'
+import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { Group, Mesh, MeshBasicMaterial, BoxGeometry, BufferGeometry, Float32BufferAttribute, Shape, Path, ShapeGeometry, Vector3, Euler, Box3, PerspectiveCamera, OrthographicCamera } from 'three'
 import {
   createConfiguratorStore, parseProject, serializeProject, parseCatalog,
   parseAssemblyManifest, validateConfiguration, connectionsAtPose,
-  connectorForSnap, connectorsCanMate, inferLegacyConnections,
+  connectorForSnap, connectorsCanMate,
   extractAutoSnapGridFromObject, AUTO_SNAP_GRID_RULE, configurationStatus,
   positionForItemSnap, assemblyPosePatches, exportProjectPDF, exportSceneGLB,
   beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview,
   createEnclosureCutaway, assemblyGroup, canMate, snapsForItem, buildProjectBom, extractRulesFromObject,
-} from '../dist/configurator-3d.js'
+} from '../src/lib/index.ts'
 
 const item = (id, extra = {}) => ({ id, catalogId: 'part', position: [0, 0, 0], rotation: [0, 0, 0], ...extra })
 const project = (items = [], extra = {}) => ({ id: 'regression', version: 1, enclosure: { glbUrl: '/van.glb', scale: 10 }, items, connections: [], ...extra })
@@ -292,12 +292,6 @@ test('unknown catalog and manifest products cannot be certified', () => {
   assert.ok(errors(project([item('a')]), catalog, { version: 1, products: [] }).some((issue) => issue.code === 'unknown-product'))
 })
 
-test('legacy inference is repeatable once every asset has hydrated', () => {
-  const p = project([item('a'), item('b', { position: [4, 0, 0], catalogId: 'other', constraints: [{ type: 'snapToItem', target: 'a', point: 'face', targetPoint: 'face' }] })], { connections: undefined })
-  assert.equal(inferLegacyConnections(p, pairManifest(), { part: [snap] }, {}).length, 0)
-  assert.equal(inferLegacyConnections(p, pairManifest(), pairContext.itemSnaps, {}).length, 1)
-})
-
 const autoRules = [{ rule: AUTO_SNAP_GRID_RULE, position: [0, 0, 0], axis: [0, 0, 1], params: { normals: [[0, 0, 1]], minHoleSize: 0.004, maxHoleSize: 0.03 } }]
 
 test('a solid small triangle is not a drilling hole', () => {
@@ -382,17 +376,8 @@ test('import rejects dangling graph references and duplicate joints', () => {
   assert.throws(() => parseProject(project([item('a'), item('b')], { connections: [connection(), connection()] })))
 })
 
-test('legacy migration never returns a partial graph before hydration completes', () => {
-  const p = project([
-    item('a'), item('b', { constraints: [{ type: 'snapToItem', target: 'a', point: 'face', targetPoint: 'face' }] }),
-    item('c', { catalogId: 'other', constraints: [{ type: 'snapToItem', target: 'a', point: 'face', targetPoint: 'face' }] }),
-  ], { connections: undefined })
-  assert.equal(inferLegacyConnections(p, pairManifest(), { part: [snap] }, {}).length, 0)
-  assert.equal(inferLegacyConnections(p, pairManifest(), pairContext.itemSnaps, {}).length, 2)
-})
-
 test('untrusted marker extras cannot crash snap extraction or inflate body bounds', async () => {
-  const { extractItemSnapsFromObject } = await import('../dist/configurator-3d.js')
+  const { extractItemSnapsFromObject } = await import('../src/lib/index.ts')
   const root = new Group(); root.add(new Mesh(new BoxGeometry(1, 1, 1)))
   const marker = new Mesh(new BoxGeometry(10, 10, 10)); marker.name = 'marker'; marker.userData = { kind: 'snap', id: 42 }; marker.position.x = 0.5; root.add(marker)
   assert.doesNotThrow(() => extractItemSnapsFromObject(root))
@@ -816,4 +801,30 @@ test('hole detection on a large perforated plate finds every hole, nested loops 
   const holes = extractAutoSnapGridFromObject(plate(81), [{ rule: AUTO_SNAP_GRID_RULE, position: [0, 0, 0], axis: [1, 0, 0], params: { normal: [0, 0, 1] } }])
   assert.equal(holes.length, 1600)
   assert.equal(new Set(holes.map((hole) => hole.id)).size, 1600)
+})
+
+test('each constraint type requires its own fields; the inert noOverlap is dropped on import', () => {
+  const withConstraint = (constraint) => project([item('a', { constraints: [constraint] }), item('b')])
+  assert.throws(() => parseProject(withConstraint({ type: 'snapToAnchor' })))
+  assert.throws(() => parseProject(withConstraint({ type: 'lockAxis' })))
+  assert.throws(() => parseProject(withConstraint({ type: 'snapToItem', target: 'b', point: 'face' })))
+  assert.throws(() => parseProject(withConstraint({ type: 'teleport', target: 'b' })))
+  assert.deepEqual(parseProject(withConstraint({ type: 'noOverlap' })).project.items[0].constraints, [])
+  assert.deepEqual(parseProject(withConstraint({ type: 'lockAxis', axis: 'y' })).project.items[0].constraints, [{ type: 'lockAxis', axis: 'y' }])
+})
+
+test('validation issues carry a stable reason and the values their message uses', () => {
+  const p = project([item('a', { catalogId: 'ghost', position: [50, 0, 0] })])
+  const issues = validateConfiguration(p, catalog, manifest, context)
+  const unknown = issues.find((issue) => issue.reason === 'not-in-catalog')
+  assert.deepEqual(unknown.params, { catalogId: 'ghost' })
+  assert.equal(unknown.message, 'Prodotto ghost non presente nel catalogo corrente')
+  assert.ok(issues.every((issue) => typeof issue.reason === 'string' && issue.message))
+})
+
+test('enclosure floor and doors are project data, validated on import', () => {
+  const enclosure = { glbUrl: '/van.glb', floor: { size: [3, 0.03, 1.8], y: 0.02 }, doors: { Back: { kind: 'rotate', axis: 'y', openAngle: 1.5 } } }
+  assert.deepEqual(parseProject(project([], { enclosure })).project.enclosure, enclosure)
+  assert.throws(() => parseProject(project([], { enclosure: { ...enclosure, floor: { size: [0, 1, 1], y: 0 } } })))
+  assert.throws(() => parseProject(project([], { enclosure: { ...enclosure, doors: { Back: { kind: 'swing' } } } })))
 })

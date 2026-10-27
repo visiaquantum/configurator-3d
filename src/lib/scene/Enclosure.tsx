@@ -4,7 +4,7 @@ import type { Material, Object3D } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
-import type { EnclosureData } from '../types'
+import type { EnclosureData, EnclosureDoor } from '../types'
 import { visibleBodyBounds } from './geometry'
 import { createEnclosureCutaway } from './enclosureCutaway'
 import { hydrateAnchorsAndHide } from '../io/anchors'
@@ -21,36 +21,6 @@ const BODY_ROUGHNESS = 0.35
 const BODY_CLEARCOAT = 0.9
 const BODY_CLEARCOAT_ROUGHNESS = 0.05
 const XRAY_OPACITY = 0.18
-const FIAT_NDC40H2_URL_RE = /FIAT-NDC40H2\.glb$/i
-const FIAT_FLOOR_SIZE: [number, number, number] = [3.45, 0.035, 1.82]
-const FIAT_FLOOR_Y = 0.02
-const FIAT_FLOOR_TOP_Y = FIAT_FLOOR_Y + FIAT_FLOOR_SIZE[1] / 2
-const FIAT_FLOOR_ANCHORS = [
-  {
-    id: 'floor-back-side-a',
-    position: [1.65, 0.04, -0.86] as [number, number, number],
-    normal: [0, 1, 0] as [number, number, number],
-  },
-  {
-    id: 'floor-back-side-b',
-    position: [1.65, 0.04, 0.86] as [number, number, number],
-    normal: [0, 1, 0] as [number, number, number],
-  },
-]
-
-// Door rig: node-name → either a hinge rotation or a slide translation.
-// Tuned empirically for the iveco.glb layout. Slide distances are in the
-// node's local units (the iveco GLB uses cm internally, scaled 0.01 → m).
-type DoorRig =
-  | { kind: 'rotate'; axis: 'y' | 'z'; openAngle: number }
-  | { kind: 'slide'; axis: 'x' | 'y' | 'z'; distance: number }
-const DOOR_RIG: Record<string, DoorRig> = {
-  Front_door_R: { kind: 'rotate', axis: 'y', openAngle: Math.PI / 2.2 },
-  Front_door_L: { kind: 'rotate', axis: 'y', openAngle: -Math.PI / 2.2 },
-  Back_door_1: { kind: 'rotate', axis: 'y', openAngle: -Math.PI / 1.5 },
-  Back_door_2: { kind: 'rotate', axis: 'y', openAngle: Math.PI / 1.5 },
-  Lateral_door: { kind: 'slide', axis: 'z', distance: -180 },
-}
 
 /**
  * Renders the enclosure GLB and extracts any embedded `anchor_*` nodes into
@@ -61,10 +31,8 @@ export function Enclosure({ data }: Props) {
   const storeApi = useConfiguratorStoreApi()
   const gltf = useGLTF(data.glbUrl)
   const scene = useMemo(() => cloneSkeleton(gltf.scene), [gltf.scene])
-  const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl.split(/[?#]/)[0])
-  const fiatFactor = (data.scale ?? 1) / 10
   const dimensionsKey = data.dimensions?.join(',')
-  const fiatAnchors = useMemo(() => FIAT_FLOOR_ANCHORS.map((anchor) => ({ ...anchor, position: anchor.position.map((value) => value * fiatFactor) as [number, number, number] })), [fiatFactor])
+  const floor = data.floor
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
   const setInteriorBBox = useConfiguratorStore((s) => s.setInteriorBBox)
@@ -76,13 +44,13 @@ export function Enclosure({ data }: Props) {
   // Door nodes captured at scene-load and animated by the useFrame hook below.
   // basePos lets slide doors return to their original local position when closed.
   const doorsRef = useRef<
-    { node: Object3D; rig: DoorRig; basePos: [number, number, number]; baseRotation: number }[]
+    { node: Object3D; rig: EnclosureDoor; basePos: [number, number, number]; baseRotation: number }[]
   >([])
   const targetOpenRef = useRef(0)
   const cutawayRef = useRef<ReturnType<typeof createEnclosureCutaway> | null>(null)
 
-  // Materials: if the GLB already ships its own materials (textured PBR, e.g.
-  // the iveco model), keep them and only force DoubleSide. If it has none
+  // Materials: if the GLB already ships its own materials (a textured PBR
+  // export), keep them and only force DoubleSide. If it has none
   // (ACIS exports with no material chunk), replace every mesh material with
   // glossy paint so the interior walls render. Either way, every material is
   // collected for the xray toggle. Old paint mats we created are disposed.
@@ -173,9 +141,10 @@ export function Enclosure({ data }: Props) {
 
   // Find door nodes once per GLB load. They are animated via useFrame below.
   useEffect(() => {
-    const found: { node: Object3D; rig: DoorRig; basePos: [number, number, number]; baseRotation: number }[] = []
+    const found: { node: Object3D; rig: EnclosureDoor; basePos: [number, number, number]; baseRotation: number }[] = []
+    const rigs = data.doors ?? {}
     scene.traverse((obj) => {
-      const rig = DOOR_RIG[obj.name]
+      const rig = Object.hasOwn(rigs, obj.name) ? rigs[obj.name] : undefined
       if (rig) {
         found.push({
           node: obj,
@@ -186,7 +155,7 @@ export function Enclosure({ data }: Props) {
       }
     })
     doorsRef.current = found
-  }, [scene])
+  }, [scene, data.doors])
 
   // Apply the optional scale to the loaded GLB, then lift it so the lowest
   // point sits on Y=0 — many vehicle GLBs are modeled with the body origin
@@ -207,15 +176,12 @@ export function Enclosure({ data }: Props) {
       scene.position.y = -probe.min.y
       scene.updateMatrixWorld(true)
     }
-    // Extract (and hide) GLB anchor markers. For the FIAT demo van the GLB
-    // anchors are unusable (authored 20 cm above the floor), so only the two
-    // hardcoded floor anchors are exposed.
-    const anchors = hydrateAnchorsAndHide(scene)
-    const active = needsFiatFloor ? fiatAnchors : anchors
-    setRuntimeAnchors(active)
+    // Extract (and hide) GLB anchor markers. Anchors declared in the project
+    // data take priority over these (see selectEffectiveAnchors).
+    setRuntimeAnchors(hydrateAnchorsAndHide(scene))
     // A change of `dimensions` alone keeps this model mounted, but the store
     // dropped the anchors with the old enclosure: publish them again.
-  }, [scene, data.scale, dimensionsKey, needsFiatFloor, fiatAnchors, setRuntimeAnchors])
+  }, [scene, data.scale, dimensionsKey, setRuntimeAnchors])
   /* eslint-enable react-hooks/immutability */
 
   // Compute and publish enclosure world-space AABB once per GLB. Also tries
@@ -229,17 +195,16 @@ export function Enclosure({ data }: Props) {
       min: [box.min.x, box.min.y, box.min.z],
       max: [box.max.x, box.max.y, box.max.z],
     })
-    const interior = needsFiatFloor ? null : scene.getObjectByName('Body_interior')
+    const interior = floor ? null : scene.getObjectByName('Body_interior')
     if (data.dimensions) {
       setInteriorBBox({ min: [-data.dimensions[0] / 2, 0, -data.dimensions[2] / 2], max: [data.dimensions[0] / 2, data.dimensions[1], data.dimensions[2] / 2] })
-    } else if (needsFiatFloor) {
-      // The FIAT GLB does not expose a Body_interior node. Use the visible
-      // cargo floor footprint plus the vehicle top to create a conservative
-      // inner collision box: products stay above the wooden floor and inside
-      // the van outline instead of clipping through the body mesh.
+    } else if (floor) {
+      // A declared cargo floor bounds the cargo area: its footprint, from its
+      // top up to the top of the model. Products stay above the floor and
+      // inside the body outline instead of clipping through it.
       setInteriorBBox({
-        min: [-FIAT_FLOOR_SIZE[0] * fiatFactor / 2, FIAT_FLOOR_TOP_Y * fiatFactor, -FIAT_FLOOR_SIZE[2] * fiatFactor / 2],
-        max: [FIAT_FLOOR_SIZE[0] * fiatFactor / 2, box.max.y, FIAT_FLOOR_SIZE[2] * fiatFactor / 2],
+        min: [-floor.size[0] / 2, floor.y + floor.size[1] / 2, -floor.size[2] / 2],
+        max: [floor.size[0] / 2, box.max.y, floor.size[2] / 2],
       })
     } else if (interior) {
       const ibox = new Box3().setFromObject(interior)
@@ -296,7 +261,7 @@ export function Enclosure({ data }: Props) {
       setEnclosureBBox(null)
       setInteriorBBox(null)
     }
-  }, [scene, data.scale, needsFiatFloor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors, data.dimensions, fiatFactor, storeApi])
+  }, [scene, data.scale, floor, setEnclosureBBox, setInteriorBBox, setRuntimeAnchors, data.dimensions, storeApi])
 
   // Build view-only wall indices after scale, lift, markers and bounds are ready.
   useEffect(() => {
@@ -350,17 +315,18 @@ export function Enclosure({ data }: Props) {
   return (
     <group userData={{ exportable: true }}>
       <primitive object={scene} dispose={null} />
-      {needsFiatFloor && <group scale={fiatFactor}><FiatNdc40H2Floor xrayEnabled={xrayEnabled} /></group>}
+      {floor && <CargoFloor floor={floor} xrayEnabled={xrayEnabled} />}
     </group>
   )
 }
 
-function FiatNdc40H2Floor({ xrayEnabled }: { xrayEnabled: boolean }) {
+/** The cargo floor declared by the enclosure data, drawn inside the model. */
+function CargoFloor({ floor, xrayEnabled }: { floor: NonNullable<EnclosureData['floor']>; xrayEnabled: boolean }) {
   return (
-    <mesh position={[0, FIAT_FLOOR_Y, 0]}>
-      <boxGeometry args={FIAT_FLOOR_SIZE} />
+    <mesh position={[0, floor.y, 0]}>
+      <boxGeometry args={floor.size} />
       <meshPhysicalMaterial
-        color="#6f7378"
+        color={floor.color ?? '#6f7378'}
         metalness={0.15}
         roughness={0.55}
         clearcoat={0.35}

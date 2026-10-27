@@ -7,7 +7,7 @@ import { defineConfig, globalIgnores } from 'eslint/config'
 
 export default defineConfig([
   // `**/` so the example's own build output and vendored tarball are skipped too.
-  globalIgnores(['**/dist', '**/dist-demo', '**/node_modules', 'examples/*/vendor']),
+  globalIgnores(['**/dist', '**/dist-demo', '**/node_modules', 'examples/*/vendor', 'coverage', 'test-results', 'playwright-report']),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [

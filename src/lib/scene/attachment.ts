@@ -1,9 +1,9 @@
 import type { ConfiguratorStore } from '../state/store'
 import type { AssemblyView } from '../state/selectors'
-import type { Connection, Euler, ItemSnapPoint } from '../types'
+import type { Euler, ItemSnapPoint } from '../types'
 import { connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
 import { canMate, kindMatesWithAny, positionForItemSnap, snapsForItem, yawToMate } from './mating'
-import { assemblyMembers, isResolvedJoint, jointsOf, pointUse } from '../assembly/graph'
+import { assemblyMembers, jointsOf, pointUse } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
 import { worldPoint } from './geometry'
 import { itemHeight, previewAssemblyPlacement } from './assemblyPlacement'
@@ -58,7 +58,7 @@ export function computeAttachmentPreview(state: AssemblyView, sourceId: string, 
   const project = state.project
   const source = project?.items.find((item) => item.id === sourceId)
   const target = project?.items.find((item) => item.id === targetId)
-  const rejected = (error: string) => ({ valid: false as const, error, patches: [], joints: [] as Joint[], connections: [] as Connection[], legacy: false, warning: undefined })
+  const rejected = (error: string) => ({ valid: false as const, error, patches: [], joints: [] as Joint[], warning: undefined })
   if (!project || !source || !target || !assemblyCanMove(state, sourceId)) return rejected('Il componente non è modificabile')
   const members = assemblyMembers(project.items, jointsOf(project), sourceId)
   if (members.has(targetId)) return rejected('Il destinatario appartiene già a questo assieme')
@@ -86,10 +86,6 @@ export function computeAttachmentPreview(state: AssemblyView, sourceId: string, 
   if (entry) entry.patch.constraints = source.constraints?.filter((constraint) => constraint.type !== 'snapToAnchor') ?? []
   return {
     valid: !blocking, error: blocking?.message, patches, joints,
-    /** @deprecated Resolved part of `joints`, for `commitAssembly`. */
-    connections: joints.filter(isResolvedJoint),
-    /** @deprecated True when the joint has no manifest connectors and stays pending. */
-    legacy: !isResolvedJoint(joint),
     warning: issues.find((issue) => issue.code === 'out-of-bounds')?.message,
   }
 }
