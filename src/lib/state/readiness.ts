@@ -14,9 +14,6 @@ export function configurationStatus(state: ConfiguratorState) {
   if (!state.captureRefs || !state.enclosureBBox || state.project.items.some((item) =>
     !state.itemSizes[item.catalogId] || !Object.hasOwn(state.itemSnaps, item.catalogId) || !state.itemRegistry.has(item.id),
   )) return fail('Caricamento modelli 3D…')
-  if (state.project.connections === undefined && state.project.items.some((item) => item.constraints?.some((c) => c.type === 'snapToItem'))) {
-    return fail('Connessioni legacy da risolvere')
-  }
   const technical = !!state.assemblyManifest && state.project.items.every((item) =>
     state.assemblyManifest?.products.some((product) => product.catalogId === item.catalogId),
   )

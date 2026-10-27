@@ -8,7 +8,7 @@ import {
   extractAutoSnapGridFromObject, AUTO_SNAP_GRID_RULE, configurationStatus,
   positionForItemSnap, assemblyPosePatches, exportProjectPDF, exportSceneGLB,
   beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview,
-  createEnclosureCutaway,
+  createEnclosureCutaway, assemblyGroup,
 } from '../dist/configurator-3d.js'
 
 const item = (id, extra = {}) => ({ id, catalogId: 'part', position: [0, 0, 0], rotation: [0, 0, 0], ...extra })
@@ -592,37 +592,127 @@ test('a graph edit keeps the links the graph never held', () => {
   assert.deepEqual(links(store.getState().project, 'a'), [])
 })
 
-test('graph edits on an unresolved legacy project never save a partial graph', () => {
+test('graph edits on an unresolved legacy project keep every pending link', () => {
   const store = createConfiguratorStore()
   const legacy = project([item('a', { constraints: [legacyLink('b')] }), item('b'), item('c', { position: [3, 0, 0] })], { connections: undefined })
   store.getState().setProject(legacy)
   const before = structuredClone(store.getState().project)
   store.getState().commitAssembly([{ id: 'c', patch: { position: [2, 0, 0] } }], [connection('c', 'b')])
-  assert.equal(store.getState().project.connections, undefined)
+  assert.deepEqual(store.getState().project.connections, [connection('c', 'b')])
   assert.deepEqual(links(store.getState().project, 'a'), [legacyLink('b')])
-  assert.deepEqual(links(store.getState().project, 'c'), [legacyLink('b')])
   store.getState().undo()
   assert.deepEqual(store.getState().project, before)
 
   store.getState().createMirrorPair('c', item('twin', { position: [4, 0, 0], mirrored: true }), 0.5, [connection('twin', 'b')])
   let p = store.getState().project
-  assert.equal(p.connections, undefined)
   assert.deepEqual(links(p, 'a'), [legacyLink('b')])
-  assert.deepEqual(links(p, 'twin'), [legacyLink('b')])
-  // Once metadata hydrates, the resolver upgrades every link together.
+  assert.deepEqual(p.connections, [connection('twin', 'b')])
+  // Once metadata hydrates, the pending link upgrades next to the resolved one.
   store.getState().setItemSnaps('part', [snap])
   store.getState().setItemRules('part', [])
   store.getState().setAssemblyManifest(manifest)
   p = store.getState().project
   assert.deepEqual(p.connections.map((c) => [c.sourceItemId, c.targetItemId]).sort(), [['a', 'b'], ['twin', 'b']])
+  assert.deepEqual(links(p, 'a'), [])
 })
 
-test('mirror pair joints on a resolved graph keep the legacy view in step', () => {
+test('editing state holds each joint once; export adds the legacy view and import strips it', () => {
   const store = createConfiguratorStore()
   store.getState().setProject(project([item('a'), item('b', { position: [1, 0, 0] })]))
   store.getState().createMirrorPair('a', item('twin', { position: [2, 0, 0], mirrored: true }), 0.5, [connection('twin', 'b')])
-  const p = store.getState().project
-  assert.equal(p.connections.length, 1)
-  assert.deepEqual(links(p, 'twin'), [legacyLink('b')])
-  assert.deepEqual(serializeProject(p), serializeProject(parseProject(serializeProject(p)).project))
+  assert.deepEqual(links(store.getState().project, 'twin'), [])
+  const exported = store.getState().exportProject()
+  assert.equal(exported.connections.length, 1)
+  assert.deepEqual(links(exported, 'twin'), [legacyLink('b')])
+  store.getState().setProject(parseProject(serializeProject(exported)).project)
+  assert.deepEqual(links(store.getState().project, 'twin'), [])
+  assert.equal(serializeProject(store.getState().exportProject()), serializeProject(exported))
+})
+
+test('pending joints never block editing and are reported once a manifest cannot resolve them', () => {
+  const store = createConfiguratorStore()
+  store.getState().setProject(project([item('a', { constraints: [{ ...legacyLink('b'), point: 'missing' }] }), item('b')]))
+  store.getState().setItemSnaps('part', [snap]); store.getState().setItemRules('part', [])
+  assert.equal(validateConfiguration(store.getState().project, catalog, null, context).filter((issue) => issue.code === 'connection').length, 0)
+  store.getState().setAssemblyManifest(manifest)
+  assert.equal(links(store.getState().project, 'a').length, 1)
+  assert.ok(errors(store.getState().project).some((issue) => issue.message === 'Collegamento non riconosciuto dal manifest tecnico'))
+  // The joint still moves its assembly and is removed by unjoining.
+  assert.deepEqual([...assemblyGroup('a', store.getState().project.items, store.getState().project.connections)].sort(), ['a', 'b'])
+  store.getState().commitJoints([], [])
+  assert.deepEqual(links(store.getState().project, 'a'), [])
+})
+
+test('a part with several joints keeps all of them through export, import, undo and redo', () => {
+  const store = createConfiguratorStore()
+  const joint = (target, point, targetPoint = 'face') => ({ ...connection('hub', target), sourcePointId: point, targetPointId: targetPoint })
+  const points = [snap, { ...snap, id: 'left' }, { ...snap, id: 'right' }]
+  store.getState().setProject(project([item('hub'), item('l'), item('r')], { connections: [joint('l', 'left'), joint('r', 'right')] }))
+  store.getState().setItemSnaps('part', points); store.getState().setItemRules('part', [])
+  const exported = store.getState().exportProject()
+  assert.equal(links(exported, 'hub').length, 1)
+  store.getState().setProject(parseProject(serializeProject(exported)).project)
+  assert.equal(store.getState().project.connections.length, 2)
+  store.getState().updateItems([{ id: 'hub', patch: { position: [1, 0, 0] } }, { id: 'l', patch: { position: [1, 0, 0] } }, { id: 'r', patch: { position: [1, 0, 0] } }])
+  store.getState().undo(); store.getState().redo()
+  assert.equal(store.getState().project.connections.length, 2)
+  // Two pending links on the same legacy part both upgrade.
+  store.getState().setProject(project([item('hub', { constraints: [{ ...legacyLink('l'), point: 'left' }, { ...legacyLink('r'), point: 'right' }] }), item('l'), item('r')], { connections: undefined }))
+  store.getState().setAssemblyManifest(manifest)
+  assert.deepEqual(store.getState().project.connections.map((c) => c.targetItemId).sort(), ['l', 'r'])
+})
+
+test('interaction, scene resources and load-time corrections never enter history or the saved project', () => {
+  const store = attachmentStore(), state = store.getState()
+  const saved = serializeProject(state.exportProject())
+  state.select('source'); state.setGizmoMode('rotate'); state.setXrayEnabled(true); state.setDraggingItemId('source')
+  state.setDragClearance({ itemId: 'source', left: 0, right: 0, front: 0, back: 0, bottom: 0, top: 0 })
+  state.setEnclosureBBox(bounds); state.setAssetError('enclosure', 'x'); state.setAssetError('enclosure', null)
+  beginAttachment(store, 'source'); store.getState().setAttachment(null)
+  assert.equal(serializeProject(store.getState().exportProject()), saved)
+  store.getState().settleItemPosition('source', [2, 0, 0])
+  store.getState().hydrateItemPosition('target', [0, 0, 1])
+  assert.equal(store.getState().past.length, 0)
+  assert.deepEqual(store.getState().project.items.map((it) => it.position), [[2, 0, 0], [0, 0, 1]])
+  store.getState().setReadOnly(true)
+  store.getState().settleItemPosition('source', [1, 0, 0])
+  assert.deepEqual(store.getState().project.items[0].position, [2, 0, 0])
+})
+
+test('each kind of change resets only what belongs to it', () => {
+  const store = attachmentStore()
+  store.getState().setEnclosureBBox(bounds)
+  store.getState().select('source')
+  store.getState().setDraggingItemId('source')
+  beginAttachment(store, 'source')
+  store.getState().setReadOnly(true)
+  assert.equal(store.getState().attachment, null)
+  assert.equal(store.getState().draggingItemId, null)
+  assert.equal(store.getState().selectedId, 'source')
+  store.getState().setReadOnly(false)
+  beginAttachment(store, 'source')
+  store.getState().setCatalog([{ ...catalog.part, label: 'Renamed' }])
+  assert.equal(store.getState().attachment, null)
+  store.getState().updateItem('source', { position: [4, 0, 0] })
+  store.getState().undo()
+  assert.equal(store.getState().selectedId, null)
+  store.getState().select('source')
+  store.getState().setProject(project([item('source')]))
+  assert.equal(store.getState().selectedId, null)
+  assert.deepEqual(store.getState().enclosureBBox, bounds)
+  store.getState().setProject(project([], { enclosure: { glbUrl: '/other.glb' } }))
+  assert.equal(store.getState().enclosureBBox, null)
+})
+
+test('the collision tint follows each validation report in the same notification', () => {
+  const store = createConfiguratorStore()
+  let published = 0
+  store.subscribe(() => { published += 1 })
+  const report = [{ level: 'error', code: 'collision', message: 'x', itemIds: ['a', 'b'] }, { level: 'warning', code: 'out-of-bounds', message: 'y', itemIds: ['c'] }]
+  store.getState().setValidationIssues(report)
+  assert.equal(published, 1)
+  assert.deepEqual([...store.getState().overlappingIds].sort(), ['a', 'b'])
+  const tint = store.getState().overlappingIds
+  store.getState().setValidationIssues([...report])
+  assert.equal(store.getState().overlappingIds, tint)
 })

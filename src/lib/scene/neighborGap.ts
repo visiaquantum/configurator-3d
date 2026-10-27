@@ -13,7 +13,7 @@ import { defaultItemRegistry, getItem, getWorldAABB, listOtherItems } from './it
  * The reported axis is the nearest one: the axis with the **smallest positive**
  * gap. Axes where the boxes overlap carry no distance, so they are skipped; if
  * no axis has a positive gap the boxes intersect and there is nothing to
- * measure (that case is already flagged in red by OverlapDetector).
+ * measure (that case is already flagged in red by the validation tint).
  */
 
 export type GapAxis = 'x' | 'y' | 'z'

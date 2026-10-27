@@ -104,7 +104,9 @@ for (const order of ['project-first', 'metadata-first', 'manifest-last']) test(`
   if (order === 'manifest-last') state.setAssemblyManifest(manifest)
   assert.equal(store.getState().project.connections.length, 1)
   assert.equal(store.getState().past.length, 0)
-  assert.equal(store.getState().project.items[0].constraints[0].target, 'b')
+  // The legacy view is an export adapter: editing state keeps the joint once.
+  assert.equal(store.getState().project.items[0].constraints.length, 0)
+  assert.equal(store.getState().exportProject().items[0].constraints[0].target, 'b')
 })
 
 test('last metadata publication includes complete migration in the same notification', () => {
@@ -119,7 +121,7 @@ test('last metadata publication includes complete migration in the same notifica
   assert.equal(seen[0].itemRules.part.length, 0)
 })
 
-test('legacy setters wait for rules, unresolved links stay pending, explicit empty graph stays empty', () => {
+test('legacy setters wait for rules, unresolved links stay pending, an empty graph keeps its links', () => {
   const store = setup(), state = store.getState()
   state.setProject(legacy())
   state.setAssemblyManifest(manifest)
@@ -131,7 +133,10 @@ test('legacy setters wait for rules, unresolved links stay pending, explicit emp
   invalid.items[0].constraints[0].point = 'missing'
   state.setProject(invalid)
   assert.equal(store.getState().project.connections, undefined)
+  // An explicit empty graph is empty only of resolved joints: its links upgrade.
   state.setProject({ ...legacy(), connections: [] })
+  assert.equal(store.getState().project.connections.length, 1)
+  state.setProject({ ...legacy(), items: [part('a'), part('b')], connections: [] })
   assert.deepEqual(store.getState().project.connections, [])
 })
 

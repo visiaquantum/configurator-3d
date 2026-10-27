@@ -4,6 +4,7 @@ import { colliderSizeOf, getItem, defaultItemRegistry } from './itemRegistry'
 import { rotateVector } from './geometry'
 import { AUTO_GRID_SNAP_KIND } from '../io/autoSnapGrid'
 import { MIRROR_PAIR_RULE, mirrorAxisOf } from './mirrorPair'
+import { assemblyMembers, jointPartners, jointsFromParts } from '../assembly/graph'
 
 /**
  * Which product snap points may be joined to which.
@@ -60,6 +61,11 @@ export function snapPointLabel(p: ItemSnapPoint): string {
   // (`shelf-top`, `end-a`). Show it: otherwise every declared point of a kind
   // reads as the same bare label and the join picker cannot tell them apart.
   return p.id === p.kind ? base : `${base} · ${p.id}`
+}
+
+/** True when some kind may join `kind`; reference-only kinds (`origine`) and unknown ones may not. */
+export function kindMatesWithAny(kind: string): boolean {
+  return (MATING_RULES[kind]?.length ?? 0) > 0 || Object.values(MATING_RULES).some((kinds) => kinds.includes(kind))
 }
 
 /** True when the two kinds are declared compatible (order-insensitive). */
@@ -188,6 +194,9 @@ export interface AssemblyContext {
 }
 
 /**
+ * @deprecated Editing moves assemblies rigidly (`assemblyPosePatches`); this
+ * follows `snapToItem` links only and is kept for existing callers.
+ *
  * Re-place every item joined to `movedId` (and, transitively, everything
  * joined to those) so the assembly follows the piece that just moved.
  *
@@ -281,24 +290,12 @@ export function snapsForItem(
  * joint its twin accepts.
  */
 export function mirrorScaleFor(
-  item: PlacedItem,
+  item: Pick<PlacedItem, 'mirrored' | 'catalogId'>,
   itemRules: Record<string, ItemRule[]>,
 ): Vec3 | null {
   if (item.mirrored !== true) return null
   const rule = itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
   return rule && mirrorAxisOf(rule) === 'z' ? [1, 1, -1] : [-1, 1, 1]
-}
-
-/** Assembly context built from the current store snapshot. */
-export function assemblyContext(
-  items: PlacedItem[],
-  itemSnaps: Record<string, ItemSnapPoint[]>,
-  itemRules: Record<string, ItemRule[]>,
-): AssemblyContext {
-  return {
-    items,
-    snapsFor: (it) => snapsForItem(it, itemSnaps, itemRules),
-  }
 }
 
 /** Rotate a vector by `yaw` radians around +Y (three.js convention). */
@@ -350,26 +347,11 @@ export function yawToMate(
  *
  * Interlocking parts share material by design, so the overlap push-out and the
  * red "collision" tint must skip these pairs; otherwise the collision system
- * would fight the assembly apart the moment anything moves.
- *
- * `connections` matter as much as the constraint: a part is positioned by one
- * parent but bolted at several points, so an upright joined to three
- * horizontals has one `snapToItem` target and three real joints. Reading only
- * the constraint would leave the other two pairs to be prised apart.
+ * would fight the assembly apart the moment anything moves. Reads both
+ * project forms: resolved `connections` and pending or legacy `snapToItem`.
  */
 export function linkedPartners(id: string, items: PlacedItem[], connections: Connection[] = []): Set<string> {
-  const out = new Set<string>()
-  const self = items.find((it) => it.id === id)
-  const parent = self ? itemSnapConstraint(self)?.target : undefined
-  if (parent) out.add(parent)
-  for (const it of items) {
-    if (itemSnapConstraint(it)?.target === id) out.add(it.id)
-  }
-  for (const connection of connections) {
-    if (connection.sourceItemId === id) out.add(connection.targetItemId)
-    else if (connection.targetItemId === id) out.add(connection.sourceItemId)
-  }
-  return out
+  return jointPartners(jointsFromParts(items, connections), id)
 }
 
 /**
@@ -383,21 +365,7 @@ export function assemblyGroup(
   items: PlacedItem[],
   connections: Connection[] = [],
 ): Set<string> {
-  const group = new Set<string>([id])
-  const byId = new Map(items.map((it) => [it.id, it]))
-  const queue = [id]
-  while (queue.length > 0) {
-    const current = queue.pop() as string
-    const partners = linkedPartners(current, items, connections)
-    const twin = byId.get(current)?.constraints?.find((c) => c.type === 'mirrorPair')?.target
-    if (twin) partners.add(twin)
-    for (const partner of partners) {
-      if (group.has(partner)) continue
-      group.add(partner)
-      queue.push(partner)
-    }
-  }
-  return group
+  return assemblyMembers(items, jointsFromParts(items, connections), id)
 }
 
 /**
@@ -449,34 +417,4 @@ export function assemblyPosePatches(items: PlacedItem[], group: Set<string>, sou
   }))
 }
 
-/**
- * The joints a move leaves intact. A joint survives when both its ends travel
- * together: dragging a montante carries the piani seated on it and its mirror
- * twin, and none of those seats move apart. Only a joint with one end left
- * behind is broken by the move — which way round it was recorded says nothing
- * about which end was dragged.
- */
-export function jointsSurvivingMove(
-  moved: Array<{ id: string }>,
-  connections: Connection[],
-): Connection[] {
-  const ids = new Set(moved.map((m) => m.id))
-  return connections.filter((c) => ids.has(c.sourceItemId) === ids.has(c.targetItemId))
-}
-
-/**
- * One joint per pair of points, whichever side reported it. When both halves of
- * a joint move, each finds it, and two records of the same seat read as a point
- * used twice — and as a cycle.
- */
-export function dedupeJoints(connections: Connection[]): Connection[] {
-  const seen = new Set<string>()
-  return connections.filter((c) => {
-    const key = [`${c.sourceItemId}:${c.sourcePointId}`, `${c.targetItemId}:${c.targetPointId}`]
-      .sort()
-      .join('|')
-    if (seen.has(key)) return false
-    seen.add(key)
-    return true
-  })
-}
+export { dedupeJoints, jointsSurvivingMove } from '../assembly/graph'

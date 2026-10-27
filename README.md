@@ -17,11 +17,15 @@ npm run build:demo
 
 `tests/movement.test.mjs` verifica anche i comandi condivisi da mouse, gizmo e Inspector: movimento rigido degli assiemi, annullamento dell'anteprima, agganci e undo. Usa lo store della libreria compilata e carica gli adattatori interni con Vite, senza aprire porte di rete o richiedere WebGL. I test controllano le pose Three.js e il progetto serializzato; gli eventi del browser restano oggetto della verifica manuale.
 
+`tests/commands.test.mjs` verifica senza React né WebGL le regole di dominio estratte dai componenti: mappa delle scorciatoie, comandi dell'Inspector (rotazione, ancoraggio al vano, sgancio, distanza della coppia specchiata, aggiunta di prodotti), opzioni di distanza calcolate dal catalogo e compatibilità dichiarata dal manifest.
+
 `tests/product-metadata.test.mjs` copre la preparazione condivisa dei GLB, le coordinate di collider e snap, la cache per configurazione, l'isolamento tra store e la migrazione dei progetti legacy nei diversi ordini di caricamento. Include i modelli reali YSI12836 e KIT01.
 
 I prodotti usati nella scena vengono caricati per `catalogId`. `scene/productAsset.ts` prepara un modello condiviso senza modificarne la sorgente; `ProductInstances` pubblica dimensioni, snap e regole insieme attraverso `hydrateProduct`, prima di montare le istanze. Ogni istanza mantiene materiali e trasformazioni propri. La telemetria `asset-load` dei prodotti segnala il caricamento per prodotto, anziché per pezzo inserito.
 
-La conversione dei collegamenti legacy risiede in `io/resolveLegacyProject.ts` ed è attivata dallo store quando progetto, manifest e metadati sono disponibili, anche senza React. Non genera un passo di undo e non pubblica grafi parziali. I setter separati dei metadati restano compatibili; per la conversione occorrono sia snap sia regole (anche un array vuoto). Il formato dei progetti resta invariato: i vincoli `snapToItem` sono ancora supportati accanto a `connections`.
+I collegamenti tra pezzi hanno un solo modello, il grafo di `assembly/graph.ts`: ogni giunto lega due punti di snap ed è *risolto* (un `Connection` con i connettori del manifest) oppure *in sospeso* (un `snapToItem` che il manifest non ha ancora confermato: manifest assente, metadati non ancora caricati o connettori non compatibili). Nel progetto in memoria i giunti risolti stanno in `connections` e quelli in sospeso come `snapToItem` sul pezzo sorgente; il `snapToItem` che duplica un giunto risolto esiste solo nel file esportato, per i lettori che conoscono soltanto quel formato. `exportProject()`, `getProject()`, `onChange` e `onSave` restituiscono questa forma persistita; `state.project` è la forma di editing, con ogni giunto una sola volta. Movimento, rotazione, agganci guidati e magnetici, collisioni, validazione e Inspector leggono tutti il grafo tramite `jointsOf` / `selectJoints`.
+
+`assembly/resolveJoints.ts` risolve i giunti in sospeso appena i due prodotti di ciascun giunto hanno snap e regole idratati (anche un array vuoto) e il manifest è disponibile, senza passi di undo. Ogni giunto si risolve da solo: uno non risolvibile resta in sospeso, non viene mai scartato e non blocca gli altri. Con un manifest caricato viene segnalato come errore «Collegamento non riconosciuto dal manifest tecnico», che impedisce la distinta finché non lo si sgancia. Il formato dei file non cambia.
 
 Con il server locale attivo, `/tests/browser/index.html` permette di verificare due canvas indipendenti, scale del vano diverse, sola lettura, undo e recupero dopo un errore GLB. Il pulsante “Genera PDF” mostra il risultato dell'API di esportazione. Questo controllo è manuale e non fa parte della CI.
 
@@ -107,9 +111,35 @@ store.getState().undo()
 
 Gli oggetti `enclosure`, `initialItems` e `metadata` devono avere riferimenti stabili: un cambiamento dei dati iniziali ricrea il progetto e azzera la cronologia. Per cambiare il progetto durante una sessione usare `ref.current.setProject(project)`. Il reset dello stesso GLB conserva i limiti e gli anchor già estratti. Un cambio di URL, scala o dimensioni ricalcola i dati del vano.
 
-`getProject()`, `exportProject()` e `onChange` forniscono copie dei dati, per evitare modifiche accidentali dello stato o della cronologia da parte dell'host. `readOnly` impedisce modifiche, undo e redo; i caricamenti e la validazione continuano. Gli item `locked` e i vincoli `lockAxis` sono rispettati dai comandi dello store. Gli item con assi vincolati vengono resi fissi nei controlli della scena; i comandi dello store possono modificare le coordinate non vincolate.
+`getProject()`, `exportProject()` e `onChange` forniscono copie dei dati, per evitare modifiche accidentali dello stato o della cronologia da parte dell'host. `readOnly` impedisce modifiche, undo e redo; i caricamenti e la validazione continuano. Gli item `locked` e i vincoli `lockAxis` sono rispettati dai comandi dello store. Un assieme che contiene un item bloccato o con assi vincolati è fisso per gesti, gizmo, aggancio guidato e Inspector; i comandi dello store possono ancora modificare le coordinate non vincolate.
 
 Le posizioni risolte degli agganci al vano vengono sincronizzate nel progetto esportato senza aggiungere passi alla cronologia. Spostare un pezzo libera il vecchio anchor; un nuovo aggancio deve essere dichiarato esplicitamente nel comando.
+
+## Architettura
+
+I componenti React presentano lo stato e collegano gli eventi; le decisioni stanno in moduli verificabili senza montare React.
+
+| Modulo | Responsabilità |
+| --- | --- |
+| `assembly/graph.ts` | Grafo dei giunti: lettura, scrittura, vicini, membri di un assieme, adattatori di import/export di `snapToItem`. |
+| `assembly/manifest.ts`, `assembly/resolveJoints.ts` | Connettori del manifest, compatibilità, scoperta dei giunti a una posa, risoluzione dei giunti in sospeso. |
+| `assembly/validation.ts`, `assembly/pairSpacing.ts` | Validazione geometrica e tecnica; distanze proponibili per una coppia specchiata. |
+| `state/projectSlice.ts` | Progetto persistente e cronologia: l'unica parte che undo/redo attraversa. |
+| `state/resourceSlice.ts` | Catalogo, manifest, metadati dei prodotti, limiti del vano, errori degli asset e riferimenti Three.js. |
+| `state/interactionSlice.ts`, `state/reset.ts` | Selezione, aggancio in corso, gesti, preferenze di vista, cache derivate, e cosa azzera ogni tipo di cambiamento. |
+| `state/selectors.ts` | Dati derivati per snapshot del progetto (grafo, pezzi fissi, anchor effettivi); da usare con `useShallow` nei pannelli. |
+| `scene/commands.ts`, `scene/itemMovement.ts`, `scene/connectionPreview.ts`, `scene/attachment.ts` | Comandi di editing condivisi da Inspector, tastiera, handle imperativo, mouse e gizmo. |
+| `scene/liveDrag.ts` | Anteprima durante il gesto sui gruppi Three.js live; non salva nulla. |
+| `scene/Item.tsx`, `ui/*`, `Configurator3D.tsx` | Rendering, eventi e ciclo di vita React. |
+
+Lo store di ogni configuratore compone le tre slice in un unico stato, così un comando aggiorna progetto, interazione e cache in una sola notifica. Cronologia, file esportato e `onChange` contengono soltanto il progetto: selezione, anteprime, caricamenti e riferimenti Three.js non creano passi di undo. Le correzioni dovute al caricamento (posizione risolta dall'anchor, riposizionamento dentro il vano appena i limiti sono noti) aggiornano il progetto senza aggiungere passi.
+
+### Aggiungere un prodotto o una regola
+
+1. Aggiungere il GLB e la voce di catalogo (`id`, `glbUrl`, `size`, eventuali `snapPoints` certificati e `autoSnapGrid`). Gli snap possono anche essere nodi `SNAP_<TIPO>` del GLB, le regole nodi `RULE_*` o extras (vedi [docs/glb-conventions.md](docs/glb-conventions.md)).
+2. Dichiarare nel manifest i connettori del prodotto (`snapId` o `snapKind`), `compatibleWith`, capacità, tolleranze, clearance, collider e componenti di distinta. Quando un connettore dichiara `compatibleWith`, è il manifest a decidere la compatibilità: un nuovo tipo di punto non richiede modifiche al codice.
+3. Senza manifest la compatibilità deriva dalla tabella dei tipi `MATING_RULES` in `scene/mating.ts`, che riflette le convenzioni dei GLB esistenti; i tipi che non si accoppiano con nulla (ad esempio `origine`) non vengono proposti.
+4. Una regola parametrica nuova (oltre a `mirror-pair` e `auto-snap-grid`) richiede invece una funzione pura in `scene/` o `assembly/`, un comando in `scene/commands.ts` e i relativi test; i componenti si limitano a mostrarne le opzioni.
 
 ## Coordinate e dati tecnici
 
@@ -131,7 +161,7 @@ Convenzioni dei modelli: [docs/glb-conventions.md](docs/glb-conventions.md).
 
 `parseProject` accetta un oggetto o JSON, migra la versione legacy 0 alla versione 1 e rifiuta versioni future o malformate, ID duplicati, riferimenti a item mancanti, scale e dimensioni non positive e vincoli incompleti. I cataloghi e i manifest supportano la versione 1 e vengono validati anche quando passati inline. URL remoti e asset vengono caricati con gestione degli errori; le richieste dei dati vengono annullate quando cambia la sorgente o il componente viene smontato.
 
-I vecchi `snapToItem` vengono migrati soltanto dopo il caricamento degli snap di tutti i prodotti necessari. Un collegamento non risolvibile resta segnalato e impedisce l'esportazione tecnica. Gli ID dei fori derivati dalla geometria possono cambiare quando si modifica un GLB o si corregge il rilevamento: per progetti persistenti preferire snap certificati con ID espliciti. I vecchi agganci basati su falsi fori devono essere corretti.
+I vecchi `snapToItem` vengono convertiti giunto per giunto, appena sono caricati gli snap e le regole dei due prodotti coinvolti. Un collegamento non risolvibile resta in sospeso, viene segnalato e impedisce l'esportazione tecnica. Gli ID dei fori derivati dalla geometria possono cambiare quando si modifica un GLB o si corregge il rilevamento: per progetti persistenti preferire snap certificati con ID espliciti. I vecchi agganci basati su falsi fori devono essere corretti.
 
 L'API espone `addItem`, `removeItem`, `selectItem`, `setProject`, `undo`, `redo`, `getProject`, `getValidation`, `exportPNG`, `exportGLB` e `exportPDF`.
 

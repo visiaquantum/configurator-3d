@@ -1,9 +1,12 @@
-import type { ConfiguratorState, ConfiguratorStore } from '../state/store'
-import type { Anchor, Connection, Euler, ItemConstraint, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
+import type { ConfiguratorState, ConfiguratorStore, DragClearance } from '../state/store'
+import { rotateVector } from './geometry'
+import type { Anchor, Euler, ItemConstraint, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
 import type { ItemRegistry } from './itemRegistry'
+import { selectCanMove } from '../state/selectors'
 import { colliderSizeOf } from './itemRegistry'
-import { assemblyGroup, assemblyPosePatches, jointsSurvivingMove, rotateGroupPatches } from './mating'
-import { withSnapConstraint } from './mirrorPair'
+import { assemblyPosePatches, rotateGroupPatches } from './mating'
+import { assemblyMembers, jointsOf, jointsSurvivingMove } from '../assembly/graph'
+import type { Joint } from '../assembly/graph'
 import { clampItemToBounds, pushOutOverlaps } from './snapping'
 
 const ANCHOR_SNAP_RADIUS = 0.06
@@ -103,6 +106,12 @@ function findAnchorSnap(
   return best
 }
 
+/** Replace an item's enclosure anchor (or drop it), keeping every other constraint. */
+export function withAnchorConstraint(item: PlacedItem, anchor: ItemConstraint | null): ItemConstraint[] {
+  const kept = item.constraints?.filter((constraint) => constraint.type !== 'snapToAnchor') ?? []
+  return anchor ? [...kept, anchor] : kept
+}
+
 /** snapToAnchor constraint recording which item feature landed on the anchor. */
 function snapHitConstraint(hit: AnchorSnapHit): ItemConstraint {
   return {
@@ -117,13 +126,7 @@ function snapHitConstraint(hit: AnchorSnapHit): ItemConstraint {
 }
 
 /** The same editability rule is used by scene gestures, guided attachment and the inspector. */
-export function assemblyCanMove(state: Pick<ConfiguratorState, 'project' | 'readOnly' | 'walkMode'>, id: string): boolean {
-  if (!state.project || state.readOnly || state.walkMode) return false
-  const members = assemblyGroup(id, state.project.items, state.project.connections ?? [])
-  return state.project.items.some((item) => item.id === id) && !state.project.items.some((item) =>
-    members.has(item.id) && (item.locked || item.constraints?.some((constraint) => constraint.type === 'lockAxis')),
-  )
-}
+export const assemblyCanMove = selectCanMove
 
 /** Shared adapter from persisted base poses to live collider-centred Three.js transforms. */
 export function applyLiveItemPatches(registry: ItemRegistry, patches: ItemPatch[]): void {
@@ -143,22 +146,77 @@ export function restoreLiveItems(state: ConfiguratorState): void {
 }
 
 /** A rejected edit must also roll back its live preview. */
-export function commitLiveItemPatches(store: ConfiguratorStore, patches: ItemPatch[], connections?: Connection[]): void {
+export function commitLiveItemPatches(store: ConfiguratorStore, patches: ItemPatch[], joints?: Joint[]): void {
   try {
-    if (connections === undefined) store.getState().updateItems(patches)
-    else store.getState().commitAssembly(patches, connections)
+    if (joints === undefined) store.getState().updateItems(patches)
+    else store.getState().commitJoints(patches, joints)
   } finally {
     restoreLiveItems(store.getState())
   }
 }
 
-/** Inspector rotations and gesture rotations share the same rigid assembly operation. */
+/**
+ * Turn an item by `step` about the vertical axis. The inspector buttons and
+ * the release of a pointer or gizmo turn share this: a whole assembly swings
+ * rigidly about the part acted on; a free part goes through the same
+ * collision, containment and anchor rules as the gesture.
+ */
 export function rotateAssembly(store: ConfiguratorStore, id: string, step: number): void {
   const state = store.getState()
   const item = state.project?.items.find((entry) => entry.id === id)
   if (!item || !state.project || !assemblyCanMove(state, id)) return
-  const members = assemblyGroup(id, state.project.items, state.project.connections ?? [])
+  const members = assemblyMembers(state.project.items, jointsOf(state.project), id)
+  if (members.size === 1) {
+    finishItemMovement(store, id, 'rotate', [item.rotation[0], item.rotation[1] + step, item.rotation[2]], [], [])
+    return
+  }
   commitLiveItemPatches(store, rotateGroupPatches(state.project.items, members, item.position, step))
+}
+
+const QUARTER_TURN = Math.PI / 2
+
+/** The rotation a gesture commits: every axis snapped to a quarter turn. */
+export function snappedRotation(rotation: { x: number; y: number; z: number }): Euler {
+  const snap = (value: number) => Math.round(value / QUARTER_TURN) * QUARTER_TURN
+  return [snap(rotation.x), snap(rotation.y), snap(rotation.z)]
+}
+
+/** Distances from an item's box to each face of the enclosure box, for the drag overlay. */
+export function dragClearance(itemId: string, center: Vec3, size: Vec3, bounds: { min: Vec3; max: Vec3 }): DragClearance {
+  const [hx, hy, hz] = [size[0] / 2, size[1] / 2, size[2] / 2]
+  return {
+    itemId,
+    left: center[0] - hx - bounds.min[0],
+    right: bounds.max[0] - (center[0] + hx),
+    back: center[2] - hz - bounds.min[2],
+    front: bounds.max[2] - (center[2] + hz),
+    bottom: center[1] - hy - bounds.min[1],
+    top: bounds.max[1] - (center[1] + hy),
+  }
+}
+
+/**
+ * Base position of an item held by an enclosure anchor: the snap point,
+ * corner or centre it was snapped by sits exactly on the anchor.
+ */
+export function anchoredBasePosition(
+  anchor: Anchor,
+  held: { point?: string | null; corner?: number | null },
+  rotation: Euler,
+  snaps: ItemSnapPoint[],
+  size: Vec3,
+): Vec3 {
+  const point = held.point ? snaps.find((entry) => entry.id === held.point) : undefined
+  if (point) {
+    const [dx, dy, dz] = rotateVector(point.position, rotation)
+    return [anchor.position[0] - dx, anchor.position[1] - (dy + size[1] / 2), anchor.position[2] - dz]
+  }
+  const corner = held.corner != null ? cornerOffsetsXZ(size)[held.corner] : undefined
+  if (corner) {
+    const [dx, dz] = rotateOffsetXZ(corner[0], corner[1], rotation[1])
+    return [anchor.position[0] - dx, anchor.position[1], anchor.position[2] - dz]
+  }
+  return [...anchor.position]
 }
 
 /** Complete a pointer or gizmo gesture using the same collision, anchor and history rules. */
@@ -178,7 +236,8 @@ export function finishItemMovement(
     restoreLiveItems(state)
     return
   }
-  const members = assemblyGroup(id, state.project.items, state.project.connections ?? [])
+  const joints = jointsOf(state.project)
+  const members = assemblyMembers(state.project.items, joints, id)
   if (mode === 'rotate' && members.size > 1) {
     rotateAssembly(store, id, rotation[1] - item.rotation[1])
     return
@@ -197,7 +256,7 @@ export function finishItemMovement(
     const keepAnchor = !corrected && anchor && anchor.corner == null && anchor.point == null
     commitLiveItemPatches(store, [{ id, patch: {
       position: position(), rotation,
-      constraints: keepAnchor ? item.constraints?.map((constraint) => ({ ...constraint })) : withSnapConstraint(item, null),
+      constraints: keepAnchor ? item.constraints?.map((constraint) => ({ ...constraint })) : withAnchorConstraint(item, null),
     } }])
     return
   }
@@ -208,8 +267,7 @@ export function finishItemMovement(
   }
   const patches = assemblyPosePatches(state.project.items, members, item, { position: position(), rotation })
   const source = patches.find((entry) => entry.id === id)!
-  source.patch.constraints = hit ? withSnapConstraint(item, snapHitConstraint(hit)) : item.constraints
-  const connections = jointsSurvivingMove(patches, state.project.connections ?? [])
-  commitLiveItemPatches(store, patches,
-    connections.length !== (state.project.connections ?? []).length ? connections : undefined)
+  source.patch.constraints = hit ? withAnchorConstraint(item, snapHitConstraint(hit)) : item.constraints
+  const kept = jointsSurvivingMove(patches, joints)
+  commitLiveItemPatches(store, patches, kept.length !== joints.length ? kept : undefined)
 }

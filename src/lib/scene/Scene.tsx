@@ -13,11 +13,11 @@ import { SceneCaptureBridge } from './SceneCaptureBridge'
 import { CameraPresetBridge } from './CameraPresetBridge'
 import { IsometricCamera } from './IsometricCamera'
 import { SelectedOrbitTarget } from './SelectedOrbitTarget'
-import { OverlapDetector } from './OverlapDetector'
 import { NeighborGapIndicator } from './NeighborGapIndicator'
 import { WalkControls } from './WalkControls'
 import { PerformanceTelemetry } from './PerformanceTelemetry'
 import { useConfiguratorStore } from '../state/store'
+import { selectEffectiveAnchors } from '../state/selectors'
 
 interface Props {
   project: ProjectData
@@ -29,14 +29,12 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
   const colors = sceneColors[theme]
   const select = useConfiguratorStore((s) => s.select)
   const catalog = useConfiguratorStore((s) => s.catalog)
-  const runtimeAnchors = useConfiguratorStore((s) => s.runtimeAnchors)
+  const effectiveAnchors = useConfiguratorStore(selectEffectiveAnchors)
   const draggingItemId = useConfiguratorStore((s) => s.draggingItemId)
   const walkMode = useConfiguratorStore((s) => s.walkMode)
   const attachment = useConfiguratorStore((s) => s.attachment)
   const cameraProjection = useConfiguratorStore((s) => s.cameraProjection)
   const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
-  const effectiveAnchors =
-    project.enclosure.anchors?.length ? project.enclosure.anchors : runtimeAnchors
 
   const products = new Map<string, PlacedItem[]>()
   for (const item of project.items) {
@@ -72,7 +70,6 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
       <SceneCaptureBridge />
       <CameraPresetBridge />
       <SelectedOrbitTarget />
-      <OverlapDetector />
       <NeighborGapIndicator />
       <PerformanceTelemetry />
       <color attach="background" args={[colors.background]} />

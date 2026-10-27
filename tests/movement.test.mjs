@@ -152,7 +152,7 @@ test('magnetic and guided attachment resolve the same pose and joints without mu
   assert.equal(magnetic.valid, true)
   assert.equal(guided.valid, true)
   assert.deepEqual(magnetic.position, guided.patches.find((patch) => patch.id === 'source').patch.position)
-  assert.deepEqual(magnetic.connections, guided.connections)
+  assert.deepEqual(magnetic.joints, guided.joints)
   assert.equal(snapshot(store), before)
   assert.equal(live(store, 'source').position.x, 1.03)
   assert.equal(store.getState().past.length, 0)

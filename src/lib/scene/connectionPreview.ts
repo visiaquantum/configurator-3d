@@ -1,7 +1,9 @@
 import type { ConfiguratorState, ConfiguratorStore } from '../state/store'
 import type { Connection, Euler, ItemSnapPoint, Vec3 } from '../types'
 import { connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
-import { assemblyGroup, assemblyPosePatches, dedupeJoints, jointsSurvivingMove, listMatingTargets, positionForItemSnap, snapsForItem, worldSnapPosition, yawToMate } from './mating'
+import { assemblyPosePatches, listMatingTargets, positionForItemSnap, snapsForItem, worldSnapPosition, yawToMate } from './mating'
+import { assemblyMembers, dedupeJoints, jointsOf, jointsSurvivingMove } from '../assembly/graph'
+import type { Joint } from '../assembly/graph'
 import { itemHeight, previewAssemblyPlacement } from './assemblyPlacement'
 import { assemblyCanMove, commitLiveItemPatches, restoreLiveItems } from './itemMovement'
 
@@ -11,7 +13,8 @@ export interface ConnectionPreview {
   position: Vec3
   rotation: Euler
   connection: Connection
-  connections: Connection[]
+  /** The whole graph once the part sits in this seat. */
+  joints: Joint[]
   valid: boolean
   reason?: string
 }
@@ -27,7 +30,7 @@ export function resolveConnectionPreview(s: ConfiguratorState, itemId: string): 
   // with the drag, so it stays within snapping range for the whole gesture:
   // the preview kept resolving back onto it, the ghost flicked between the
   // two places, and the release put the part back where it started.
-  const travelling = assemblyGroup(item.id, s.project.items, s.project.connections ?? [])
+  const travelling = assemblyMembers(s.project.items, jointsOf(s.project), item.id)
   const snapsByItem = new Map<string, ItemSnapPoint[]>()
   for (const placed of s.project.items) {
     if (travelling.has(placed.id) && placed.id !== item.id) continue
@@ -99,10 +102,10 @@ export function resolveConnectionPreview(s: ConfiguratorState, itemId: string): 
     targetPointId: best.target.point.id,
     resolvedTransform: { position, rotation },
   }
-  const { connections, issues } = previewAssemblyPlacement(s, item, { position, rotation }, connection)
+  const { joints, issues } = previewAssemblyPlacement(s, item, { position, rotation }, connection)
   // Magnetic drag requires containment; guided attachment may allow it with a warning.
   const blocking = issues.find((issue) => issue.itemIds.includes(item.id))
-  return { position, rotation, connection, connections, valid: !blocking, reason: blocking?.message }
+  return { position, rotation, connection, joints, valid: !blocking, reason: blocking?.message }
 }
 
 /** Commit the exact displayed seat once; a newly locked assembly rolls back instead. */
@@ -114,14 +117,11 @@ export function commitConnectionPreview(store: ConfiguratorStore, preview: Conne
     restoreLiveItems(state)
     return true
   }
-  const members = assemblyGroup(item.id, state.project.items, state.project.connections ?? [])
+  const current = jointsOf(state.project)
+  const members = assemblyMembers(state.project.items, current, item.id)
   const patches = assemblyPosePatches(state.project.items, members, item, preview)
   const source = patches.find((entry) => entry.id === item.id)!
-  source.patch.constraints = item.constraints?.filter((constraint) => constraint.type !== 'snapToItem' && constraint.type !== 'snapToAnchor') ?? []
-  const connections = dedupeJoints([
-    ...jointsSurvivingMove(patches, state.project.connections ?? []),
-    ...preview.connections,
-  ])
-  commitLiveItemPatches(store, patches, connections)
+  source.patch.constraints = item.constraints?.filter((constraint) => constraint.type !== 'snapToAnchor') ?? []
+  commitLiveItemPatches(store, patches, dedupeJoints([...jointsSurvivingMove(patches, current), ...preview.joints]))
   return true
 }
