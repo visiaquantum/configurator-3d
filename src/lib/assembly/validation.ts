@@ -126,9 +126,14 @@ function allowedJointOverlap(
   if (depth <= 0) return false
   // A connector defined for a family of holes inherits the selected hole's
   // face normal. A fixed insertionAxis is still available for asymmetric
-  // connectors such as a tab or hook.
-  const axis = sourceConnector?.insertionAxis ?? sourcePoint?.normal ?? targetConnector?.insertionAxis ?? [0, 0, 1]
-  const worldAxis = rotateVector(axis, source.rotation)
+  // connectors such as a tab or hook. Each axis is in its own item's frame,
+  // so it turns with that item, not with the other end of the joint.
+  const [axis, owner]: [Vec3, PlacedItem] = sourceConnector?.insertionAxis ? [sourceConnector.insertionAxis, source]
+    : sourcePoint?.normal ? [sourcePoint.normal, source]
+      : targetConnector?.insertionAxis ? [targetConnector.insertionAxis, target]
+        : targetPoint?.normal ? [targetPoint.normal, target]
+          : [[0, 0, 1], source]
+  const worldAxis = rotateVector(axis, owner.rotation)
   const dominant = Math.abs(worldAxis[0]) >= Math.abs(worldAxis[1]) && Math.abs(worldAxis[0]) >= Math.abs(worldAxis[2])
     ? 0
     : Math.abs(worldAxis[1]) >= Math.abs(worldAxis[2]) ? 1 : 2

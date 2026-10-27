@@ -82,13 +82,16 @@ function sharedMid(aMin: number, aMax: number, bMin: number, bMax: number): numb
 }
 
 /**
- * Nearest-product measurement for `itemId`, or null when nothing is in range,
- * the item is unknown, or the closest neighbour is intersecting it.
- * Neighbour choice is by true AABB distance; the axis is then the nearest one.
+ * Nearest-product measurement for `itemId`, or null when nothing is in range
+ * or the item is unknown. Neighbour choice is by true AABB distance; the axis
+ * is then the nearest one. Neighbours that touch or intersect it have no gap
+ * to show and are passed over, as are the parts in `ignore` (its own
+ * assembly, which touches by design), so the next product is measured.
  */
 export function computeNeighborGap(
   itemId: string,
   registry: ItemRegistry,
+  ignore: ReadonlySet<string> = new Set(),
   maxRange = NEIGHBOR_GAP_MAX_RANGE,
 ): NeighborGap | null {
   const me = getItem(itemId, registry)
@@ -100,10 +103,11 @@ export function computeNeighborGap(
   let bestId: string | null = null
 
   for (const other of listOtherItems(itemId, registry)) {
+    if (ignore.has(other.id)) continue
     getWorldAABB(other, _b)
     const g = axisGaps(_a, _b)
     const d = aabbDistance(g)
-    if (d >= bestDist) continue
+    if (d >= bestDist || !nearestAxis(g)) continue
     bestDist = d
     bestGaps = g
     bestId = other.id
@@ -112,8 +116,7 @@ export function computeNeighborGap(
 
   if (!bestGaps || !bestId || bestDist > maxRange) return null
 
-  const axis = nearestAxis(bestGaps)
-  if (!axis) return null // intersecting on every axis
+  const axis = nearestAxis(bestGaps)!
 
   const distance = bestGaps[axis]
   // Which side of the neighbour we sit on decides which faces to connect.

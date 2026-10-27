@@ -4,17 +4,17 @@ import { Html } from '@react-three/drei'
 import { useConfiguratorStoreApi } from '../state/store'
 
 class ModelBoundary extends Component<{ children: ReactNode; onError: (message: string) => void }, { error: string | null }> {
-  state = { error: null as string | null }
+  override state = { error: null as string | null }
 
   static getDerivedStateFromError(error: Error) {
     return { error: error.message }
   }
 
-  componentDidCatch(error: Error) {
+  override componentDidCatch(error: Error) {
     this.props.onError(error.message)
   }
 
-  render() {
+  override render() {
     if (this.state.error) return <Html center><div role="alert" style={{ color: '#ff9090', background: '#182030', padding: 12, width: 220 }}>Impossibile caricare il modello 3D.</div></Html>
     return this.props.children
   }

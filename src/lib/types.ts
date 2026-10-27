@@ -163,8 +163,12 @@ export interface ConnectorDefinition {
   snapKind?: string
   compatibleWith?: string[]
   capacity?: number
-  /** Maximum permitted collision along the insertion axis, in metres. */
+  /**
+   * Maximum permitted collision along the insertion axis, in product units:
+   * multiplied by `catalog.scale`, like colliders and clearance boxes.
+   */
   insertionDepth?: number
+  /** Insertion direction in this product's own frame; defaults to the snap point's normal. */
   insertionAxis?: Vec3
   /** Exact interpenetration areas permitted for a joint using this connector. */
   clearance?: ConnectorClearanceBox[]

@@ -48,24 +48,25 @@ const DEFAULT_PLANE_TOLERANCE = 0.001
 /** Welding tolerance for vertices shared between triangles. */
 const DEFAULT_VERTEX_TOLERANCE = 0.00001
 
+// GLB extras are untrusted: every size and tolerance is a positive length, and
+// a direction must be finite and non-zero. Anything else falls back to the
+// default instead of turning the welding math into NaN.
 function numParam(params: Record<string, unknown>, key: string, fallback: number) {
   const v = params[key]
-  return typeof v === 'number' && Number.isFinite(v) ? v : fallback
+  return typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : fallback
 }
+
+const isDirection = (v: unknown): v is Vec3 =>
+  Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number' && Number.isFinite(n)) && v.some((n) => n !== 0)
 
 function vecParam(params: Record<string, unknown>, key: string): Vec3 | null {
   const v = params[key]
-  return Array.isArray(v) && v.length === 3 && v.every((n) => typeof n === 'number')
-    ? (v as Vec3)
-    : null
+  return isDirection(v) ? v : null
 }
 
 function vecListParam(params: Record<string, unknown>, key: string): Vec3[] {
   const v = params[key]
-  if (!Array.isArray(v)) return []
-  return v.filter((entry): entry is Vec3 =>
-    Array.isArray(entry) && entry.length === 3 && entry.every((n) => typeof n === 'number'),
-  )
+  return Array.isArray(v) ? v.filter(isDirection) : []
 }
 
 function dominantAxis(v: Vec3): AxisIndex {

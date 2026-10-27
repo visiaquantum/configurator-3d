@@ -151,3 +151,13 @@ test('pair spacing follows manifest compatibility for kinds the built-in table d
   })
   assert.deepEqual(options, [{ distance: 1.2, fits: ['Rail'] }])
 })
+
+test('the neighbour gap skips touching parts and the own assembly, and measures the next product', async () => {
+  const { computeNeighborGap } = await import('../src/lib/scene/neighborGap.ts')
+  const store = setup([part('a'), part('touching', [1, 0, 0]), part('member', [-1.2, 0, 0]), part('next', [1.8, 0, 0])])
+  const registryOf = store.getState().itemRegistry
+  const gap = computeNeighborGap('a', registryOf, new Set(['member']))
+  assert.equal(gap?.otherId, 'next')
+  assert.ok(Math.abs(gap.distance - 0.8) < 1e-9)
+  assert.equal(computeNeighborGap('a', registryOf).otherId, 'member')
+})

@@ -4,6 +4,8 @@ import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { type NeighborGap } from './neighborGap'
+import { assemblyMembers } from '../assembly/graph'
+import { selectJoints } from '../state/selectors'
 
 /**
  * Live product-to-product distance readout for the selected item: measures the
@@ -60,8 +62,9 @@ export function NeighborGapIndicator() {
   useFrame(() => {
     const state = storeApi.getState()
     let next: NeighborGap | null = null
-    if (!state.walkMode && state.selectedId) {
-      const g = computeNeighborGap(state.selectedId)
+    if (!state.walkMode && state.selectedId && state.project) {
+      const members = assemblyMembers(state.project.items, selectJoints(state), state.selectedId)
+      const g = computeNeighborGap(state.selectedId, members)
       if (g) next = quantizeGap(g)
     }
 
