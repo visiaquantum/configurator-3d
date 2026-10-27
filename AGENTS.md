@@ -29,4 +29,4 @@ Recent commit history uses short, imperative subjects such as `update` and `add 
 
 ## Security & Configuration Tips
 
-This package publishes to the GitHub npm registry as restricted and is marked `UNLICENSED`. Do not commit secrets, private registry tokens, or generated credentials. Treat remote catalog URLs and GLB assets as untrusted input and keep validation paths in `src/lib/io/` explicit.
+This package is private (`"private": true`, distributed as an `npm pack` tarball) and is marked `UNLICENSED`. Do not commit secrets, private registry tokens, or generated credentials. Treat remote catalog URLs and GLB assets as untrusted input and keep validation paths in `src/lib/io/` explicit.

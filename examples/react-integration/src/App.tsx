@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { Configurator3D, createConfiguratorStore, downloadBlob, parseProject, serializeProject } from '@visiaquantum/configurator-3d'
-import type { ConfiguratorHandle, ProjectData } from '@visiaquantum/configurator-3d'
+import { Configurator3D, createConfiguratorStore, downloadBlob, parseProject, serializeProject } from 'configurator-3d'
+import type { ConfiguratorHandle, ProjectData } from 'configurator-3d'
 import { loadExample, resolveProjectAssets } from './data'
 import type { ExampleData } from './data'
 
