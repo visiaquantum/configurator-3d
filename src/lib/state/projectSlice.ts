@@ -19,6 +19,11 @@ function canPatchItem(item: PlacedItem, patch: Partial<PlacedItem>): boolean {
   })
 }
 
+// An empty constraint list and no list at all are the same item.
+const canonical = (project: ProjectData) => JSON.stringify(project, (key, value) =>
+  key === 'constraints' && Array.isArray(value) && value.length === 0 ? undefined : value)
+const sameProject = (a: ProjectData, b: ProjectData) => a === b || canonical(a) === canonical(b)
+
 /** Replace one item's position outside history; unchanged or non-finite input is ignored. */
 function withItemPosition(project: ProjectData, id: string, position: [number, number, number], release: boolean): ProjectData | null {
   const item = project.items.find((entry) => entry.id === id)
@@ -38,6 +43,12 @@ export function createProjectSlice(set: SetState, get: GetState): ProjectState &
   const commitProject = (next: ProjectData, selection?: string | null) => {
     const state = get()
     if (!state.project || state.readOnly) return
+    // A gesture that changed nothing (a click on the gizmo, a drop back in
+    // place) must not leave an undo step behind.
+    if (sameProject(next, state.project)) {
+      if (selection !== undefined && selection !== state.selectedId) set({ selectedId: selection })
+      return
+    }
     const project = resolvePendingJoints(parseProject(next).project, state)!
     set({
       project,

@@ -1,5 +1,5 @@
-import { Box3, BufferAttribute, Mesh, Vector3 } from 'three'
-import type { BufferGeometry, Camera, Object3D } from 'three'
+import { Box3, BufferAttribute, BufferGeometry, Mesh, Vector3 } from 'three'
+import type { Camera, Object3D } from 'three'
 
 const fullGeometries = new WeakMap<BufferGeometry, BufferGeometry>()
 
@@ -8,20 +8,30 @@ export function enclosureGeometryForExport(geometry: BufferGeometry): BufferGeom
   return fullGeometries.get(geometry) ?? geometry
 }
 
-/** Hide nearby exterior wall triangles, including walls in a single merged mesh. */
+/**
+ * Hide nearby exterior wall triangles, including walls in a single merged mesh.
+ *
+ * Each cut is a geometry that shares the original vertex attributes and only
+ * owns its index buffer, built the first time that view is needed. Switching
+ * views swaps geometries: nothing is copied or uploaded to the GPU again.
+ */
 export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
   root.updateWorldMatrix(true, true)
   const center = bounds.getCenter(new Vector3())
   const size = bounds.getSize(new Vector3())
   const direction = new Vector3()
   const a = new Vector3(), b = new Vector3(), c = new Vector3()
-  const edge = new Vector3(), normal = new Vector3(), centroid = new Vector3()
+  const edge = new Vector3(), edge2 = new Vector3(), normal = new Vector3(), centroid = new Vector3()
   const entries: {
     mesh: Mesh
     original: BufferGeometry
-    geometry: BufferGeometry
-    triangles: { indices: number[]; wall: number; material: number }[]
-    views: Map<number, { index: BufferAttribute; groups: { start: number; count: number; materialIndex: number }[] }>
+    /** Three vertex indices per triangle. */
+    corners: Uint32Array
+    /** Wall bit per triangle (0 = never hidden). */
+    walls: Uint8Array
+    /** Material group per triangle. */
+    materials: Uint16Array
+    views: Map<number, BufferGeometry>
   }[] = []
 
   root.traverseVisible((object) => {
@@ -31,32 +41,66 @@ export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
     if (!position) return
     const index = original.index
     const count = index?.count ?? position.count
-    const triangles: typeof entries[number]['triangles'] = []
     const start = original.drawRange.start
     const end = Math.min(count, start + original.drawRange.count)
-    for (let i = start; i + 2 < end; i += 3) {
-      const indices = [0, 1, 2].map((offset) => index ? index.getX(i + offset) : i + offset)
-      a.fromBufferAttribute(position, indices[0]).applyMatrix4(object.matrixWorld)
-      b.fromBufferAttribute(position, indices[1]).applyMatrix4(object.matrixWorld)
-      c.fromBufferAttribute(position, indices[2]).applyMatrix4(object.matrixWorld)
-      normal.crossVectors(edge.subVectors(b, a), c.clone().sub(a)).normalize()
+    const triangleCount = Math.max(0, Math.floor((end - start) / 3))
+    const corners = new Uint32Array(triangleCount * 3)
+    const walls = new Uint8Array(triangleCount)
+    const materials = new Uint16Array(triangleCount)
+    for (const group of original.groups) {
+      const first = Math.max(0, Math.ceil((group.start - start) / 3))
+      const last = Math.min(triangleCount, Math.floor((group.start + group.count - start) / 3))
+      materials.fill(group.materialIndex ?? 0, first, Math.max(first, last))
+    }
+    let anyWall = false
+    for (let t = 0; t < triangleCount; t++) {
+      const i = start + t * 3
+      for (let k = 0; k < 3; k++) corners[t * 3 + k] = index ? index.getX(i + k) : i + k
+      a.fromBufferAttribute(position, corners[t * 3]).applyMatrix4(object.matrixWorld)
+      b.fromBufferAttribute(position, corners[t * 3 + 1]).applyMatrix4(object.matrixWorld)
+      c.fromBufferAttribute(position, corners[t * 3 + 2]).applyMatrix4(object.matrixWorld)
+      normal.crossVectors(edge.subVectors(b, a), edge2.subVectors(c, a)).normalize()
       centroid.copy(a).add(b).add(c).multiplyScalar(1 / 3).sub(center)
-      let wall = 0
       // Keep horizontal surfaces and partitions in the middle of the cargo area.
       // Winding is irrelevant: both skins of a thick wall disappear together.
       if (Math.abs(normal.x) > Math.abs(normal.y) * 1.5 && Math.abs(normal.x) >= Math.abs(normal.z) && Math.abs(centroid.x) > size.x * 0.3) {
-        wall = centroid.x > 0 ? 1 : 2
+        walls[t] = centroid.x > 0 ? 1 : 2
       } else if (Math.abs(normal.z) > Math.abs(normal.y) * 1.5 && Math.abs(normal.z) > Math.abs(normal.x) && Math.abs(centroid.z) > size.z * 0.3) {
-        wall = centroid.z > 0 ? 4 : 8
+        walls[t] = centroid.z > 0 ? 4 : 8
       }
-      const group = original.groups.find((group) => i >= group.start && i < group.start + group.count)
-      triangles.push({ indices, wall, material: group?.materialIndex ?? 0 })
+      anyWall ||= walls[t] !== 0
     }
-    if (!triangles.some((triangle) => triangle.wall !== 0)) return
-    const geometry = original.clone()
-    fullGeometries.set(geometry, original)
-    entries.push({ mesh: object, original, geometry, triangles, views: new Map() })
+    if (!anyWall) return
+    if (!original.boundingBox) original.computeBoundingBox()
+    if (!original.boundingSphere) original.computeBoundingSphere()
+    entries.push({ mesh: object, original, corners, walls, materials, views: new Map() })
   })
+
+  const viewFor = (entry: typeof entries[number], mask: number): BufferGeometry => {
+    const cached = entry.views.get(mask)
+    if (cached) return cached
+    const kept = new Uint32Array(entry.corners.length)
+    let used = 0
+    const view = new BufferGeometry()
+    for (const [name, attribute] of Object.entries(entry.original.attributes)) view.setAttribute(name, attribute)
+    view.morphAttributes = entry.original.morphAttributes
+    view.morphTargetsRelative = entry.original.morphTargetsRelative
+    view.boundingBox = entry.original.boundingBox
+    view.boundingSphere = entry.original.boundingSphere
+    for (let t = 0; t < entry.walls.length; t++) {
+      if (entry.walls[t] & mask) continue
+      const material = entry.materials[t]
+      const group = view.groups[view.groups.length - 1]
+      if (group && group.materialIndex === material) group.count += 3
+      else view.addGroup(used, 3, material)
+      kept.set(entry.corners.subarray(t * 3, t * 3 + 3), used)
+      used += 3
+    }
+    view.setIndex(new BufferAttribute(kept.slice(0, used), 1))
+    fullGeometries.set(view, entry.original)
+    entry.views.set(mask, view)
+    return view
+  }
 
   let previousMask = -1
   return {
@@ -69,42 +113,19 @@ export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
       }
       if (mask === previousMask) return
       previousMask = mask
-      for (const entry of entries) {
-        if (mask === 0) {
-          entry.mesh.geometry = entry.original
-          continue
-        }
-        let view = entry.views.get(mask)
-        if (!view) {
-          const indices: number[] = []
-          const groups: { start: number; count: number; materialIndex: number }[] = []
-          for (const triangle of entry.triangles) {
-            if (triangle.wall & mask) continue
-            let group = groups[groups.length - 1]
-            if (!group || group.materialIndex !== triangle.material) {
-              group = { start: indices.length, count: 0, materialIndex: triangle.material }
-              groups.push(group)
-            }
-            indices.push(...triangle.indices)
-            group.count += 3
-          }
-          view = { index: new BufferAttribute(new Uint32Array(indices), 1), groups }
-          entry.views.set(mask, view)
-        }
-        // Dispose cached GPU buffers before swapping to another index buffer.
-        entry.geometry.dispose()
-        entry.geometry.setIndex(view.index)
-        entry.geometry.clearGroups()
-        view.groups.forEach((group) => entry.geometry.addGroup(group.start, group.count, group.materialIndex))
-        entry.geometry.setDrawRange(0, view.index.count)
-        entry.mesh.geometry = entry.geometry
-      }
+      for (const entry of entries) entry.mesh.geometry = mask === 0 ? entry.original : viewFor(entry, mask)
     },
     dispose() {
       for (const entry of entries) {
         entry.mesh.geometry = entry.original
-        fullGeometries.delete(entry.geometry)
-        entry.geometry.dispose()
+        for (const view of entry.views.values()) {
+          fullGeometries.delete(view)
+          // Release only the view's own index buffer: the vertex attributes
+          // still belong to the original geometry.
+          for (const name of Object.keys(view.attributes)) view.deleteAttribute(name)
+          view.morphAttributes = {}
+          view.dispose()
+        }
       }
     },
   }

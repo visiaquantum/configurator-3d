@@ -1,10 +1,12 @@
 import { useSceneTools } from './useSceneTools'
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Group, InstancedMesh, MeshStandardMaterial, Object3D } from 'three'
-import { Color, MathUtils, Matrix4, Plane, Vector3 } from 'three'
+import { Color, MathUtils, Matrix4, OrthographicCamera, Plane, Vector3 } from 'three'
+import type { PerspectiveCamera } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { TransformControls } from '@react-three/drei'
-import { useFrame, type ThreeEvent } from '@react-three/fiber'
+import { useShallow } from 'zustand/react/shallow'
+import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
 import { attachmentPoints, attachmentTargetIds, beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget } from './attachment'
 import type { Anchor, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
@@ -25,7 +27,7 @@ import { own } from '../util/record'
 interface Props {
   item: PlacedItem
   asset: PreparedProductAsset
-  anchors?: Anchor[]
+  anchors: Anchor[]
 }
 
 const DRAG_THRESHOLD_PX = 4 // mouse movement (px) before a pointerdown is treated as a drag
@@ -38,6 +40,8 @@ const snapAngle = (v: number) => Math.round(v / ROTATION_STEP) * ROTATION_STEP
 // Scratch instances reused across pointermove. Drag is single-threaded so this
 // is safe and saves ~100s of Vector3 allocations per second during a drag.
 const _hit = new Vector3()
+const _markerWorld = new Vector3()
+const _markerMatrix = new Matrix4()
 const NONE: ReadonlySet<string> = new Set()
 
 interface DragCtx {
@@ -64,20 +68,36 @@ interface DragCtx {
   followers: ReadonlySet<string>
 }
 
-export function Item({ item, asset, anchors = [] }: Props) {
+const sameSeat = (a: ConnectionPreview | null, b: ConnectionPreview | null) => a === b || (!!a && !!b &&
+  a.valid === b.valid && a.position.every((v, i) => v === b.position[i]) && a.rotation.every((v, i) => v === b.rotation[i]))
+
+/** Memoised: a placed item re-renders for its own data and flags, not for its siblings'. */
+export const Item = memo(function Item({ item, asset, anchors }: Props) {
   const storeApi = useConfiguratorStoreApi()
   const { registerItem, unregisterItem, clampItemToBounds } = useSceneTools()
+  // The orbit must stop on the press itself: the store's `draggingItemId` only
+  // disables it after the drag threshold and a re-render, and until then every
+  // drag also turned the camera.
+  const getThree = useThree((state) => state.get)
+  const holdCamera = (held: boolean) => {
+    const controls = getThree().controls as { enabled?: boolean } | null
+    if (controls && 'enabled' in controls) controls.enabled = !held && !storeApi.getState().walkMode
+  }
   const select = useConfiguratorStore((s) => s.select)
-  const selectedId = useConfiguratorStore((s) => s.selectedId)
-  const attachment = useConfiguratorStore((s) => s.attachment)
+  // Each item subscribes to its own flags only: a selection or hover change
+  // elsewhere must not re-render every placed product.
+  const isSelected = useConfiguratorStore((s) => s.selectedId === item.id)
+  const attachmentOpen = useConfiguratorStore((s) => !!s.attachment)
+  const isAttachmentTarget = useConfiguratorStore((s) => s.attachment?.hoveredItemId === item.id || s.attachment?.targetItemId === item.id)
+  const showsSourcePoints = useConfiguratorStore((s) => s.attachment?.stage === 'source' && s.attachment.sourceItemId === item.id)
+  const targetPointsFor = useConfiguratorStore(useShallow((s) => s.attachment?.stage === 'point' && s.attachment.targetItemId === item.id && s.attachment.sourcePointId
+    ? { itemId: s.attachment.sourceItemId, pointId: s.attachment.sourcePointId } : null))
   const gizmoMode = useConfiguratorStore((s) => s.gizmoMode)
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
   // One boolean per item: the frozen set is computed once per project snapshot.
   const readOnly = useConfiguratorStore((state) => !selectCanMove(state, item.id))
   const collisionBounds = useConfiguratorStore(selectCollisionBounds)
-  const isSelected = selectedId === item.id
   const isOverlapping = useConfiguratorStore((s) => s.overlappingIds.has(item.id))
-  const isAttachmentTarget = attachment?.hoveredItemId === item.id || attachment?.targetItemId === item.id
 
   const [group, setGroup] = useState<Group | null>(null)
   const [connectionPreview, setConnectionPreview] = useState<ConnectionPreview | null>(null)
@@ -85,9 +105,12 @@ export function Item({ item, asset, anchors = [] }: Props) {
   // Keep the authoritative current ghost in a ref so a valid release cannot
   // accidentally fall back to a normal drag commit.
   const connectionPreviewRef = useRef<ConnectionPreview | null>(null)
+  // The ghost is recomputed on every pointer move; re-render only when the
+  // seat it shows actually changes.
   const updateConnectionPreview = (next: ConnectionPreview | null) => {
+    const previous = connectionPreviewRef.current
     connectionPreviewRef.current = next
-    setConnectionPreview(next)
+    if (!sameSeat(previous, next)) setConnectionPreview(next)
   }
   const dragRef = useRef<DragCtx | null>(null)
   const transformLockPosRef = useRef<Vector3 | null>(null)
@@ -248,6 +271,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
       snapLock: null,
       followers: followersOf(),
     }
+    holdCamera(true)
   }
 
   // Mutating the Group's transform is how Three.js drives the scene graph;
@@ -297,6 +321,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
     ;(e.target as Element & { releasePointerCapture?: (id: number) => void })
       .releasePointerCapture?.(e.pointerId)
     dragRef.current = null
+    holdCamera(false)
     if (!d.started) return // pure click — selection already handled in pointerdown
     setDraggingItemId(null)
     storeApi.getState().setDragClearance(null)
@@ -316,6 +341,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
       .releasePointerCapture?.(e.pointerId)
     restoreLiveItems(storeApi.getState())
     dragRef.current = null
+    holdCamera(false)
     setDraggingItemId(null)
     storeApi.getState().setDragClearance(null)
     updateConnectionPreview(null)
@@ -382,11 +408,11 @@ export function Item({ item, asset, anchors = [] }: Props) {
             <meshBasicMaterial wireframe color="#ff4040" />
           </mesh>
         )}
-        {attachment?.stage === 'source' && attachment.sourceItemId === item.id && <SnapPointMarkers points={attachmentPoints(storeApi.getState(), item.id)} interactive />}
-        {attachment?.stage === 'point' && attachment.targetItemId === item.id && attachment.sourcePointId && <SnapPointMarkers points={attachmentPoints(storeApi.getState(), item.id, { itemId: attachment.sourceItemId, pointId: attachment.sourcePointId })} interactive />}
+        {showsSourcePoints && <SnapPointMarkers points={attachmentPoints(storeApi.getState(), item.id)} interactive />}
+        {targetPointsFor && <SnapPointMarkers points={attachmentPoints(storeApi.getState(), item.id, targetPointsFor)} interactive />}
       </group>
 
-      {isSelected && group && !readOnly && !attachment && (
+      {isSelected && group && !readOnly && !attachmentOpen && (
         <TransformControls
           object={group as Object3D}
           mode={gizmoMode}
@@ -441,7 +467,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
       )}
     </>
   )
-}
+})
 
 /**
  * Snap points of the selected item, drawn as one instanced mesh.
@@ -469,17 +495,24 @@ function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoi
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   }, [points, hovered])
 
+  // Markers keep a constant on-screen size. Instance matrices are rewritten
+  // only when that size or the hovered point changes, not on every frame.
+  const written = useRef<{ radius: number; hovered: string | undefined; points: ItemSnapPoint[] } | null>(null)
   useFrame(({ camera, size }) => {
     const mesh = ref.current
     if (!mesh || !interactive) return
-    const world = mesh.getWorldPosition(new Vector3())
-    const fov = 'fov' in camera ? camera.fov as number : 45
-    const radius = Math.max(0.007, camera.position.distanceTo(world) * 2 * Math.tan(fov * Math.PI / 360) / Math.max(size.height, 1) * 6)
-    const matrix = new Matrix4()
+    const pixels = Math.max(size.height, 1)
+    const worldPerPixel = camera instanceof OrthographicCamera
+      ? (camera.top - camera.bottom) / camera.zoom / pixels
+      : camera.position.distanceTo(mesh.getWorldPosition(_markerWorld)) * 2 * Math.tan(((camera as PerspectiveCamera).fov ?? 45) * Math.PI / 360) / pixels
+    const radius = Math.max(0.007, worldPerPixel * 6)
+    const last = written.current
+    if (last && last.points === points && last.hovered === hovered && Math.abs(last.radius - radius) <= radius * 0.01) return
+    written.current = { radius, hovered, points }
     points.forEach((point, index) => {
-      matrix.makeScale(radius * (point.id === hovered ? 1.3 : 1), radius * (point.id === hovered ? 1.3 : 1), radius * (point.id === hovered ? 1.3 : 1))
-      matrix.setPosition(...point.position)
-      mesh.setMatrixAt(index, matrix)
+      const r = radius * (point.id === hovered ? 1.3 : 1)
+      _markerMatrix.makeScale(r, r, r).setPosition(...point.position)
+      mesh.setMatrixAt(index, _markerMatrix)
     })
     mesh.instanceMatrix.needsUpdate = true
   })

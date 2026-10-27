@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { memo, useLayoutEffect, useRef } from 'react'
 import { useGLTF } from '@react-three/drei'
 import type { Anchor, CatalogItem, PlacedItem } from '../types'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
@@ -7,14 +7,19 @@ import { AssetBoundary } from './AssetBoundary'
 import { Item } from './Item'
 import { own } from '../util/record'
 
+// When each product's load was first requested. Component state cannot hold
+// it: `useGLTF` suspends the first render, and React discards that state.
+const loadRequestedAt = new WeakMap<CatalogItem, number>()
+
 /** One loader per used product; technical data is published before placed instances mount. */
-export function ProductInstances({ catalog, items, anchors }: {
+export const ProductInstances = memo(function ProductInstances({ catalog, items, anchors }: {
   catalog: CatalogItem
   items: PlacedItem[]
   anchors: Anchor[]
 }) {
   const store = useConfiguratorStoreApi()
-  const [startedAt] = useState(() => performance.now())
+  if (!loadRequestedAt.has(catalog)) loadRequestedAt.set(catalog, performance.now())
+  const startedAt = loadRequestedAt.get(catalog)!
   const reported = useRef(false)
   const gltf = useGLTF(catalog.glbUrl)
   const asset = prepareProductAsset(gltf.scene, catalog)
@@ -34,4 +39,4 @@ export function ProductInstances({ catalog, items, anchors }: {
   return items.map((item) => <AssetBoundary key={item.id} id={item.id} source={productAssetKey(catalog)}>
     <Item item={item} asset={asset} anchors={anchors} />
   </AssetBoundary>)
-}
+})

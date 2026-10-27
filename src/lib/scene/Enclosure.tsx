@@ -357,7 +357,7 @@ export function Enclosure({ data }: Props) {
 
 function FiatNdc40H2Floor({ xrayEnabled }: { xrayEnabled: boolean }) {
   return (
-    <mesh position={[0, FIAT_FLOOR_Y, 0]} receiveShadow>
+    <mesh position={[0, FIAT_FLOOR_Y, 0]}>
       <boxGeometry args={FIAT_FLOOR_SIZE} />
       <meshPhysicalMaterial
         color="#6f7378"

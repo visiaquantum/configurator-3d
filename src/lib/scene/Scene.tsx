@@ -1,4 +1,4 @@
-import { Suspense, useId } from 'react'
+import { Suspense, useId, useMemo } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { OrbitControls, Grid, Environment, Lightformer, GizmoHelper, GizmoViewport } from '@react-three/drei'
 import type { ConfiguratorTheme, PlacedItem, ProjectData } from '../types'
@@ -16,7 +16,7 @@ import { SelectedOrbitTarget } from './SelectedOrbitTarget'
 import { NeighborGapIndicator } from './NeighborGapIndicator'
 import { WalkControls } from './WalkControls'
 import { PerformanceTelemetry } from './PerformanceTelemetry'
-import { useConfiguratorStore } from '../state/store'
+import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { selectEffectiveAnchors } from '../state/selectors'
 import { own } from '../util/record'
 
@@ -30,21 +30,22 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
   const colors = sceneColors[theme]
   // Scopes pointer lock to this canvas: several configurators may share the page.
   const canvasKey = useId()
+  const storeApi = useConfiguratorStoreApi()
   const select = useConfiguratorStore((s) => s.select)
   const catalog = useConfiguratorStore((s) => s.catalog)
   const effectiveAnchors = useConfiguratorStore(selectEffectiveAnchors)
   const draggingItemId = useConfiguratorStore((s) => s.draggingItemId)
   const walkMode = useConfiguratorStore((s) => s.walkMode)
-  const attachment = useConfiguratorStore((s) => s.attachment)
   const cameraProjection = useConfiguratorStore((s) => s.cameraProjection)
   const enclosureBBox = useConfiguratorStore((s) => s.enclosureBBox)
 
-  const products = new Map<string, PlacedItem[]>()
-  for (const item of project.items) {
-    const instances = products.get(item.catalogId) ?? []
-    instances.push(item)
-    products.set(item.catalogId, instances)
-  }
+  // Grouped once per items array, so unchanged products keep their props and
+  // their memoised instances skip re-rendering.
+  const products = useMemo(() => {
+    const byProduct = new Map<string, PlacedItem[]>()
+    for (const item of project.items) byProduct.set(item.catalogId, [...(byProduct.get(item.catalogId) ?? []), item])
+    return byProduct
+  }, [project.items])
 
   // Pull-back limit: generous multiple of the enclosure size, with a floor so
   // small enclosures can still be framed from far out. Kept under the camera
@@ -67,8 +68,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
     <Canvas
       data-cfg-canvas={canvasKey}
       camera={{ position: [5, 2.5, 5], fov: 45, near: 0.05, far: 150 }}
-      shadows="percentage"
-      onPointerMissed={() => { if (!attachment) select(null) }}
+      onPointerMissed={() => { if (!storeApi.getState().attachment) select(null) }}
     >
       {cameraProjection === 'orthographic' && <IsometricCamera />}
       <SceneCaptureBridge />
@@ -79,7 +79,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
       <color attach="background" args={[colors.background]} />
       <ambientLight intensity={0.6} />
       <hemisphereLight args={['#f5f8ff', '#9aa9bd', 1.2]} />
-      <directionalLight position={[5, 8, 5]} intensity={2.2} castShadow />
+      <directionalLight position={[5, 8, 5]} intensity={2.2} />
       <directionalLight position={[-5, 4, -5]} intensity={1.2} />
 
       {/* Each GLB-loading subtree gets its own Suspense boundary, so loading a
@@ -117,7 +117,7 @@ export function Scene({ project, environmentUrl, theme = 'light' }: Props) {
         </Environment>
       )}
 
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.002, 0]}>
         <planeGeometry args={[40, 40]} />
         <meshBasicMaterial color={colors.background} />
       </mesh>

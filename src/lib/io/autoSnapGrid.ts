@@ -345,6 +345,27 @@ function clusterValues(values: number[], tolerance: number): number[] {
   return out
 }
 
+/** Loops whose bounding box contains (u, v), via a grid of about one cell per loop. */
+function loopGrid(loops: Loop[]): (u: number, v: number) => Loop[] {
+  let minU = Infinity, maxU = -Infinity, minV = Infinity, maxV = -Infinity
+  for (const l of loops) {
+    minU = Math.min(minU, l.centerU - l.du / 2); maxU = Math.max(maxU, l.centerU + l.du / 2)
+    minV = Math.min(minV, l.centerV - l.dv / 2); maxV = Math.max(maxV, l.centerV + l.dv / 2)
+  }
+  const side = Math.max(1, Math.ceil(Math.sqrt(loops.length)))
+  const cellU = (maxU - minU) / side || 1
+  const cellV = (maxV - minV) / side || 1
+  const cell = (value: number, min: number, size: number) => Math.min(side - 1, Math.max(0, Math.floor((value - min) / size)))
+  const cells: Loop[][] = Array.from({ length: side * side }, () => [])
+  for (const l of loops) {
+    const u0 = cell(l.centerU - l.du / 2, minU, cellU), u1 = cell(l.centerU + l.du / 2, minU, cellU)
+    const v0 = cell(l.centerV - l.dv / 2, minV, cellV), v1 = cell(l.centerV + l.dv / 2, minV, cellV)
+    for (let cu = u0; cu <= u1; cu++) for (let cv = v0; cv <= v1; cv++) cells[cu * side + cv].push(l)
+  }
+  return (u, v) => cells[cell(u, minU, cellU) * side + cell(v, minV, cellV)].filter((l) =>
+    u >= l.centerU - l.du / 2 && u <= l.centerU + l.du / 2 && v >= l.centerV - l.dv / 2 && v <= l.centerV + l.dv / 2)
+}
+
 function detectHolesOnPlane(
   tris: Triangle[],
   plane: PlaneCandidate,
@@ -362,16 +383,22 @@ function detectHolesOnPlane(
     }
     return inside
   }
-  const holes = loops.filter(
-    (l) =>
-      // A hole has an odd number of enclosing boundaries. Standalone small
-      // faces and open/non-manifold chains are never drilling locations.
-      loops.filter((outer) => outer !== l && containsPoint(outer.polygon, l.polygon[0])).length % 2 === 1 &&
-      l.du >= minHoleSize &&
-      l.du <= maxHoleSize &&
-      l.dv >= minHoleSize &&
-      l.dv <= maxHoleSize,
-  )
+  // Size first: it is cheap and rejects most loops before any polygon test.
+  const candidates = loops.filter((l) => l.du >= minHoleSize && l.du <= maxHoleSize && l.dv >= minHoleSize && l.dv <= maxHoleSize)
+  if (candidates.length === 0) return []
+  // A hole has an odd number of enclosing boundaries. Standalone small faces
+  // and open/non-manifold chains are never drilling locations. Each loop's
+  // bounding box goes into a coarse grid, so a candidate is only tested against
+  // the loops whose box covers it — not against every loop on the plate.
+  const enclosing = loopGrid(loops)
+  const holes = candidates.filter((l) => {
+    const [u, v] = l.polygon[0]
+    let count = 0
+    for (const outer of enclosing(u, v)) {
+      if (outer !== l && containsPoint(outer.polygon, l.polygon[0])) count += 1
+    }
+    return count % 2 === 1
+  })
   if (holes.length === 0) return []
 
   // Row/column indices purely for readable ids ("Foro r3 c2"). Cluster at half

@@ -769,3 +769,51 @@ test('an explicit mirror-pair axis is normalised; a zero one falls back to the n
   assert.deepEqual(ruleNode([0, 0, -5]), [0, 0, -1])
   assert.deepEqual(ruleNode([0, 0, 0]), [1, 0, 0])
 })
+
+test('cutaway views share the enclosure vertex data and are built once per view', () => {
+  const root = new Group()
+  const original = new BoxGeometry(4, 2, 2)
+  const mesh = new Mesh(original, new MeshBasicMaterial())
+  root.add(mesh)
+  const cutaway = createEnclosureCutaway(root, new Box3().setFromObject(root))
+  const camera = new PerspectiveCamera()
+  const look = (x, z) => { camera.position.set(x, 5, z); camera.lookAt(0, 0, 0); cutaway.update(camera, true) }
+  look(5, 5)
+  const first = mesh.geometry
+  assert.notEqual(first, original)
+  for (const name of Object.keys(original.attributes)) assert.equal(first.getAttribute(name), original.getAttribute(name))
+  look(-5, -5)
+  look(5, 5)
+  assert.equal(mesh.geometry, first)
+  let disposedOriginal = false
+  original.addEventListener('dispose', () => { disposedOriginal = true })
+  cutaway.dispose()
+  assert.equal(disposedOriginal, false)
+  assert.ok(original.getAttribute('position'))
+})
+
+test('an edit that changes nothing adds no undo step', () => {
+  const store = createConfiguratorStore()
+  store.getState().setProject(project([item('a', { position: [1, 0, 0] })]))
+  store.getState().updateItem('a', { position: [1, 0, 0], rotation: [0, 0, 0], constraints: [] })
+  store.getState().commitJoints([], [])
+  assert.equal(store.getState().past.length, 0)
+  store.getState().updateItem('a', { position: [2, 0, 0] })
+  assert.equal(store.getState().past.length, 1)
+})
+
+test('hole detection on a large perforated plate finds every hole, nested loops included', () => {
+  const plate = (K, cell = 0.01) => {
+    const positions = []
+    for (let i = 0; i < K; i++) for (let j = 0; j < K; j++) {
+      if (i % 2 === 1 && j % 2 === 1 && i < K - 1 && j < K - 1) continue
+      const x0 = i * cell, x1 = x0 + cell, y0 = j * cell, y1 = y0 + cell
+      positions.push(x0, y0, 0, x1, y0, 0, x1, y1, 0, x0, y0, 0, x1, y1, 0, x0, y1, 0)
+    }
+    const geometry = new BufferGeometry(); geometry.setAttribute('position', new Float32BufferAttribute(positions, 3))
+    const root = new Group(); root.add(new Mesh(geometry)); return root
+  }
+  const holes = extractAutoSnapGridFromObject(plate(81), [{ rule: AUTO_SNAP_GRID_RULE, position: [0, 0, 0], axis: [1, 0, 0], params: { normal: [0, 0, 1] } }])
+  assert.equal(holes.length, 1600)
+  assert.equal(new Set(holes.map((hole) => hole.id)).size, 1600)
+})
