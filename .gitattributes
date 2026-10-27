@@ -1,0 +1,5 @@
+# Escluso dalla consegna (`git archive`): file interni allo sviluppo.
+.gitattributes export-ignore
+.claude export-ignore
+vercel.json export-ignore
+PIANO.md export-ignore
