@@ -20,6 +20,7 @@ import type { PreparedProductAsset } from './productAsset'
 import { anchoredBasePosition, dragClearance, finishItemMovement, restoreLiveItems, snappedRotation } from './itemMovement'
 import { applyItemTint, disposeItemMaterials, enhanceItemMaterials, renderBothSides } from './itemMaterials'
 import { selectCanMove, selectCollisionBounds } from '../state/selectors'
+import { own } from '../util/record'
 
 interface Props {
   item: PlacedItem
@@ -105,7 +106,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
 
   // Mirror flip for the twin of a mirror pair: along the local axis
   // perpendicular to the rule's mirror plane (X or Z depending on the GLB).
-  const catalogRules = useConfiguratorStore((state) => state.itemRules[item.catalogId])
+  const catalogRules = useConfiguratorStore((state) => own(state.itemRules, item.catalogId))
   const mirrorScale = useMemo<Vec3 | undefined>(
     () => mirrorScaleFor({ mirrored, catalogId: item.catalogId }, catalogRules ? { [item.catalogId]: catalogRules } : {}) ?? undefined,
     [mirrored, item.catalogId, catalogRules],
@@ -133,7 +134,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
   /* eslint-disable react-hooks/immutability */
   const snapCorner = snapConstraint?.corner ?? null
   const snapPointId = snapConstraint?.point ?? null
-  const catalogSnaps = useConfiguratorStore((state) => state.itemSnaps[item.catalogId]) ?? asset.metadata.snaps
+  const catalogSnaps = useConfiguratorStore((state) => own(state.itemSnaps, item.catalogId)) ?? asset.metadata.snaps
   const effectiveCatalogSnaps = useMemo(() => mirrorSnapPoints(catalogSnaps, mirrorScale), [catalogSnaps, mirrorScale])
   useLayoutEffect(() => {
     if (!group) return
@@ -274,7 +275,7 @@ export function Item({ item, asset, anchors = [] }: Props) {
     }
     // Y stays at the drag plane.
     if (!e.ray.intersectPlane(d.plane, _hit)) return
-    d.snapLock = placeDraggedItem(state, item.id, _hit.x + d.grabOffset.x, _hit.z + d.grabOffset.z, d.snapLock)
+    d.snapLock = placeDraggedItem(state, item.id, _hit.x + d.grabOffset.x, _hit.z + d.grabOffset.z, d.snapLock, d.followers)
 
     // Resolve the joint first: a part on its way into a valid seat must not be
     // shoved back out by the collision push-out, or it can never get close

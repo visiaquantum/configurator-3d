@@ -166,7 +166,9 @@ export function rotateAssembly(store: ConfiguratorStore, id: string, step: numbe
   const item = state.project?.items.find((entry) => entry.id === id)
   if (!item || !state.project || !assemblyCanMove(state, id)) return
   const members = assemblyMembers(state.project.items, jointsOf(state.project), id)
-  if (members.size === 1) {
+  // Collision and containment need the live model; one still loading, or that
+  // failed, still turns, from its saved pose alone.
+  if (members.size === 1 && state.itemRegistry.has(id)) {
     finishItemMovement(store, id, 'rotate', [item.rotation[0], item.rotation[1] + step, item.rotation[2]], [], [])
     return
   }

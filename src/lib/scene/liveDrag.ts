@@ -29,8 +29,17 @@ export interface VertexSnapLock {
  * the vertex magnet. A held lock survives until its corner pair drifts beyond
  * the release radius; only then is a fresh pair looked for. Engage < release,
  * so the magnet does not oscillate at the threshold. Returns the lock to hold.
+ * The rest of the assembly (`travelling`) is no target: its corners still sit
+ * at the previous frame's pose and would pull the part back every move.
  */
-export function placeDraggedItem(state: LiveState, id: string, x: number, z: number, lock: VertexSnapLock | null): VertexSnapLock | null {
+export function placeDraggedItem(
+  state: LiveState,
+  id: string,
+  x: number,
+  z: number,
+  lock: VertexSnapLock | null,
+  travelling: ReadonlySet<string>,
+): VertexSnapLock | null {
   const group = state.itemRegistry.get(id)?.group
   if (!group) return null
   group.position.x = x
@@ -47,7 +56,7 @@ export function placeDraggedItem(state: LiveState, id: string, x: number, z: num
       return lock
     }
   }
-  const snap = findNearestVertexSnap(id, undefined, state.itemRegistry)
+  const snap = findNearestVertexSnap(id, undefined, state.itemRegistry, travelling)
   if (!snap) return null
   group.position.x += snap.offset.x
   group.position.z += snap.offset.z

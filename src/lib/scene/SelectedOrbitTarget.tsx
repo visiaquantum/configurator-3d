@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useThree } from '@react-three/fiber'
 import type { Vector3 as Vec3Type } from 'three'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
+import { own } from '../util/record'
 
 interface OrbitLike {
   target: Vec3Type
@@ -26,9 +27,13 @@ export function SelectedOrbitTarget() {
   }
   const focusRequest = useConfiguratorStore((s) => s.focusSelectedRequest)
   const walkMode = useConfiguratorStore((s) => s.walkMode)
+  // OrbitControls are recreated on every camera switch: without this the last
+  // request would fire again and override the preset just chosen.
+  const handledRequest = useRef(focusRequest)
 
   useEffect(() => {
-    if (focusRequest === 0 || walkMode || !isOrbitLike(controls)) return
+    if (focusRequest === handledRequest.current || walkMode || !isOrbitLike(controls)) return
+    handledRequest.current = focusRequest
 
     // Read once, untracked: the effect must run when the request counter
     // changes, not whenever the item moves.
@@ -37,7 +42,7 @@ export function SelectedOrbitTarget() {
     const item = project.items.find((it) => it.id === selectedId)
     if (!item) return
 
-    const height = itemSizes[item.catalogId]?.[1] ?? 0
+    const height = own(itemSizes, item.catalogId)?.[1] ?? 0
 
     controls.target.set(
       item.position[0],

@@ -27,13 +27,16 @@ export function buildProjectBom(
     const catalogItem = catalog.find((candidate) => candidate.id === item.catalogId)
     add(definition?.bom?.code ?? item.catalogId, definition?.bom?.label ?? catalogItem?.label ?? '—', 1)
   }
+  // Hardware belongs to the joint, not to whichever part was moved last: both
+  // connectors contribute once per joint, whichever end was recorded as source.
+  const byId = new Map(project.items.map((item) => [item.id, item]))
   for (const connection of project.connections ?? []) {
-    const source = project.items.find((item) => item.id === connection.sourceItemId)
-    if (!source) continue
-    const connector = definitionFor(manifest, source.catalogId)?.connectors.find(
-      (candidate) => candidate.id === connection.sourceConnectorId,
-    )
-    connector?.bomComponents?.forEach((component) => add(component.code, component.label, component.quantity))
+    const ends = [[connection.sourceItemId, connection.sourceConnectorId], [connection.targetItemId, connection.targetConnectorId]]
+    for (const [itemId, connectorId] of ends) {
+      const item = byId.get(itemId)
+      const connector = item && definitionFor(manifest, item.catalogId)?.connectors.find((candidate) => candidate.id === connectorId)
+      connector?.bomComponents?.forEach((component) => add(component.code, component.label, component.quantity))
+    }
   }
   return [...lines.values()].sort((a, b) => a.code.localeCompare(b.code))
 }

@@ -1,7 +1,8 @@
 import type { AssemblyManifest, CatalogItem, ItemRule, ItemSnapPoint } from '../types'
-import { DEFAULT_SNAP_TOLERANCE, definitionFor } from './manifest'
+import { DEFAULT_SNAP_TOLERANCE, connectorForSnap, connectorsCanMate, definitionFor } from './manifest'
 import { canMate } from '../scene/mating'
 import { MIRROR_PAIR_RULE, mirrorPairDistances, pairDistanceForSpan } from '../scene/mirrorPair'
+import { own } from '../util/record'
 
 export interface PairSpacingOption {
   /** Spacing between the two rule reference points, in metres. */
@@ -37,9 +38,10 @@ export function pairSpacingOptions(
     manifest: AssemblyManifest | null
   },
 ): PairSpacingOption[] {
-  const rule = context.itemRules[catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
+  const rule = own(context.itemRules, catalogId)?.find((r) => r.rule === MIRROR_PAIR_RULE)
   if (!rule) return []
-  const myConnectors = definitionFor(context.manifest, catalogId)?.connectors ?? []
+  const myDefinition = definitionFor(context.manifest, catalogId)
+  const myConnectors = myDefinition?.connectors ?? []
   const matesWithMe = (otherId: string) =>
     (definitionFor(context.manifest, otherId)?.connectors ?? []).some((theirs) =>
       myConnectors.some((mine) =>
@@ -48,11 +50,22 @@ export function pairSpacingOptions(
   const seating = new Map<number, string[]>()
   for (const part of Object.values(context.catalog)) {
     if (part.id === catalogId || !matesWithMe(part.id)) continue
-    const points = certifiedPoints(context.itemSnaps[part.id] ?? part.snapPoints ?? [], part.snapPoints)
-    for (const seat of context.catalog[catalogId]?.snapPoints ?? []) {
-      for (const a of points) {
-        for (const b of points) {
-          if (a === b || !canMate(seat.kind, a.kind) || !canMate(seat.kind, b.kind)) continue
+    const partDefinition = definitionFor(context.manifest, part.id)
+    // The manifest decides what a seat takes, as for every other joint; the
+    // kind table only covers points without connectors on either side.
+    const takes = (seat: ItemSnapPoint, point: ItemSnapPoint) => {
+      const seatConnector = connectorForSnap(myDefinition, seat)
+      const pointConnector = connectorForSnap(partDefinition, point)
+      return seatConnector && pointConnector
+        ? connectorsCanMate(seatConnector, seat, pointConnector, point)
+        : canMate(seat.kind, point.kind)
+    }
+    const points = certifiedPoints(own(context.itemSnaps, part.id) ?? part.snapPoints ?? [], part.snapPoints)
+    for (const seat of own(context.catalog, catalogId)?.snapPoints ?? []) {
+      const fitting = points.filter((point) => takes(seat, point))
+      for (const a of fitting) {
+        for (const b of fitting) {
+          if (a === b) continue
           const span = Math.hypot(a.position[0] - b.position[0], a.position[1] - b.position[1], a.position[2] - b.position[2])
           const key = Math.round(pairDistanceForSpan(rule, span, seat.position) * 1000) / 1000
           if (key <= 0) continue

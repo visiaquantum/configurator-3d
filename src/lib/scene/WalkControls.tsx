@@ -26,7 +26,10 @@ function clamp(v: number, min: number, max: number): number {
  * Pressing Esc releases the pointer lock; the unlock handler also exits walk
  * mode so the orbit camera comes back.
  */
-export function WalkControls() {
+export function WalkControls({ selector }: {
+  /** CSS selector of this configurator's canvas container: only a click there locks the pointer. */
+  selector: string
+}) {
   const storeApi = useConfiguratorStoreApi()
   const { camera, gl } = useThree()
   const lockRef = useRef<PointerLockControlsImpl | null>(null)
@@ -113,6 +116,7 @@ export function WalkControls() {
   return (
     <PointerLockControls
       ref={lockRef}
+      selector={selector}
       onUnlock={() => {
         // Esc / pointer-unlock returns to orbit mode.
         storeApi.getState().setWalkMode(false)

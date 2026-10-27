@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore } from '../state/store'
 import { selectAssemblyView } from '../state/selectors'
 import { computeAttachmentPreview } from './attachment'
+import { own } from '../util/record'
 
 /** Ghosts never enter the item registry or mutate the live assembly. */
 export function AttachmentVisuals() {
@@ -32,7 +33,7 @@ export function AttachmentVisuals() {
     })
     helpers.forEach((helper) => helper.removeFromParent())
     clone.userData.configuratorHelper = true
-    clone.position.set(patch.position[0], patch.position[1] + (state.itemSizes[item.catalogId]?.[1] ?? 0) / 2, patch.position[2])
+    clone.position.set(patch.position[0], patch.position[1] + (own(state.itemSizes, item.catalogId)?.[1] ?? 0) / 2, patch.position[2])
     clone.rotation.set(...patch.rotation)
     return [{ id, clone, material }]
   }), [preview, state.itemRegistry, state.project, state.itemSizes])

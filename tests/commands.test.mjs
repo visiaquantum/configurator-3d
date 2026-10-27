@@ -6,13 +6,14 @@ import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAsse
 
 // Domain commands and rules run against a plain store: no React, no WebGL.
 const server = await createServer({ configFile: false, server: { middlewareMode: true, ws: false, hmr: false, watch: null }, optimizeDeps: { noDiscovery: true, include: [] }, appType: 'custom' })
-let commands, shortcuts, spacing, movement, registry
+let commands, shortcuts, spacing, movement, registry, liveDrag
 try {
   commands = await server.ssrLoadModule('/src/lib/scene/commands.ts')
   shortcuts = await server.ssrLoadModule('/src/lib/state/shortcuts.ts')
   spacing = await server.ssrLoadModule('/src/lib/assembly/pairSpacing.ts')
   movement = await server.ssrLoadModule('/src/lib/scene/itemMovement.ts')
   registry = await server.ssrLoadModule('/src/lib/scene/itemRegistry.ts')
+  liveDrag = await server.ssrLoadModule('/src/lib/scene/liveDrag.ts')
 } finally { await server.close() }
 
 const part = (id, position = [0, 0, 0], extra = {}) => ({ id, catalogId: 'part', position, rotation: [0, 0, 0], ...extra })
@@ -112,4 +113,47 @@ test('the manifest decides compatibility; the kind table only applies when conne
   const store = setup([part('a')])
   store.getState().setItemSnaps('part', [{ id: 'origin', kind: 'origine', position: [0, 0, 0] }, { id: 'side', kind: 'laterale', position: [0.5, 0, 0] }])
   assert.deepEqual(attachmentPoints(store.getState(), 'a').map((p) => p.id), ['side'])
+})
+
+test('anchoring an assembly keeps its mirror pair and joints, and a frozen assembly stays put', () => {
+  const pair = (target) => ({ type: 'mirrorPair', target, distance: 1 })
+  const store = setup([part('a', [0, 0, 0], { constraints: [pair('b')] }), part('b', [1, 0, 0], { mirrored: true, constraints: [pair('a')] })], [], [{ id: 'bay', position: [5, 0, 5] }])
+  commands.snapAssemblyToAnchor(store, 'a', 'bay')
+  const [a, b] = store.getState().project.items
+  assert.deepEqual([a.position, b.position], [[5, 0, 5], [6, 0, 5]])
+  assert.ok(a.constraints.some((c) => c.type === 'mirrorPair') && b.constraints.some((c) => c.type === 'mirrorPair'))
+  const frozen = setup([part('a'), part('b', [1, 0, 0], { locked: true })], [joint('a', 'b')], [{ id: 'bay', position: [5, 0, 5] }])
+  commands.snapAssemblyToAnchor(frozen, 'a', 'bay')
+  assert.deepEqual(frozen.getState().project.items[0].position, [0, 0, 0])
+  assert.equal(frozen.getState().past.length, 0)
+})
+
+test('the inspector still turns a part whose model is not mounted', () => {
+  const store = setup([part('a')])
+  store.getState().itemRegistry.delete('a')
+  movement.rotateAssembly(store, 'a', Math.PI / 2)
+  assert.deepEqual(store.getState().project.items[0].rotation, [0, Math.PI / 2, 0])
+})
+
+test('the vertex magnet ignores the parts travelling with the dragged one', () => {
+  const store = setup([part('a'), part('b', [1.01, 0, 0]), part('c', [-1.01, 0, 0])])
+  const lock = liveDrag.placeDraggedItem(store.getState(), 'a', 0, 0, null, new Set(['b']))
+  assert.equal(lock?.otherId, 'c')
+  assert.equal(liveDrag.placeDraggedItem(store.getState(), 'a', 0, 0, null, new Set(['b', 'c'])), null)
+})
+
+test('pair spacing follows manifest compatibility for kinds the built-in table does not know', () => {
+  const rule = { rule: 'mirror-pair', position: [0.5, 0, 0], axis: [1, 0, 0], params: {} }
+  const options = spacing.pairSpacingOptions('upright', {
+    catalog: {
+      upright: { id: 'upright', label: 'U', glbUrl: '/u.glb', snapPoints: [{ id: 'hook', kind: 'gancio', position: [0.5, 0, 0] }] },
+      rail: { id: 'rail', label: 'Rail', glbUrl: '/r.glb', snapPoints: [{ id: 'l', kind: 'binario', position: [-0.6, 0, 0] }, { id: 'r', kind: 'binario', position: [0.6, 0, 0] }] },
+    },
+    itemSnaps: {}, itemRules: { upright: [rule] },
+    manifest: { version: 1, products: [
+      { catalogId: 'upright', connectors: [{ id: 'hook', snapKind: 'gancio', compatibleWith: ['rail-end'] }] },
+      { catalogId: 'rail', connectors: [{ id: 'rail-end', snapKind: 'binario' }] },
+    ] },
+  })
+  assert.deepEqual(options, [{ distance: 1.2, fits: ['Rail'] }])
 })

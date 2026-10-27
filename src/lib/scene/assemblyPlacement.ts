@@ -5,12 +5,13 @@ import { validateConfiguration } from '../assembly/validation'
 import { assemblyMembers, dedupeJoints, isResolvedJoint, jointsOf, jointsSurvivingMove, withJoints } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
 import { assemblyPosePatches } from './mating'
+import { own } from '../util/record'
 
 export type AssemblyPlacementContext = Pick<ConfiguratorState,
   'project' | 'catalog' | 'assemblyManifest' | 'itemSnaps' | 'itemRules' | 'itemSizes' | 'interiorBBox'>
 
 export function itemHeight(state: Pick<ConfiguratorState, 'itemSizes' | 'catalog'>, item: PlacedItem): number {
-  return state.itemSizes[item.catalogId]?.[1] ?? (state.catalog[item.catalogId]?.size?.[1] ?? 0) * (state.catalog[item.catalogId]?.scale ?? 1)
+  return own(state.itemSizes, item.catalogId)?.[1] ?? (own(state.catalog, item.catalogId)?.size?.[1] ?? 0) * (own(state.catalog, item.catalogId)?.scale ?? 1)
 }
 
 /**

@@ -55,6 +55,8 @@ export function findNearestVertexSnap(
   myId: string,
   threshold = VERTEX_SNAP_RADIUS,
   registry = defaultItemRegistry,
+  /** Items travelling with `myId`: their corners move with it, so they are no target. */
+  ignore?: ReadonlySet<string>,
 ): VertexSnapResult | null {
   const me = getItem(myId, registry)
   if (!me) return null
@@ -69,6 +71,7 @@ export function findNearestVertexSnap(
   let bestOz = 0
 
   for (const other of listOtherItems(myId, registry)) {
+    if (ignore?.has(other.id)) continue
     getWorldCorners(other, _otherCorners)
     for (let i = 0; i < 8; i++) {
       const mc = _myCorners[i]

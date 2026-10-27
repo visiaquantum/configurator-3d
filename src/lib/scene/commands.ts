@@ -4,11 +4,12 @@ import type { CatalogItem, PlacedItem, Vec3 } from '../types'
 import { connectionsAtPose } from '../assembly/manifest'
 import { assemblyMembers, dedupeJoints, jointsOf, jointsSurvivingMove } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
-import { selectCollisionBounds, selectEffectiveAnchors } from '../state/selectors'
+import { selectCanMove, selectCollisionBounds, selectEffectiveAnchors } from '../state/selectors'
 import { assemblyPosePatches } from './mating'
 import { computePartnerPlacement, MIRROR_PAIR_RULE, mirrorPairConstraint } from './mirrorPair'
 import { itemHeight } from './assemblyPlacement'
 import { withAnchorConstraint } from './itemMovement'
+import { own } from '../util/record'
 
 /**
  * Editing commands shared by the inspector, the imperative handle and the
@@ -22,7 +23,7 @@ const ADD_GAP = 0.05
 export function nextItemPosition(state: Pick<ConfiguratorState, 'project' | 'catalog' | 'interiorBBox' | 'enclosureBBox'>, product: CatalogItem): Vec3 {
   const items = state.project?.items ?? []
   const last = items[items.length - 1]
-  const lastCat = last ? state.catalog[last.catalogId] : undefined
+  const lastCat = last ? own(state.catalog, last.catalogId) : undefined
   const stepSize = (lastCat?.size?.[0] ?? 0.1) * (lastCat?.scale ?? 1) || (product.size?.[0] ?? 0.1) * (product.scale ?? 1)
   const floorY = selectCollisionBounds(state)?.min[1] ?? 0
   return last
@@ -46,7 +47,7 @@ export function addItemToScene(store: ConfiguratorStore, product: CatalogItem, o
 export function snapAssemblyToAnchor(store: ConfiguratorStore, id: string, anchorId: string | null): void {
   const state = store.getState()
   const item = state.project?.items.find((entry) => entry.id === id)
-  if (!state.project || !item) return
+  if (!state.project || !item || !selectCanMove(state, id)) return
   if (!anchorId) {
     state.updateItem(id, { constraints: withAnchorConstraint(item, null) })
     return
@@ -93,7 +94,7 @@ function jointsAfterMove(state: ConfiguratorState, moved: PlacedItem[]): Joint[]
 export function setMirrorPairDistance(store: ConfiguratorStore, id: string, distance: number): void {
   const state = store.getState()
   const item = state.project?.items.find((entry) => entry.id === id)
-  const rule = item && state.itemRules[item.catalogId]?.find((r) => r.rule === MIRROR_PAIR_RULE)
+  const rule = item && own(state.itemRules, item.catalogId)?.find((r) => r.rule === MIRROR_PAIR_RULE)
   if (!state.project || !item || !rule) return
   const placement = computePartnerPlacement(item, rule, distance)
   const pair = mirrorPairConstraint(item)

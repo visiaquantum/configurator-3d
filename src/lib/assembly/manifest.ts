@@ -121,13 +121,18 @@ export function definitionFor(
   return manifest?.products.find((product) => product.catalogId === catalogId)
 }
 
+/**
+ * The connector that owns a snap point. A connector naming the point by
+ * `snapId` wins over one covering its whole `snapKind`, wherever each sits in
+ * the manifest: the specific one carries that point's capacity, tolerance and
+ * hardware.
+ */
 export function connectorForSnap(
   definition: ProductAssemblyDefinition | undefined,
   point: ItemSnapPoint,
 ): ConnectorDefinition | undefined {
-  return definition?.connectors.find(
-    (connector) => connector.snapId === point.id || (!connector.snapId && connector.snapKind === point.kind),
-  )
+  return definition?.connectors.find((connector) => connector.snapId === point.id) ??
+    definition?.connectors.find((connector) => !connector.snapId && connector.snapKind === point.kind)
 }
 
 export function connectorOwnsPoint(connector: ConnectorDefinition, point: ItemSnapPoint): boolean {

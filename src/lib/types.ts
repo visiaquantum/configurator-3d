@@ -18,8 +18,12 @@ export interface EnclosureData {
 
 /** Product-level override for which perforated faces become snap points. */
 export interface AutoSnapGridOptions {
-  /** Scan only the external faces whose outward normals are listed. */
+  /** Scan a single external face: the side of its dominant axis the vector points to. */
+  normal?: Vec3
+  /** Scan only the external faces whose outward normals are listed. Wins over `normal`. */
   normals?: Vec3[]
+  /** `primary` scans only the two faces of the model's thinnest axis. Default: all six. */
+  faces?: 'primary'
   /** Limit detection to mesh names containing one of these strings. */
   meshNameIncludes?: string[]
   minHoleSize?: number
@@ -133,7 +137,10 @@ export interface ConnectorDefinition {
   clearance?: ConnectorClearanceBox[]
   /** Max source/target snap distance once the joint is committed. Default 2 mm. */
   snapTolerance?: number
-  /** Parts added to the BOM each time this connector is used as the source. */
+  /**
+   * Parts added to the BOM for each joint this connector takes part in,
+   * whichever end of the joint it is. Declare shared hardware on one side only.
+   */
   bomComponents?: BomComponent[]
 }
 

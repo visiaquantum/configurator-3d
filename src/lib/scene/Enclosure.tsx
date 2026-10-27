@@ -63,6 +63,7 @@ export function Enclosure({ data }: Props) {
   const scene = useMemo(() => cloneSkeleton(gltf.scene), [gltf.scene])
   const needsFiatFloor = FIAT_NDC40H2_URL_RE.test(data.glbUrl.split(/[?#]/)[0])
   const fiatFactor = (data.scale ?? 1) / 10
+  const dimensionsKey = data.dimensions?.join(',')
   const fiatAnchors = useMemo(() => FIAT_FLOOR_ANCHORS.map((anchor) => ({ ...anchor, position: anchor.position.map((value) => value * fiatFactor) as [number, number, number] })), [fiatFactor])
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
@@ -212,7 +213,9 @@ export function Enclosure({ data }: Props) {
     const anchors = hydrateAnchorsAndHide(scene)
     const active = needsFiatFloor ? fiatAnchors : anchors
     setRuntimeAnchors(active)
-  }, [scene, data.scale, needsFiatFloor, fiatAnchors, setRuntimeAnchors])
+    // A change of `dimensions` alone keeps this model mounted, but the store
+    // dropped the anchors with the old enclosure: publish them again.
+  }, [scene, data.scale, dimensionsKey, needsFiatFloor, fiatAnchors, setRuntimeAnchors])
   /* eslint-enable react-hooks/immutability */
 
   // Compute and publish enclosure world-space AABB once per GLB. Also tries

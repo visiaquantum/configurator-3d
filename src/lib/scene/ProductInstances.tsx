@@ -5,6 +5,7 @@ import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { prepareProductAsset, productAssetKey } from './productAsset'
 import { AssetBoundary } from './AssetBoundary'
 import { Item } from './Item'
+import { own } from '../util/record'
 
 /** One loader per used product; technical data is published before placed instances mount. */
 export function ProductInstances({ catalog, items, anchors }: {
@@ -17,7 +18,7 @@ export function ProductInstances({ catalog, items, anchors }: {
   const reported = useRef(false)
   const gltf = useGLTF(catalog.glbUrl)
   const asset = prepareProductAsset(gltf.scene, catalog)
-  const ready = useConfiguratorStore((state) => !!state.itemSizes[catalog.id] &&
+  const ready = useConfiguratorStore((state) => !!own(state.itemSizes, catalog.id) &&
     Object.hasOwn(state.itemSnaps, catalog.id) && Object.hasOwn(state.itemRules, catalog.id))
 
   useLayoutEffect(() => {
