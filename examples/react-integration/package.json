@@ -9,9 +9,9 @@
     "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
-    "@visiaquantum/configurator-3d": "file:vendor/configurator-3d.tgz",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
+    "configurator-3d": "file:vendor/configurator-3d.tgz",
     "jspdf": "^4.2.1",
     "nanoid": "^5.1.11",
     "react": "^19.2.6",

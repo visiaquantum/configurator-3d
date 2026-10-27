@@ -4,29 +4,32 @@ Componente React per comporre prodotti 3D (GLB) dentro un vano — furgone, arma
 
 ## Installazione
 
-Il pacchetto è privato e pubblicato sul registry npm di GitHub. Nel progetto host aggiungere un `.npmrc`:
-
-```ini
-@visiaquantum:registry=https://npm.pkg.github.com
-//npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
-```
-
-`GITHUB_TOKEN` è un token GitHub con permesso `read:packages`. Poi:
+Il pacchetto non è pubblicato su npm pubblico. Generarlo da questo repository:
 
 ```sh
-npm install @visiaquantum/configurator-3d react react-dom three @react-three/fiber @react-three/drei zustand zod nanoid
+npm ci
+npm run build:lib
+npm pack              # crea configurator-3d-<versione>.tgz
+```
+
+Nel progetto host, copiare il `.tgz` (ad esempio in `vendor/`) e installarlo insieme alle dipendenze:
+
+```sh
+npm install ./vendor/configurator-3d-0.1.0.tgz react react-dom three @react-three/fiber @react-three/drei zustand zod nanoid
 npm install jspdf          # facoltativo, solo per l'export PDF
 npm install -D @types/three
 ```
 
 Requisiti: React 19, `three` da 0.180 a 0.184. Il pacchetto è solo ESM e include già i suoi stili.
 
+In alternativa si può pubblicare su un registry npm privato: rimuovere `"private": true` da `package.json`, rinominarlo con uno scope proprio (es. `@azienda/configurator-3d`) e aggiungere `publishConfig.registry`. Lo scope evita che `npm install` scarichi per errore un omonimo pubblico.
+
 ## Uso minimo
 
 ```tsx
 import { useRef } from 'react'
-import { Configurator3D } from '@visiaquantum/configurator-3d'
-import type { ConfiguratorHandle, ProjectData } from '@visiaquantum/configurator-3d'
+import { Configurator3D } from 'configurator-3d'
+import type { ConfiguratorHandle, ProjectData } from 'configurator-3d'
 
 // Fuori dal componente (o in useMemo): un nuovo riferimento ricrea il progetto.
 const enclosure = { glbUrl: '/models/furgone.glb', dimensions: [3.4, 1.8, 1.8] as [number, number, number] }
@@ -115,7 +118,7 @@ await ref.current.exportPDF()         // Blob, richiede manifest e jspdf
 ## Salvare e riaprire un progetto
 
 ```ts
-import { serializeProject, parseProject } from '@visiaquantum/configurator-3d'
+import { serializeProject, parseProject } from 'configurator-3d'
 
 // Salvataggio
 await fetch('/api/progetti/42', { method: 'PUT', body: serializeProject(ref.current!.getProject()!) })
@@ -133,7 +136,7 @@ ref.current!.setProject(project)
 Per leggere lo stato da componenti propri, condividere uno store:
 
 ```tsx
-import { createConfiguratorStore, ConfiguratorStoreProvider, Configurator3D, useConfiguratorStore } from '@visiaquantum/configurator-3d'
+import { createConfiguratorStore, ConfiguratorStoreProvider, Configurator3D, useConfiguratorStore } from 'configurator-3d'
 
 const store = createConfiguratorStore()
 

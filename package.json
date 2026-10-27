@@ -1,6 +1,7 @@
 {
-  "name": "@visiaquantum/configurator-3d",
+  "name": "configurator-3d",
   "version": "0.1.0",
+  "private": true,
   "description": "React 3D configurator: place catalog GLBs inside an enclosure GLB, snap on vertices, export PDF/PNG/GLB.",
   "type": "module",
   "main": "dist/configurator-3d.js",
@@ -18,14 +19,6 @@
     "dist"
   ],
   "sideEffects": false,
-  "publishConfig": {
-    "registry": "https://npm.pkg.github.com",
-    "access": "restricted"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/visiaquantum/configurator-3d.git"
-  },
   "license": "UNLICENSED",
   "scripts": {
     "dev": "vite",

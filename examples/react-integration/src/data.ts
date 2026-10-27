@@ -1,5 +1,5 @@
-import { loadAssemblyManifest, loadCatalog, parseProject } from '@visiaquantum/configurator-3d'
-import type { ProjectData } from '@visiaquantum/configurator-3d'
+import { loadAssemblyManifest, loadCatalog, parseProject } from 'configurator-3d'
+import type { ProjectData } from 'configurator-3d'
 
 // Vite's base also supports installation under a gestionale subdirectory.
 export const assetUrl = (path: string) => new URL(

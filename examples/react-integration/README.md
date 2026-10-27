@@ -1,7 +1,7 @@
 # Esempio React per il gestionale
 
 Progetto React 19 + TypeScript + Vite indipendente. Usa esclusivamente gli export
-pubblici di `@visiaquantum/configurator-3d`, installato dal pacchetto incluso in
+pubblici di `configurator-3d`, installato dal pacchetto incluso in
 `vendor/configurator-3d.tgz`. Non importa i sorgenti o l'interfaccia della demo.
 
 ## Avvio per il cliente
@@ -13,7 +13,7 @@ npm ci
 npm run dev
 ```
 
-Aprire l'indirizzo mostrato nel terminale. Non occorrono token GitHub, un backend
+Aprire l'indirizzo mostrato nel terminale. Non occorrono token di registry, un backend
 o credenziali di pubblicazione: libreria e modelli sono già inclusi nella consegna.
 Le dipendenze npm vanno scaricate durante l'installazione.
 

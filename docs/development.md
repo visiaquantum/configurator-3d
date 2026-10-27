@@ -29,7 +29,7 @@ I collegamenti tra pezzi hanno un solo modello, il grafo di `assembly/graph.ts`:
 
 Con il server locale attivo, `/tests/browser/index.html` permette di verificare a mano due canvas indipendenti, scale del vano diverse, sola lettura, undo e recupero dopo un errore GLB. Il pulsante “Genera PDF” mostra il risultato dell'API di esportazione. Gli stessi controlli girano in CI con `npm run test:e2e`.
 
-Il pacchetto è `UNLICENSED`, pubblicato come restricted sul registry npm di GitHub. Non contiene i modelli del cliente né l'HDR della demo. Non occorrono credenziali di pubblicazione per modificare o verificare il codice locale.
+Il pacchetto è `UNLICENSED` e privato (`"private": true`): si distribuisce come tarball di `npm pack`. Non contiene i modelli del cliente né l'HDR della demo. Non occorrono credenziali di pubblicazione per modificare o verificare il codice locale.
 
 ## Aggancio visuale e controlli
 
