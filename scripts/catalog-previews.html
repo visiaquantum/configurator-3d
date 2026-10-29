@@ -26,6 +26,18 @@
       ['xha40100', 'ORIZZONTALI/XHA40100'],
       ['ptbm31', 'ACCESSORI/PTBM-31'],
       ['kit01', 'KIT/KIT01'],
+      ['ysi03036', 'MONTANTI/YSI03036'],
+      ['ysi01131', 'MONTANTI/YSI01131'],
+      ['kdw40236', 'ORIZZONTALI/KDW40236'],
+      ['kdw40336', 'ORIZZONTALI/KDW40336'],
+      ['kdw40436', 'ORIZZONTALI/KDW40436'],
+      ['kdw40636', 'ORIZZONTALI/KDW40636'],
+      ['kcp40531kmd02', 'ORIZZONTALI/KCP40531KMD02'],
+      ['kma40100', 'ORIZZONTALI/KMA40100'],
+      ['xla40400', 'ORIZZONTALI/XLA40400'],
+      ['kdu40426kd080', 'ORIZZONTALI/KDU40426KD080'],
+      ['kld41000', 'ANTINE/KLD41000'],
+      ['kud40900', 'ANTINE/KUD40900'],
     ]
     const loader = new GLTFLoader()
     for (const [id, path] of products) {
@@ -52,7 +64,7 @@
       scene.add(fill)
       const { scene: model } = await loader.loadAsync(`/models/${path}.glb`)
       model.traverse((node) => {
-        if (/snap|collider|collision/i.test(node.name)) node.visible = false
+        if (/snap|rule|collider|collision/i.test(node.name)) node.visible = false
         if (node.isMesh) {
           const materials = Array.isArray(node.material) ? node.material : [node.material]
           for (const material of materials) {
@@ -90,7 +102,7 @@
       camera.lookAt(0, 0, 0)
       renderer.render(scene, camera)
     }
-    document.querySelector('header').textContent = 'Anteprime del catalogo · 6 modelli caricati'
+    document.querySelector('header').textContent = `Anteprime del catalogo · ${products.length} modelli caricati`
   </script>
 </body>
 </html>

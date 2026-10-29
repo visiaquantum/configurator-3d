@@ -23,7 +23,12 @@ const SnapPointSchema = z.object({
   normal: Vec3Schema.optional(),
 })
 
-// `scale`, `autoSnapGrid`, and `snapPoints` must be listed here: zod strips unknown keys, so
+const MirrorPairOptionsSchema = z.object({
+  axis: NonZeroVec3Schema.optional(),
+  distances: z.array(z.number().positive()).min(1).optional(),
+})
+
+// `scale`, `autoSnapGrid`, `snapPoints` and `mirrorPair` must be listed here: zod strips unknown keys, so
 // anything missing from the schema is silently dropped when a catalog is
 // loaded from JSON — a product exported at 0.1× would come back at 1×.
 const CatalogItemSchema = z.object({
@@ -34,6 +39,7 @@ const CatalogItemSchema = z.object({
   scale: z.number().positive().optional(),
   autoSnapGrid: z.union([z.boolean(), AutoSnapGridOptionsSchema]).optional(),
   snapPoints: z.array(SnapPointSchema).optional(),
+  mirrorPair: MirrorPairOptionsSchema.optional(),
 })
 
 const CatalogMetadataSchema = z

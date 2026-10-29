@@ -88,6 +88,7 @@ export type {
   EnclosureData,
   PlacedItem,
   CatalogItem,
+  MirrorPairOptions,
   Anchor,
   ItemConstraint,
   SnapToAnchorConstraint,

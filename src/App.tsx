@@ -11,6 +11,7 @@ import { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget } from '
 import { Icon } from './lib/ui/Icon'
 import { themeStyles } from './lib/ui/theme'
 import { definitionFor } from './lib/assembly/manifest'
+import { IVECO_ENCLOSURE, TASCA_CATALOG_GROUPS, buildTascaWall, tascaWallContext } from './tascaWall'
 import type {
   CatalogItem,
   ConfiguratorHandle,
@@ -106,6 +107,8 @@ const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
       { id: 'kit01', label: 'KIT 01', glbUrl: '/models/KIT/KIT01.glb', size: [0.36, 0.864, 1.014], scale: 1 },
     ],
   },
+  // Syncro 1014 wall of quote 99003819: side panels and the parts between them.
+  ...TASCA_CATALOG_GROUPS,
 ]
 
 const catalog: CatalogItem[] = catalogGroups.flatMap((g) => g.items)
@@ -121,6 +124,13 @@ const ENCLOSURE: EnclosureData = {
     { id: 'floor-back-side-b', position: [1.65, 0.04, 0.86], normal: [0, 1, 0] },
   ],
 }
+const VEHICLES = [
+  { label: 'FIAT · NDC 40H2', enclosure: ENCLOSURE },
+  { label: 'IVECO · Daily L2H3', enclosure: IVECO_ENCLOSURE },
+]
+const vehicleOf = (enclosure: EnclosureData | undefined) =>
+  VEHICLES.find((vehicle) => vehicle.enclosure.glbUrl === enclosure?.glbUrl) ?? VEHICLES[0]
+
 const PROJECT_METADATA: ProjectMetadata = {
   name: 'Demo — host-driven catalog',
   customer: 'Syncro',
@@ -181,12 +191,28 @@ export default function App() {
     URL.revokeObjectURL(url)
   }
 
+  const vehicle = vehicleOf(project?.enclosure)
+
+  // Swapping the van keeps the parts where they are; the validation flags what no longer fits.
+  const handleVehicle = (glbUrl: string) => {
+    const current = cfg.current?.getProject()
+    const next = VEHICLES.find((candidate) => candidate.enclosure.glbUrl === glbUrl)
+    if (current && next) cfg.current?.setProject({ ...current, enclosure: next.enclosure })
+  }
+
+  const handleTascaWall = () => {
+    if (!assemblyManifest) return
+    cfg.current?.setProject(buildTascaWall(tascaWallContext(catalog, assemblyManifest)))
+    setSavedJson('')
+    setLoadStatus({ ok: true, msg: 'Caricata la parete 1014 del preventivo 99003819 (IVECO Daily).' })
+  }
+
   const handleNewProject = () => {
     newProjectCount.current += 1
     cfg.current?.setProject({
       id: `demo-new-${newProjectCount.current}`,
       version: 1,
-      enclosure: ENCLOSURE,
+      enclosure: vehicle.enclosure,
       items: [],
       connections: [],
       metadata: PROJECT_METADATA,
@@ -369,7 +395,7 @@ export default function App() {
       </header>
       <main className="app-workspace">
         <div className="app-viewport">
-          <div className="app-viewport-heading"><span><Icon name="cube" size={15} />Area di progettazione</span><span>FIAT · NDC 40H2</span></div>
+          <div className="app-viewport-heading"><span><Icon name="cube" size={15} />Area di progettazione</span><select className="app-vehicle-select" aria-label="Veicolo" value={vehicle.enclosure.glbUrl} onChange={(event) => handleVehicle(event.target.value)}>{VEHICLES.map((option) => <option key={option.enclosure.glbUrl} value={option.enclosure.glbUrl}>{option.label}</option>)}</select></div>
           <div className="app-canvas"><Configurator3D ref={cfg} theme={theme} enclosure={ENCLOSURE} projectId="demo-010" metadata={PROJECT_METADATA} catalog={catalog} assemblyManifest="/catalog/assembly-manifest.json" environmentUrl="/hdr/empty_warehouse_01_4k.hdr" onSave={(value) => setSavedJson(serializeProject(value))} /></div>
         </div>
         <aside className="app-sidebar">
@@ -392,7 +418,7 @@ export default function App() {
           {!!project?.items.length && <section className="app-scene-list"><div className="app-section-heading"><Icon name="layers" size={15} />Nella scena<span>{project.items.length}</span></div>{project.items.map((item, index) => <button key={item.id} className={selectedId === item.id ? 'selected' : ''} disabled={!!attachment && attachment.stage !== 'target'} onClick={() => attachment?.stage === 'target' ? chooseAttachmentTarget(storeApi, item.id) : cfg.current?.selectItem(item.id)}><span>{String(index + 1).padStart(2, '0')}</span>{catalog.find((product) => product.id === item.catalogId)?.label ?? item.catalogId}<Icon name="focus" size={13} /></button>)}</section>}
           <div className="app-sidebar-footer"><span className="app-tip-icon"><Icon name="link" size={16} /></span><div><strong>Unisci i componenti</strong><span>Tasto destro su un pezzo → Aggancia.</span></div></div>
           {loadStatus && <p className={`app-import-status ${loadStatus.ok ? '' : 'error'}`} role="status">{loadStatus.msg}</p>}
-          <details className="app-project-tools"><summary>Strumenti progetto</summary><div><button onClick={handleExportJson}><Icon name="download" size={14} />Scarica JSON</button><button onClick={() => { void handleRecordDemo().catch((error: Error) => setLoadStatus({ ok: false, msg: error.message })) }}>Registra demo KIT</button></div>{savedJson && <details><summary>Dati dell’ultimo salvataggio</summary><pre>{savedJson}</pre></details>}</details>
+          <details className="app-project-tools"><summary>Strumenti progetto</summary><div><button onClick={handleTascaWall} disabled={!assemblyManifest}><Icon name="layers" size={14} />Parete preventivo 99003819</button><button onClick={handleExportJson}><Icon name="download" size={14} />Scarica JSON</button><button onClick={() => { void handleRecordDemo().catch((error: Error) => setLoadStatus({ ok: false, msg: error.message })) }}>Registra demo KIT</button></div>{savedJson && <details><summary>Dati dell’ultimo salvataggio</summary><pre>{savedJson}</pre></details>}</details>
         </aside>
       </main>
       <footer className="app-status-bar"><span><span>Trascina · Sposta</span><span>Rotellina · Zoom</span><span>Tasto destro · Aggancia</span></span><span>Scala reale · Coordinate in metri</span></footer>
