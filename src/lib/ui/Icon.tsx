@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 
-export type IconName = 'cube' | 'link' | 'close' | 'arrow' | 'back' | 'focus' | 'rotate' | 'trash' | 'plus' | 'download' | 'save' | 'undo' | 'redo' | 'eye' | 'grid' | 'check' | 'search' | 'folder' | 'layers' | 'sun' | 'moon'
+export type IconName = 'cube' | 'link' | 'close' | 'arrow' | 'back' | 'focus' | 'rotate' | 'trash' | 'plus' | 'download' | 'save' | 'undo' | 'redo' | 'eye' | 'grid' | 'check' | 'search' | 'folder' | 'layers' | 'sun' | 'moon' | 'lock' | 'unlock'
 
 const paths: Record<IconName, React.ReactNode> = {
   sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" /></>,
@@ -24,6 +24,8 @@ const paths: Record<IconName, React.ReactNode> = {
   search: <><circle cx="10" cy="10" r="6" /><path d="m15 15 6 6" /></>,
   folder: <path d="M3 6V4h7l2 3h9v14H3Z" />,
   layers: <><path d="m12 3 10 5-10 5L2 8Zm-10 9 10 5 10-5M2 16l10 5 10-5" /></>,
+  lock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>,
+  unlock: <><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 7.6-1.7" /></>,
 }
 
 export function Icon({ name, size = 18, style }: { name: IconName; size?: number; style?: CSSProperties }) {

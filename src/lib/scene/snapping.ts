@@ -1,4 +1,5 @@
 import { Box3, Vector3 } from 'three'
+import type { Group } from 'three'
 import {
   getItem,
   getWorldAABB,
@@ -190,6 +191,36 @@ export function clampItemToBounds(myId: string, bounds: CollisionBounds | null |
   if (_mtvVec.lengthSq() <= EPSILON * EPSILON) return false
   me.group.position.add(_mtvVec)
   return true
+}
+
+/**
+ * The same containment for parts that travel as one body: their joint AABB is
+ * kept inside the bounds and every group takes the same step, so the joints
+ * between them hold. Clamping the grabbed part alone let the rest of a wall
+ * through the van's sides. Returns the step taken, or null when none was needed.
+ */
+export function clampItemsToBounds(ids: Iterable<string>, bounds: CollisionBounds | null | undefined, registry: ItemRegistry): Vector3 | null {
+  if (!bounds) return null
+  _myBox.makeEmpty()
+  const groups: Group[] = []
+  for (const id of ids) {
+    const reg = getItem(id, registry)
+    if (!reg) continue
+    _myBox.union(getWorldAABB(reg, _otherBox))
+    groups.push(reg.group)
+  }
+  if (groups.length === 0) return null
+  const step = new Vector3(
+    clampAxisDelta(_myBox.min.x, _myBox.max.x, bounds.min[0], bounds.max[0]),
+    clampAxisDelta(_myBox.min.y, _myBox.max.y, bounds.min[1], bounds.max[1]),
+    clampAxisDelta(_myBox.min.z, _myBox.max.z, bounds.min[2], bounds.max[2]),
+  )
+  if (step.lengthSq() <= EPSILON * EPSILON) return null
+  for (const group of groups) {
+    group.position.add(step)
+    group.updateWorldMatrix(true, false)
+  }
+  return step
 }
 
 const EPSILON = 1e-6

@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
-import { Group } from 'three'
-import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAssemblyManifest } from '../src/lib/index.ts'
+import { Group, Ray, Vector3 } from 'three'
+import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAssemblyManifest, selectCanMove } from '../src/lib/index.ts'
 import * as commands from '../src/lib/scene/commands.ts'
 import * as shortcuts from '../src/lib/state/shortcuts.ts'
 import * as spacing from '../src/lib/assembly/pairSpacing.ts'
@@ -134,6 +134,47 @@ test('the vertex magnet ignores the parts travelling with the dragged one', () =
   const lock = liveDrag.placeDraggedItem(store.getState(), 'a', 0, 0, null, new Set(['b']))
   assert.equal(lock?.otherId, 'c')
   assert.equal(liveDrag.placeDraggedItem(store.getState(), 'a', 0, 0, null, new Set(['b', 'c'])), null)
+})
+
+test('locking takes a lone part alone and an assembly whole, in one undo entry; L toggles it', () => {
+  const store = setup([part('a'), part('b', [1, 0, 0]), part('c', [5, 0, 0])], [joint('a', 'b')])
+  const locked = () => store.getState().project.items.filter((item) => item.locked).map((item) => item.id)
+  commands.setAssemblyLocked(store.getState(), 'a', true)
+  assert.deepEqual(locked(), ['a', 'b'])
+  assert.equal(store.getState().past.length, 1)
+  assert.equal(commands.assemblyLock(store.getState(), 'b'), 'held')
+  assert.equal(selectCanMove(store.getState(), 'b'), false)
+  store.getState().removeItem('b')
+  assert.equal(store.getState().project.items.length, 3)
+  // L on any member unlocks every member, so no stray lock keeps the assembly frozen.
+  const L = { key: 'l', metaKey: false, ctrlKey: false, shiftKey: false }
+  store.getState().select('b')
+  shortcuts.shortcutFor(L, store.getState()).run(store.getState())
+  assert.deepEqual(locked(), [])
+  store.getState().select('c')
+  shortcuts.shortcutFor(L, store.getState()).run(store.getState())
+  assert.deepEqual(locked(), ['c'])
+  assert.equal(selectCanMove(store.getState(), 'a'), true)
+  store.getState().undo()
+  assert.deepEqual(locked(), [])
+  store.getState().updateItem('c', { constraints: [{ type: 'lockAxis', axis: 'x' }] })
+  assert.equal(commands.assemblyLock(store.getState(), 'c'), 'axis')
+})
+
+test('a drag seen side-on follows a plane facing the camera, so a few pixels never throw the part across the van', () => {
+  const item = new Vector3(0.6, 1.56, 0.7)
+  // Lato view: camera at eye height, looking almost level at a part just above it.
+  const camera = new Vector3(5.1, 1.3, 0)
+  const toward = (target) => new Ray(camera, target.clone().sub(camera).normalize())
+  const plane = liveDrag.dragPlaneFor(toward(item), item)
+  assert.ok(Math.abs(plane.normal.y) < 1e-9, 'vertical plane')
+  // The pointer a hair lower: the floor plane would land metres away; this one keeps the depth.
+  const hit = liveDrag.dragPlaneHit(toward(new Vector3(0.6, 1.5, 0.75)), plane, new Vector3())
+  assert.ok(hit && Math.abs(hit.x - item.x) < 0.01 && Math.abs(hit.z - 0.75) < 0.05)
+  // From above the floor plane stays, and a ray grazing it is ignored rather than followed.
+  const fromAbove = liveDrag.dragPlaneFor(new Ray(new Vector3(4, 4, 4), new Vector3(-1, -1, -1).normalize()), item)
+  assert.equal(fromAbove.normal.y, 1)
+  assert.equal(liveDrag.dragPlaneHit(new Ray(new Vector3(4, 1.6, 4), new Vector3(-1, -0.01, -1).normalize()), fromAbove, new Vector3()), null)
 })
 
 test('pair spacing follows manifest compatibility for kinds the built-in table does not know', () => {
