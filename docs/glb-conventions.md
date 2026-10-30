@@ -83,6 +83,24 @@ sta sulla faccia a −Z e dichiara `axis: [0, 0, -1]`:
 }
 ```
 
+### Dichiarazione dal solo nome nodo
+
+Per gli export CAD che non scrivono extras basta il nome del nodo:
+`RULE_MIRRORPAIR_D254.507.761.1014.1268.1521` dichiara la coppia con le
+distanze in **millimetri** separate da punto dopo `_D` (i suffissi d'istanza
+`-N` / `_N` sono ignorati). È il formato dei fianchi `YSI03036` / `YSI01131`.
+
+Il nome non può portare l'asse: vale il +X locale del nodo, che di solito
+non è quello giusto. La voce di catalogo lo corregge con `mirrorPair`:
+
+```json
+{ "id": "ysi03036", "glbUrl": "…", "mirrorPair": { "axis": [0, 0, -1] } }
+```
+
+`mirrorPair.axis` è nel frame del GLB; `mirrorPair.distances` (metri)
+sostituisce le distanze del GLB. Il punto di riferimento resta quello del
+nodo: senza una regola nel GLB `mirrorPair` non ha effetto.
+
 ### Semantica geometrica
 
 - Posizionare il nodo sulla **faccia di accoppiamento** del prodotto (quella

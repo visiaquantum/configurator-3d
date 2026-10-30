@@ -46,20 +46,27 @@ function isVec3(v: unknown): v is Vec3 {
 /**
  * Rules declarable by node name alone, for GLBs whose CAD export cannot write
  * extras — the same channel as `SNAP_*`. A node named `RULE_AUTOSNAPGRID`
- * (any instance suffix) turns on hole detection.
+ * (any instance suffix) turns on hole detection; `RULE_MIRRORPAIR_D254.507.761`
+ * declares a mirror pair whose spacings, in millimetres, follow `_D`.
  *
- * Only rules that need no parameters can travel this way; `mirror-pair`
- * carries its distances in `params` and still requires extras.
+ * A name cannot carry an axis: a name-declared `mirror-pair` uses the node's
+ * +X like any rule, which the catalogue's `mirrorPair.axis` corrects.
  */
-const NAME_RULE_RE = /^rule[_:]([a-z0-9]+)(?:-\d+)?(?:_\d+)?$/i
+const NAME_RULE_RE = /^rule[_:]([a-z0-9]+)(?:_d(\d+(?:\.\d+)*))?(?:-\d+)?(?:_\d+)?$/i
 const NAME_RULE_ALIASES: Record<string, string> = {
   autosnapgrid: 'auto-snap-grid',
+  mirrorpair: 'mirror-pair',
 }
 
-function ruleIdFromName(name: string): string | null {
+function ruleFromName(name: string): { rule: string; params: Record<string, unknown> } | null {
   const m = name.match(NAME_RULE_RE)
   if (!m) return null
-  return own(NAME_RULE_ALIASES, m[1].toLowerCase()) ?? null
+  const rule = own(NAME_RULE_ALIASES, m[1].toLowerCase())
+  if (!rule) return null
+  if (!m[2]) return { rule, params: {} }
+  // Only the mirror pair takes spacings; anything else with `_D…` is not a rule name.
+  if (rule !== 'mirror-pair') return null
+  return { rule, params: { distances: m[2].split('.').map((mm) => Number(mm) / 1000) } }
 }
 
 export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
@@ -72,13 +79,17 @@ export function extractRulesFromObject(root: Object3D): ExtractedRuleNode[] {
   root.traverse((obj) => {
     const ud = (obj.userData ?? {}) as Record<string, unknown>
     const byExtras = ud.kind === 'rule' && typeof ud.rule === 'string' && ud.rule ? ud.rule : null
-    const ruleId = byExtras ?? ruleIdFromName(obj.name)
+    // three.js strips `.` from node names; GLTFLoader keeps the original in userData.
+    const byName = byExtras ? null : ruleFromName(typeof ud.name === 'string' ? ud.name : obj.name)
+    const ruleId = byExtras ?? byName?.rule
     if (!ruleId) return
 
-    const params =
-      typeof ud.params === 'object' && ud.params !== null && !Array.isArray(ud.params)
+    const params = {
+      ...byName?.params,
+      ...(typeof ud.params === 'object' && ud.params !== null && !Array.isArray(ud.params)
         ? (ud.params as Record<string, unknown>)
-        : {}
+        : {}),
+    }
 
     obj.updateWorldMatrix(true, false)
     obj.getWorldPosition(worldPos)

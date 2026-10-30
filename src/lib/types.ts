@@ -47,6 +47,18 @@ export interface AutoSnapGridOptions {
   vertexTolerance?: number
 }
 
+/**
+ * Catalogue correction of the `mirror-pair` rule a GLB declares. The reference
+ * point always comes from the model; a CAD export that can only name the rule
+ * (`RULE_MIRRORPAIR_D…`) has no way to orient it.
+ */
+export interface MirrorPairOptions {
+  /** Direction from this half to its twin, in the GLB's own frame. */
+  axis?: Vec3
+  /** Spacings offered, in metres. Replace the GLB's. */
+  distances?: number[]
+}
+
 export interface CatalogItem {
   id: string
   label: string
@@ -67,6 +79,8 @@ export interface CatalogItem {
    * runtime geometry inference.
    */
   snapPoints?: ItemSnapPoint[]
+  /** Corrects the GLB's `mirror-pair` rule; ignored when the GLB declares none. */
+  mirrorPair?: MirrorPairOptions
 }
 
 /** The item rests on an enclosure anchor. */

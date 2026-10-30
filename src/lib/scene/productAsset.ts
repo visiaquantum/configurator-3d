@@ -1,12 +1,13 @@
 import { Vector3 } from 'three'
 import type { Object3D } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
-import type { CatalogItem, ItemRule, ItemSnapPoint, Vec3 } from '../types'
+import type { CatalogItem, ItemRule, ItemSnapPoint, MirrorPairOptions, Vec3 } from '../types'
 import type { ProductMetadata } from '../io/productMetadata'
 import { hydrateItemRulesAndHide } from '../io/rules'
 import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
 import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSnapGrid'
 import { visibleBodyBounds } from './geometry'
+import { MIRROR_PAIR_RULE } from './mirrorPair'
 
 export interface PreparedProductAsset {
   /** Shared template: clone before changing materials or transforms. */
@@ -33,9 +34,20 @@ function uniqueSnapIds(generated: ItemSnapPoint[], declared: ItemSnapPoint[]): I
   return [...renamed, ...declared]
 }
 
+/** The catalogue's axis and spacings win over the GLB's; the reference point stays the model's. */
+function withMirrorPairOptions(rules: ItemRule[], options: MirrorPairOptions | undefined): ItemRule[] {
+  if (!options) return rules
+  const length = options.axis ? Math.hypot(...options.axis) : 0
+  return rules.map((rule) => rule.rule !== MIRROR_PAIR_RULE ? rule : {
+    ...rule,
+    axis: options.axis && length > 1e-9 ? options.axis.map((value) => +(value / length).toFixed(6)) as Vec3 : rule.axis,
+    params: { ...rule.params, ...(options.distances ? { distances: options.distances } : {}) },
+  })
+}
+
 /** Only model/geometry inputs belong in the cache key, not labels or instance poses. */
 export function productAssetKey(catalog: CatalogItem): string {
-  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid])
+  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair])
 }
 
 /** Resolve once per GLB/configuration, without mutating the loader cache or requiring React/WebGL. */
@@ -49,7 +61,7 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
   const scale = catalog.scale ?? 1
   scene.scale.setScalar(scale)
   scene.updateMatrixWorld(true)
-  const modelRules = hydrateItemRulesAndHide(scene)
+  const modelRules = withMirrorPairOptions(hydrateItemRulesAndHide(scene), catalog.mirrorPair)
   const modelSnaps = hydrateItemSnapsAndHide(scene)
   const config = typeof catalog.autoSnapGrid === 'object' ? catalog.autoSnapGrid : {}
   const existingGrid = modelRules.some((rule) => rule.rule === AUTO_SNAP_GRID_RULE)

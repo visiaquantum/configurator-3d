@@ -87,8 +87,12 @@ const itemSnaps = {
 const xdsSideHoles = itemSnaps.xds40231km02.filter((point) => point.kind === 'foro')
 check('XDS automatic mounting-hole snaps are disabled', xdsSideHoles.length === 0)
 
-check('every manifest product belongs to the pilot catalog', manifest.products.every((product) => catalog[product.catalogId]))
-for (const definition of manifest.products) {
+// The 1014 wall of quote 99003819 declares its seats in src/tascaWall.ts;
+// tests/tasca-wall.test.mjs resolves its connectors against the real GLBs.
+const WALL_PRODUCTS = new Set(['ysi03036', 'ysi01131', 'kdw40236', 'kdw40336', 'kdw40436', 'kdw40636', 'kcp40531kmd02', 'kma40100', 'xla40400', 'kdu40426kd080', 'kld41000', 'kud40900'])
+const pilotDefinitions = manifest.products.filter((product) => !WALL_PRODUCTS.has(product.catalogId))
+check('every manifest product belongs to the pilot catalog', pilotDefinitions.every((product) => catalog[product.catalogId]))
+for (const definition of pilotDefinitions) {
   const product = catalog[definition.catalogId]
   const path = `public${product.glbUrl}`
   const points = definition.catalogId in itemSnaps

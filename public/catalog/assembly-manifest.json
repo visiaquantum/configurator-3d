@@ -98,6 +98,140 @@
       ],
       "colliders": [{ "id": "rail-body", "center": [0, 0, 0], "size": [0.05, 0.035, 1.00588] }],
       "bom": { "code": "XHA40100", "label": "Traversa XHA 40100" }
+    },
+    {
+      "catalogId": "ysi03036",
+      "connectors": [
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale",
+          "compatibleWith": ["bay-end", "angle-end"],
+          "capacity": 1
+        },
+        {
+          "id": "side-back-hole",
+          "snapKind": "posteriore",
+          "compatibleWith": ["angle-end"],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-top",
+          "snapId": "stack-top",
+          "compatibleWith": ["side-stack-bottom"],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-bottom",
+          "snapId": "stack-bottom",
+          "compatibleWith": ["side-stack-top"],
+          "capacity": 1
+        },
+        {
+          "id": "side-top-rest",
+          "snapKind": "appoggio",
+          "compatibleWith": ["box-rest"],
+          "capacity": 1
+        }
+      ],
+      "colliders": [{ "id": "side-web", "center": [0, 0, 0.014], "size": [0.363, 1.08, 0.001] }],
+      "bom": { "code": "YSI03036", "label": "Fianco YSI 03036 1080x360" }
+    },
+    {
+      "catalogId": "ysi01131",
+      "connectors": [
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale",
+          "compatibleWith": ["bay-end", "angle-end"],
+          "capacity": 1
+        },
+        {
+          "id": "side-back-hole",
+          "snapKind": "posteriore",
+          "compatibleWith": ["angle-end"],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-top",
+          "snapId": "stack-top",
+          "compatibleWith": ["side-stack-bottom"],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-bottom",
+          "snapId": "stack-bottom",
+          "compatibleWith": ["side-stack-top"],
+          "capacity": 1
+        },
+        {
+          "id": "side-top-rest",
+          "snapKind": "appoggio",
+          "compatibleWith": ["box-rest"],
+          "capacity": 1
+        }
+      ],
+      "colliders": [{ "id": "side-web", "center": [0, 0, 0.014], "size": [0.313, 0.396, 0.001] }],
+      "bom": { "code": "YSI01131", "label": "Fianco YSI 01131 396x310" }
+    },
+    {
+      "catalogId": "kdw40236",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.0107, 0.0674, 0.3698] }],
+      "bom": { "code": "KDW40236", "label": "Cassetto 924x64x311" }
+    },
+    {
+      "catalogId": "kdw40336",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.0107, 0.1023, 0.3698] }],
+      "bom": { "code": "KDW40336", "label": "Cassetto 924x100x311" }
+    },
+    {
+      "catalogId": "kdw40436",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.0107, 0.137, 0.3698] }],
+      "bom": { "code": "KDW40436", "label": "Cassetto 924x136x311" }
+    },
+    {
+      "catalogId": "kdw40636",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.0107, 0.209, 0.3698] }],
+      "bom": { "code": "KDW40636", "label": "Cassetto 924x208x311" }
+    },
+    {
+      "catalogId": "kcp40531kmd02",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.01, 0.1763, 0.307] }],
+      "bom": { "code": "KCP40531KMD02", "label": "Ripiano 1014x180x310 con pannello posteriore" }
+    },
+    {
+      "catalogId": "kma40100",
+      "connectors": [{ "id": "angle-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole", "side-back-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.007, 0.0647, 0.058] }],
+      "bom": { "code": "KMA40100", "label": "Angolare rinforzato 1014" }
+    },
+    {
+      "catalogId": "xla40400",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [0.051, 0.138, 1.006] }],
+      "bom": { "code": "XLA40400", "label": "Angolare leggero 1014x144" }
+    },
+    {
+      "catalogId": "kdu40426kd080",
+      "connectors": [{ "id": "box-rest", "snapKind": "appoggio", "compatibleWith": ["side-top-rest"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.014, 0.14, 0.2642] }],
+      "bom": { "code": "KDU40426KD080", "label": "Cassettiera MultiBox 1014x144x260" }
+    },
+    {
+      "catalogId": "kld41000",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, -0.00315, 0], "size": [1.0114, 0.3713, 0.2416] }],
+      "bom": { "code": "KLD41000", "label": "Antina inferiore 1014x360" }
+    },
+    {
+      "catalogId": "kud40900",
+      "connectors": [{ "id": "bay-end", "snapKind": "frontale", "compatibleWith": ["side-front-hole"], "capacity": 1 }],
+      "colliders": [{ "id": "body", "center": [0, 0, 0], "size": [1.0105, 0.3167, 0.1385] }],
+      "bom": { "code": "KUD40900", "label": "Antina superiore 1014x324" }
     }
   ]
 }
