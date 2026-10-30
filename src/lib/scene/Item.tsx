@@ -1,7 +1,7 @@
 import { useSceneTools } from './useSceneTools'
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { Group, InstancedMesh, MeshStandardMaterial, Object3D } from 'three'
-import { Color, MathUtils, Matrix4, OrthographicCamera, Plane, Vector3 } from 'three'
+import type { Group, InstancedMesh, MeshStandardMaterial, Object3D, Plane } from 'three'
+import { Color, MathUtils, Matrix4, OrthographicCamera, Vector3 } from 'three'
 import type { PerspectiveCamera } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { TransformControls } from '@react-three/drei'
@@ -13,7 +13,7 @@ import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { buildLocalCorners } from './itemRegistry'
 import { mirrorPairConstraint } from './mirrorPair'
 import { mirrorScaleFor, mirrorSnapPoints } from './mating'
-import { followAssemblyLive, holdInSeat, placeDraggedItem, separateFreePart } from './liveDrag'
+import { dragPlaneFor, dragPlaneHit, followAssemblyLive, holdInSeat, keepAssemblyInside, placeDraggedItem, separateFreePart } from './liveDrag'
 import type { VertexSnapLock } from './liveDrag'
 import { assemblyMembers, hasJoints, jointsOf } from '../assembly/graph'
 import { commitConnectionPreview, resolveConnectionPreview } from './connectionPreview'
@@ -21,7 +21,7 @@ import type { ConnectionPreview } from './connectionPreview'
 import type { PreparedProductAsset } from './productAsset'
 import { anchoredBasePosition, dragClearance, finishItemMovement, pointerTurn, restoreLiveItems, snappedRotation } from './itemMovement'
 import { applyItemTint, disposeItemMaterials, enhanceItemMaterials, renderBothSides } from './itemMaterials'
-import { selectCanMove, selectCollisionBounds } from '../state/selectors'
+import { selectCanMove, selectCollisionBounds, selectFrozenIds } from '../state/selectors'
 import { own } from '../util/record'
 
 interface Props {
@@ -52,7 +52,7 @@ interface DragCtx {
   startRotY: number
   /** Fixed group position used while rotating; rotation must not translate. */
   startPos: Vector3
-  /** Horizontal plane at the group's initial Y; raycast target for translate. */
+  /** Raycast target for translate: the floor plane at the group's Y, or a vertical one seen side-on (`dragPlaneFor`). */
   plane: Plane
   /** group.position − pointer-hit at pointer-down. Preserves the grab offset. */
   grabOffset: Vector3
@@ -96,6 +96,8 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
   const setDraggingItemId = useConfiguratorStore((s) => s.setDraggingItemId)
   // One boolean per item: the frozen set is computed once per project snapshot.
   const readOnly = useConfiguratorStore((state) => !selectCanMove(state, item.id))
+  // A locked part still shows it is selected, in its own colour.
+  const isLocked = useConfiguratorStore((state) => selectFrozenIds(state).has(item.id))
   const collisionBounds = useConfiguratorStore(selectCollisionBounds)
   const isOverlapping = useConfiguratorStore((s) => s.overlappingIds.has(item.id))
 
@@ -252,10 +254,9 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
     ;(e.target as Element & { setPointerCapture?: (id: number) => void })
       .setPointerCapture?.(e.pointerId)
 
-    // Drag plane at the group's current Y so translate stays on the same height.
-    const plane = new Plane(new Vector3(0, 1, 0), -group.position.y)
-    const initialHit = new Vector3()
-    e.ray.intersectPlane(plane, initialHit)
+    // Drag plane through the group, so translate stays on the same height.
+    const plane = dragPlaneFor(e.ray, group.position)
+    const initialHit = dragPlaneHit(e.ray, plane, new Vector3()) ?? group.position.clone()
     const grabOffset = new Vector3().subVectors(group.position, initialHit)
 
     dragRef.current = {
@@ -289,11 +290,12 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
       updateConnectionPreview(null)
       group.position.copy(d.startPos)
       group.rotation.set(...pointerTurn([d.startRotX, d.startRotY, item.rotation[2]], dx))
-      if (!followAssemblyLive(state, item.id)) separateFreePart(state, item.id, NONE)
+      if (followAssemblyLive(state, item.id)) keepAssemblyInside(state, item.id)
+      else separateFreePart(state, item.id, NONE)
       return
     }
-    // Y stays at the drag plane.
-    if (!e.ray.intersectPlane(d.plane, _hit)) return
+    // Y stays where it was; a grazing ray keeps the last pose.
+    if (!dragPlaneHit(e.ray, d.plane, _hit)) return
     d.snapLock = placeDraggedItem(state, item.id, _hit.x + d.grabOffset.x, _hit.z + d.grabOffset.z, d.snapLock, d.followers)
 
     // Resolve the joint first: a part on its way into a valid seat must not be
@@ -304,9 +306,11 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
     // its own as soon as the pointer leaves its range.
     const preview = currentConnectionPreview()
     updateConnectionPreview(preview)
-    if (!holdInSeat(state, item.id, preview, [d.startRotX, d.startRotY, item.rotation[2]])) separateFreePart(state, item.id, d.followers)
-    // The whole assembly takes the same step, however far down the chain.
-    followAssemblyLive(state, item.id)
+    const seated = holdInSeat(state, item.id, preview, [d.startRotX, d.startRotY, item.rotation[2]])
+    if (!seated) separateFreePart(state, item.id, d.followers)
+    // The whole assembly takes the same step, however far down the chain, and
+    // stays inside the van as one body.
+    if (followAssemblyLive(state, item.id) && !seated) keepAssemblyInside(state, item.id)
     if (state.enclosureBBox) state.setDragClearance(dragClearance(item.id, group.position.toArray(), colliderSize, state.enclosureBBox))
   }
 
@@ -382,14 +386,14 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
             <primitive object={cloned} dispose={null} />
           </group>
         </group>
-        {(isSelected || isAttachmentTarget) && !readOnly && (
+        {(isSelected || isAttachmentTarget) && (!readOnly || isLocked) && (
           <mesh userData={{ configuratorHelper: true }}>
             <boxGeometry
               args={[colliderSize[0] * 1.05, colliderSize[1] * 1.05, colliderSize[2] * 1.05]}
             />
             <meshBasicMaterial
               wireframe
-              color={isAttachmentTarget ? '#36d6ff' : isOverlapping ? '#ff4040' : snappedAnchor ? '#33ff88' : '#ffcc33'}
+              color={isAttachmentTarget ? '#36d6ff' : isLocked ? '#8fa3bf' : isOverlapping ? '#ff4040' : snappedAnchor ? '#33ff88' : '#ffcc33'}
             />
           </mesh>
         )}
@@ -428,13 +432,15 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
               // part is kept clear of other products (its assembly excepted).
               const preview = currentConnectionPreview()
               updateConnectionPreview(preview)
-              if (!holdInSeat(state, item.id, preview, item.rotation)) separateFreePart(state, item.id, followersOf())
-              followAssemblyLive(state, item.id)
+              const seated = holdInSeat(state, item.id, preview, item.rotation)
+              if (!seated) separateFreePart(state, item.id, followersOf())
+              if (followAssemblyLive(state, item.id) && !seated) keepAssemblyInside(state, item.id)
               return
             }
             // A turn: the assembly it belongs to comes along every frame, or
             // it only catches up on release.
-            if (!followAssemblyLive(state, item.id)) separateFreePart(state, item.id, NONE)
+            if (followAssemblyLive(state, item.id)) keepAssemblyInside(state, item.id)
+            else separateFreePart(state, item.id, NONE)
           }}
           onMouseUp={handleTransformEnd}
         />

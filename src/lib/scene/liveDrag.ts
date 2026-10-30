@@ -1,3 +1,5 @@
+import { Plane, Vector3 } from 'three'
+import type { Ray } from 'three'
 import type { ConfiguratorState } from '../state/store'
 import type { Euler } from '../types'
 import { assemblyMembers, jointsOf } from '../assembly/graph'
@@ -5,7 +7,7 @@ import { selectCollisionBounds } from '../state/selectors'
 import { colliderSizeOf } from './itemRegistry'
 import { assemblyPosePatches } from './mating'
 import { uprightYaw } from './rotation'
-import { clampItemToBounds, findNearestVertexSnap, offsetForLockedCorners, pushOutOverlaps, VERTEX_SNAP_RELEASE_RADIUS } from './snapping'
+import { clampItemsToBounds, clampItemToBounds, findNearestVertexSnap, offsetForLockedCorners, pushOutOverlaps, VERTEX_SNAP_RELEASE_RADIUS } from './snapping'
 import { applyLiveItemPatches } from './itemMovement'
 import type { ConnectionPreview } from './connectionPreview'
 
@@ -16,6 +18,30 @@ import type { ConnectionPreview } from './connectionPreview'
  */
 
 type LiveState = Pick<ConfiguratorState, 'project' | 'itemRegistry' | 'snapToGridEnabled' | 'gridStep' | 'interiorBBox' | 'enclosureBBox'>
+
+/** Below 15° between the pointer ray and the floor, the floor plane is too oblique to drag on. */
+const MIN_FLOOR_RAY_SIN = Math.sin((15 * Math.PI) / 180)
+/** A ray within 5° of its plane lands metres away for a pixel of pointer travel. */
+const MIN_PLANE_RAY_SIN = Math.sin((5 * Math.PI) / 180)
+
+/**
+ * The plane a drag follows, through `point`. From above it is the floor plane
+ * at the item's height. Seen side-on (Fronte, Lato, a low orbit) that plane is
+ * edge-on: a few pixels of pointer travel threw the part metres across the van,
+ * or behind the camera. There the part follows a vertical plane facing the
+ * camera instead, so the pointer moves it sideways and its depth stays put.
+ */
+export function dragPlaneFor(ray: Ray, point: Vector3): Plane {
+  if (Math.abs(ray.direction.y) >= MIN_FLOOR_RAY_SIN) return new Plane(new Vector3(0, 1, 0), -point.y)
+  const normal = new Vector3(-ray.direction.x, 0, -ray.direction.z).normalize()
+  return new Plane().setFromNormalAndCoplanarPoint(normal, point)
+}
+
+/** Where the pointer ray meets the drag plane, or null when it misses or only grazes it. */
+export function dragPlaneHit(ray: Ray, plane: Plane, out: Vector3): Vector3 | null {
+  if (Math.abs(ray.direction.dot(plane.normal)) < MIN_PLANE_RAY_SIN) return null
+  return ray.intersectPlane(plane, out)
+}
 
 /** A corner pair held by the vertex magnet until it drifts past the release radius. */
 export interface VertexSnapLock {
@@ -105,6 +131,16 @@ export function followAssemblyLive(state: LiveState, id: string): boolean {
   }
   applyLiveItemPatches(state.itemRegistry, assemblyPosePatches(project.items, members, item, pose).filter((entry) => entry.id !== id))
   return true
+}
+
+/**
+ * An assembly on the move stays inside the enclosure as one body. Only a part
+ * out of a seat: a seat that reaches past the van is the user's to decide.
+ */
+export function keepAssemblyInside(state: LiveState, id: string): void {
+  const project = state.project
+  if (!project) return
+  clampItemsToBounds(assemblyMembers(project.items, jointsOf(project), id), selectCollisionBounds(state), state.itemRegistry)
 }
 
 /** A part on its own is pushed out of other products and kept inside the enclosure. */

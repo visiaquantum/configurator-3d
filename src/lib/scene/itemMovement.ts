@@ -2,12 +2,12 @@ import type { ConfiguratorState, ConfiguratorStore, DragClearance } from '../sta
 import { rotateVector } from './geometry'
 import type { Anchor, Euler, ItemConstraint, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
 import type { ItemRegistry } from './itemRegistry'
-import { selectCanMove } from '../state/selectors'
+import { selectCanMove, selectCollisionBounds } from '../state/selectors'
 import { colliderSizeOf } from './itemRegistry'
 import { assemblyPosePatches, rotateGroupPatches } from './mating'
 import { assemblyMembers, jointsOf, jointsSurvivingMove } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
-import { clampItemToBounds, pushOutOverlaps } from './snapping'
+import { clampItemsToBounds, clampItemToBounds, pushOutOverlaps } from './snapping'
 
 const ANCHOR_SNAP_RADIUS = 0.06
 const ANCHOR_SNAP_MAX_DY = 0.3
@@ -172,7 +172,22 @@ export function rotateAssembly(store: ConfiguratorStore, id: string, step: numbe
     finishItemMovement(store, id, 'rotate', [item.rotation[0], item.rotation[1] + step, item.rotation[2]], [], [])
     return
   }
-  commitLiveItemPatches(store, rotateGroupPatches(state.project.items, members, item.position, step))
+  commitLiveItemPatches(store, keptInside(state, rotateGroupPatches(state.project.items, members, item.position, step)))
+}
+
+/**
+ * An assembly's patches shifted, all by the same step, so the whole of it
+ * stays inside the enclosure: turning a wall about one of its parts must not
+ * swing the rest through the van's side.
+ */
+function keptInside(state: ConfiguratorState, patches: ItemPatch[]): ItemPatch[] {
+  applyLiveItemPatches(state.itemRegistry, patches)
+  const step = clampItemsToBounds(patches.map((entry) => entry.id), selectCollisionBounds(state), state.itemRegistry)
+  if (!step) return patches
+  return patches.map(({ id, patch }) => ({
+    id,
+    patch: patch.position ? { ...patch, position: [patch.position[0] + step.x, patch.position[1] + step.y, patch.position[2] + step.z] } : patch,
+  }))
 }
 
 const QUARTER_TURN = Math.PI / 2
@@ -256,13 +271,18 @@ export function finishItemMovement(
     return
   }
   group.rotation.set(...rotation)
-  const bounds = state.interiorBBox ?? state.enclosureBBox
+  const bounds = selectCollisionBounds(state)
+  const position = (): Vec3 => [group.position.x, group.position.y - size[1] / 2, group.position.z]
+  // An assembly is contained as one body, from the pose the part takes it to.
+  const clampAssembly = () => {
+    applyLiveItemPatches(state.itemRegistry, assemblyPosePatches(state.project!.items, members, item, { position: position(), rotation }).filter((entry) => entry.id !== id))
+    return clampItemsToBounds(members, bounds, state.itemRegistry) !== null
+  }
   const correctPosition = () => {
     const pushed = pushOutOverlaps(id, state.itemRegistry, members)
-    const clamped = clampItemToBounds(id, bounds, state.itemRegistry)
+    const clamped = members.size > 1 ? clampAssembly() : clampItemToBounds(id, bounds, state.itemRegistry)
     return pushed || clamped
   }
-  const position = (): Vec3 => [group.position.x, group.position.y - size[1] / 2, group.position.z]
   const corrected = correctPosition()
   if (mode === 'rotate') {
     const anchor = item.constraints?.find((constraint) => constraint.type === 'snapToAnchor')

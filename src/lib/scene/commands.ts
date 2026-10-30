@@ -69,6 +69,36 @@ export function unjoinItem(store: ConfiguratorStore, id: string): void {
 }
 
 /**
+ * Lock or unlock an item together with everything joined to it, in one undo
+ * entry. A lone part is locked alone; a part of an assembly locks the whole of
+ * it, since one locked member already holds the others in place. Unlocking
+ * clears every member, so no forgotten lock keeps the assembly frozen. Takes
+ * the state, so the keyboard can run it as well as the inspector.
+ */
+export function setAssemblyLocked(state: ConfiguratorState, id: string, locked: boolean): void {
+  if (!state.project || state.readOnly) return
+  const members = assemblyMembers(state.project.items, jointsOf(state.project), id)
+  const patches = state.project.items
+    .filter((item) => members.has(item.id) && (item.locked === true) !== locked)
+    .map((item) => ({ id: item.id, patch: { locked } }))
+  if (patches.length > 0) state.updateItems(patches)
+}
+
+/** Lock state of an item's assembly: `held` by a lock flag, frozen by an axis lock only, or free. */
+export function assemblyLock(state: Pick<ConfiguratorState, 'project'>, id: string): 'held' | 'axis' | 'free' {
+  if (!state.project) return 'free'
+  const members = assemblyMembers(state.project.items, jointsOf(state.project), id)
+  const items = state.project.items.filter((item) => members.has(item.id))
+  if (items.some((item) => item.locked)) return 'held'
+  return items.some((item) => item.constraints?.some((constraint) => constraint.type === 'lockAxis')) ? 'axis' : 'free'
+}
+
+/** `L`: lock the selection's assembly, or unlock it when it is held. */
+export function toggleAssemblyLock(state: ConfiguratorState, id: string): void {
+  setAssemblyLocked(state, id, assemblyLock(state, id) !== 'held')
+}
+
+/**
  * The graph once `moved` items take their new poses: joints that straddle the
  * move are broken by it, the rest stand, and what the moved parts touch now
  * is discovered from their new poses.

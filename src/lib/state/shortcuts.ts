@@ -1,3 +1,4 @@
+import { toggleAssemblyLock } from '../scene/commands'
 import type { ConfiguratorState } from './store'
 
 export interface ShortcutKey {
@@ -32,6 +33,7 @@ export function shortcutFor(key: ShortcutKey, state: Pick<ConfiguratorState, 'at
   const selected = state.selectedId
   if (!selected) return null
   if (k === 'f') return { run: (s) => s.requestFocusSelected(), preventDefault: false }
+  if (k === 'l') return { run: (s) => toggleAssemblyLock(s, selected), preventDefault: false }
   if (key.key === 'Delete' || key.key === 'Backspace') return { run: (s) => s.removeItem(selected), preventDefault: false }
   return null
 }

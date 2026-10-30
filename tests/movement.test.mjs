@@ -106,6 +106,20 @@ test('collision corrections invalidate an anchor that would put the body outside
   assert.ok(!store.getState().project.items[0].constraints?.some((constraint) => constraint.type === 'snapToAnchor'))
 })
 
+test('an assembly is kept inside the van as one body, not just the part that was grabbed', () => {
+  const store = setup([part('a'), part('b', [1, 0, 0]), part('c', [2, 0, 0])], [joint('b', 'a'), joint('c', 'b')])
+  store.getState().setInteriorBBox({ min: [-3, 0, -2], max: [3, 2, 2] })
+  // Grab the end part and pull: alone it fits at x = 1.5, but the far end would sit at 3.5.
+  live(store, 'a').position.set(1.5, 0.5, 0)
+  finishItemMovement(store, 'a', 'translate', [0, 0, 0], [], points)
+  assert.deepEqual(store.getState().project.items.map((item) => item.position), [[0.5, 0, 0], [1.5, 0, 0], [2.5, 0, 0]])
+  assert.equal(store.getState().project.connections.length, 2)
+  // A turn about the far end swings the others past the side; the whole wall steps back in.
+  rotateAssembly(store, 'c', Math.PI / 2)
+  const positions = store.getState().project.items.map((item) => item.position.map((value) => Math.round(value * 1e9) / 1e9 + 0))
+  assert.deepEqual(positions, [[2.5, 0, 1.5], [2.5, 0, 0.5], [2.5, 0, -0.5]])
+})
+
 test('switching to readonly or locking a follower during a gesture rejects it and restores live poses', () => {
   for (const block of [
     (store) => store.getState().setReadOnly(true),

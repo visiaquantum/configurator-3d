@@ -7,7 +7,7 @@ import { assemblyMembers } from '../assembly/graph'
 import { pairSpacingOptions } from '../assembly/pairSpacing'
 import { attachmentPoints, beginAttachment } from '../scene/attachment'
 import { rotateAssembly } from '../scene/itemMovement'
-import { setMirrorPairDistance, snapAssemblyToAnchor, unjoinItem } from '../scene/commands'
+import { assemblyLock, setAssemblyLocked, setMirrorPairDistance, snapAssemblyToAnchor, unjoinItem } from '../scene/commands'
 import { Icon } from './Icon'
 import { own } from '../util/record'
 
@@ -29,6 +29,10 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   const { removeMirrorPair, removeItem, select } = storeApi.getState()
   const members = assemblyMembers(project.items, graph, item.id)
   const readOnly = hostReadOnly || !selectCanMove(state, item.id)
+  // The lock stays reachable on a locked part: it is the way back.
+  const lock = assemblyLock(state, item.id)
+  const canLock = !hostReadOnly && !state.readOnly && !state.walkMode && lock !== 'axis'
+  const lockScope = members.size > 1 ? `assieme (${members.size})` : 'componente'
   const cat = own(catalog, item.catalogId)
   const [x, y, z] = item.position
   const size = own(state.itemSizes, item.catalogId) ?? cat?.size
@@ -53,6 +57,11 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
           <button className="cfg-button" style={{ flex: 1 }} disabled={readOnly} onClick={() => rotateAssembly(storeApi, item.id, -Math.PI / 2)} aria-label="Ruota di -90 gradi"><Icon name="rotate" size={16} />−90°</button>
           <button className="cfg-button" style={{ flex: 1 }} disabled={readOnly} onClick={() => rotateAssembly(storeApi, item.id, Math.PI / 2)} aria-label="Ruota di +90 gradi"><Icon name="rotate" size={16} style={{ transform: 'scaleX(-1)' }} />+90°</button>
         </div>
+        <span className="cfg-property-label">Blocco</span>
+        <button className="cfg-button" style={{ width: '100%' }} disabled={!canLock} aria-pressed={lock !== 'free'} onClick={() => setAssemblyLocked(storeApi.getState(), item.id, lock !== 'held')}
+          title={lock === 'axis' ? 'Bloccato da un vincolo d’asse del progetto' : members.size > 1 ? 'Vale per tutti i componenti agganciati · L' : 'L'}>
+          <Icon name={lock === 'free' ? 'unlock' : 'lock'} size={16} />{lock === 'held' ? `Sblocca ${lockScope}` : `Blocca ${lockScope}`}
+        </button>
         {joints.length > 0 && <details><summary>{joints.length} {joints.length === 1 ? 'aggancio' : 'agganci'} in questo componente</summary><p style={{ color: 'var(--cfg-text-muted)', lineHeight: 1.6 }}>Fa parte di un assieme di {members.size} componenti. Muovendolo, sposti l’assieme.</p><button className="cfg-button" disabled={readOnly} onClick={() => unjoinItem(storeApi, item.id)}>Sgancia componente</button></details>}
         {spacings.length > 0 && <details open={!!pair}><summary>Coppia specchiata {pair ? '· attiva' : ''}</summary><div className="cfg-pair-options">
           {spacings.map(({ distance, fits }) => <button key={distance} disabled={readOnly} aria-pressed={pair?.distance === distance} onClick={() => setMirrorPairDistance(storeApi, item.id, distance)}><span>{formatCm(distance)} cm</span><span>{fits.join(' · ') || 'Distanza libera'}</span></button>)}
@@ -61,7 +70,7 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
         {anchors.length > 0 && <details><summary>Posizionamento nel vano</summary><select aria-label="Punto del vano" disabled={readOnly} value={snapTarget ?? ''} onChange={(event) => snapAssemblyToAnchor(storeApi, item.id, event.target.value || null)} style={{ width: '100%', background: 'var(--cfg-surface-muted)', color: 'var(--cfg-text-secondary)', border: '1px solid var(--cfg-line)', padding: 9, borderRadius: 8, marginTop: 10, fontSize: 12 }}><option value="">Posizione libera</option>{anchors.map((anchor) => <option key={anchor.id} value={anchor.id}>{anchor.id}</option>)}</select></details>}
       </div>
       <div className="cfg-inspector-footer">
-        <small style={{ color: 'var(--cfg-text-subtle)', fontSize: 11 }}>{readOnly ? 'Componente bloccato' : 'Tasto destro per le azioni'}</small>
+        <small style={{ color: 'var(--cfg-text-subtle)', fontSize: 11 }}>{lock !== 'free' ? (members.size > 1 ? 'Assieme bloccato' : 'Componente bloccato') : readOnly ? 'Sola lettura' : 'Tasto destro per le azioni'}</small>
         <button className="cfg-icon-button" disabled={readOnly} onClick={() => removeItem(item.id)} aria-label="Elimina componente" title="Elimina componente" style={{ color: 'var(--cfg-error)' }}><Icon name="trash" size={16} /></button>
       </div>
     </section>
