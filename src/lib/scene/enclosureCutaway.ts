@@ -2,6 +2,8 @@ import { Box3, BufferAttribute, BufferGeometry, Mesh, Vector3 } from 'three'
 import type { Camera, Object3D } from 'three'
 
 const fullGeometries = new WeakMap<BufferGeometry, BufferGeometry>()
+/** Cut bit of the roof; walls use 1, 2 (±X) and 4, 8 (±Z). */
+const ROOF = 16
 
 /** View-only cuts must never remove the enclosure from a geometry export. */
 export function enclosureGeometryForExport(geometry: BufferGeometry): BufferGeometry {
@@ -67,6 +69,10 @@ export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
         walls[t] = centroid.x > 0 ? 1 : 2
       } else if (Math.abs(normal.z) > Math.abs(normal.y) * 1.5 && Math.abs(normal.z) > Math.abs(normal.x) && Math.abs(centroid.z) > size.z * 0.3) {
         walls[t] = centroid.z > 0 ? 4 : 8
+      } else if (centroid.y > size.y * 0.3 && (Math.abs(normal.y) > 0.25 || centroid.y > size.y * 0.4)) {
+        // The roof: its skin, the curved edges towards the walls, and the
+        // ribs under it.
+        walls[t] = ROOF
       }
       anyWall ||= walls[t] !== 0
     }
@@ -104,12 +110,14 @@ export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
 
   let previousMask = -1
   return {
-    update(camera: Camera, enabled: boolean) {
+    /** `cutRoof` also hides the roof, for views from above (technical drawings). */
+    update(camera: Camera, enabled: boolean, cutRoof = false) {
       let mask = 0
       if (enabled) {
         camera.getWorldDirection(direction)
         if (Math.abs(direction.x) > 0.15) mask |= direction.x < 0 ? 1 : 2
         if (Math.abs(direction.z) > 0.15) mask |= direction.z < 0 ? 4 : 8
+        if (cutRoof) mask |= ROOF
       }
       if (mask === previousMask) return
       previousMask = mask

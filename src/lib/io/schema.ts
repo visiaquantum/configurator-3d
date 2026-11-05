@@ -66,6 +66,8 @@ const ProjectMetadataSchema = z
   .object({
     name: z.string().optional(),
     customer: z.string().optional(),
+    quoteNumber: z.string().optional(),
+    vehicle: z.string().optional(),
     createdAt: z.string().optional(),
     updatedAt: z.string().optional(),
   })

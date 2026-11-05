@@ -48,3 +48,10 @@ test('the isometric view frames the enclosure', async ({ page }) => {
   await page.getByRole('button', { name: 'Verifica isometria 1' }).click()
   await expect(scene(page, 1).getByText(/^(PASS|FAIL):/)).toHaveText(/^PASS/)
 })
+
+test('the isometric line drawings show the enclosure and the products', async ({ page }) => {
+  await page.getByRole('button', { name: 'Aggiungi 1' }).click()
+  await expect(status(page, 1)).toHaveText(/pronto: true/)
+  await page.getByRole('button', { name: 'Viste isometriche 1' }).click()
+  await expect(scene(page, 1).getByText(/^Esito viste:/)).toHaveText(/PASS/, { timeout: 30_000 })
+})

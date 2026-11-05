@@ -243,6 +243,11 @@ export function buildTascaWall(context: WallContext, enclosure: EnclosureData = 
     enclosure,
     items,
     connections,
-    metadata: { name: 'Parete 1014 — preventivo 99003819', customer: 'Alberto Tasca · Syncro Cassola' },
+    metadata: {
+      name: 'Parete 1014 — preventivo 99003819',
+      customer: 'Alberto Tasca · Syncro Cassola',
+      quoteNumber: '99003819',
+      vehicle: 'IVECO Daily 2014 L3 H2 · guida a sinistra con 1 porta scorrevole',
+    },
   }
 }
