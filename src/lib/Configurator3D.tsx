@@ -14,7 +14,7 @@ import { shortcutFor } from './state/shortcuts'
 import { useValidationReport } from './state/useValidationReport'
 import { loadCatalog } from './io/catalog'
 import { loadAssemblyManifest } from './assembly/manifest'
-import { exportSceneAsBlob } from './io/sceneExport'
+import { exportIsometricViewImages, exportSceneAsBlob } from './io/sceneExport'
 import { addItemToScene } from './scene/commands'
 import { PROJECT_SCHEMA_VERSION } from './types'
 import type { Configurator3DProps, ConfiguratorHandle, EnclosureData, ProjectData } from './types'
@@ -222,6 +222,8 @@ function ConfiguratorContent({
       exportPNG: () => exportSceneAsBlob(storeApi, 'png'),
       exportGLB: () => exportSceneAsBlob(storeApi, 'glb'),
       exportPDF: () => exportSceneAsBlob(storeApi, 'pdf'),
+      exportIsometricPDF: (options) => exportSceneAsBlob(storeApi, 'iso-pdf', options),
+      exportIsometricViews: (options) => exportIsometricViewImages(storeApi, options),
     }),
     [storeApi],
   )

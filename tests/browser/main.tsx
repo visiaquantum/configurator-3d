@@ -20,6 +20,24 @@ export function TestScene({ index }: { index: number }) {
   const [pdf, setPdf] = useState<{ url: string; size: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cameraCheck, setCameraCheck] = useState<string | null>(null)
+  const [isoCheck, setIsoCheck] = useState<string | null>(null)
+  const checkIsometricViews = async () => {
+    try {
+      const images = await ref.current!.exportIsometricViews({ width: 800, height: 480 })
+      const inked = await Promise.all(images.map(async ({ blob }) => {
+        const bitmap = await createImageBitmap(blob)
+        const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+        const context = canvas.getContext('2d')!
+        context.drawImage(bitmap, 0, 0)
+        const data = context.getImageData(0, 0, bitmap.width, bitmap.height).data
+        let dark = 0
+        for (let i = 0; i < data.length; i += 4) if (data[i] < 200) dark++
+        return dark
+      }))
+      const ok = images.length > 0 && images.every((image) => image.width === 800 && image.height === 480) && inked.every((dark) => dark > 500)
+      setIsoCheck(`${ok ? 'PASS' : 'FAIL'}: viste=${images.map((image) => image.view).join(',')}; tratti=${inked.join(',')}`)
+    } catch (cause) { setIsoCheck(`FAIL: ${(cause as Error).message}`) }
+  }
   useEffect(() => () => { if (pdf) URL.revokeObjectURL(pdf.url) }, [pdf])
   const generatePdf = async () => {
     try {
@@ -60,7 +78,9 @@ export function TestScene({ index }: { index: number }) {
       <button onClick={() => ref.current?.undo()}>Undo {index + 1}</button>
       <button onClick={generatePdf}>Genera PDF {index + 1}</button>
       <button onClick={checkIsometricCamera}>Verifica isometria {index + 1}</button>
+      <button onClick={() => void checkIsometricViews()}>Viste isometriche {index + 1}</button>
       {cameraCheck && <p>{cameraCheck}</p>}
+      {isoCheck && <p>Esito viste: {isoCheck}</p>}
       {pdf && <a href={pdf.url} download={`integration-${index + 1}.pdf`}>Scarica PDF {index + 1} ({pdf.size} byte)</a>}
       {error && <p role="alert">{error}</p>}
       <p>Componenti: {state.project?.items.length ?? 0}; cambiamenti: {changes}; registro: {state.itemRegistry.size}</p>

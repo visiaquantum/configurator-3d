@@ -5,6 +5,7 @@ import { configurationStatus } from '../state/readiness'
 import { hasBlockingIssues } from '../assembly/validation'
 import { downloadBlob } from '../io/export'
 import { exportSceneAsBlob } from '../io/sceneExport'
+import type { SceneExportKind } from '../io/sceneExport'
 import type { ProjectData } from '../types'
 import { Icon } from './Icon'
 
@@ -37,13 +38,13 @@ export function Toolbar({
   const projectId = useConfiguratorStore((s) => s.project?.id ?? 'scene')
   const validationIssues = useConfiguratorStore((s) => s.validationIssues)
   const canExportBom = status.ready && status.technical && !hasBlockingIssues(validationIssues)
-  const download = async (kind: 'png' | 'glb' | 'pdf') => {
+  const download = async (kind: SceneExportKind) => {
     setBusy(true)
     setExportsOpen(false)
     setError(null)
     try {
       const blob = await exportSceneAsBlob(storeApi, kind)
-      downloadBlob(blob, `${projectId}.${kind}`)
+      downloadBlob(blob, kind === 'iso-pdf' ? `${projectId}-isometriche.pdf` : `${projectId}.${kind}`)
     } catch (cause) {
       setError((cause as Error).message)
     } finally {
@@ -61,6 +62,7 @@ export function Toolbar({
           <button className="cfg-menu-action" disabled={!status.ready} onClick={() => void download('png')}><Icon name="eye" size={16} />Immagine PNG</button>
           <button className="cfg-menu-action" disabled={!status.ready} onClick={() => void download('glb')}><Icon name="cube" size={16} />Modello 3D · GLB</button>
           <button className="cfg-menu-action" disabled={!canExportBom} onClick={() => void download('pdf')} title={canExportBom ? 'Distinta componenti e configurazione' : 'Completa la validazione prima di esportare'}><Icon name="layers" size={16} />Distinta PDF</button>
+          <button className="cfg-menu-action" disabled={!status.ready} onClick={() => void download('iso-pdf')} title="Tavole A4 con le viste isometriche della configurazione nel vano"><Icon name="cube" size={16} />Viste isometriche · PDF</button>
           <button className="cfg-menu-action" onClick={() => setExportsOpen(false)}><Icon name="close" size={16} />Chiudi</button>
         </div>}
       </div>

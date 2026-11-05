@@ -280,6 +280,10 @@ export interface PlacedItem {
 export interface ProjectMetadata {
   name?: string
   customer?: string
+  /** Quote or order number, printed in the title block of the isometric sheets. */
+  quoteNumber?: string
+  /** Vehicle description, printed in the title block of the isometric sheets. */
+  vehicle?: string
   createdAt?: string
   updatedAt?: string
   [k: string]: unknown
@@ -375,6 +379,46 @@ export interface ConfiguratorHandle {
   exportGLB(): Promise<Blob>
   /** A4 PDF with image + component list as a Blob. */
   exportPDF(): Promise<Blob>
+  /**
+   * Isometric line drawings of the configuration inside the enclosure, one
+   * A4 landscape sheet per view with a title block (project, customer,
+   * `metadata.quoteNumber`, `metadata.vehicle`).
+   */
+  exportIsometricPDF(options?: IsometricExportOptions): Promise<Blob>
+  /** The same isometric line drawings as PNG images, one per view. */
+  exportIsometricViews(options?: IsometricExportOptions): Promise<IsometricViewImage[]>
+}
+
+/**
+ * Isometric view, named after the corner the camera looks from (`+Z` is the
+ * front, `+X` the right side): `iso` front right, then front left, back
+ * right, back left.
+ */
+export type IsometricView = 'iso' | 'iso-front-left' | 'iso-back-right' | 'iso-back-left'
+
+export interface IsometricExportOptions {
+  /**
+   * Views to draw, in order. Default: the views that look at the products
+   * from inside the enclosure (all four when products line both sides).
+   */
+  views?: IsometricView[]
+  /** Image size in pixels. Default 2400 × 1435, the drawing area of the sheet. */
+  width?: number
+  height?: number
+  /** Outline the products with a red frame, as quote drawings do. Default true. */
+  highlight?: boolean
+  /** PDF only: PNG or JPEG data URL drawn at the left of the title block. */
+  logo?: string
+}
+
+export interface IsometricViewImage {
+  view: IsometricView
+  /** Italian caption, e.g. «Vista isometrica anteriore sinistra». */
+  label: string
+  /** PNG image. */
+  blob: Blob
+  width: number
+  height: number
 }
 
 export const PROJECT_SCHEMA_VERSION = 1

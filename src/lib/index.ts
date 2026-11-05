@@ -83,6 +83,9 @@ export {
   downloadBlob,
 } from './io/export'
 export type { BomLine, ExportPdfOptions } from './io/export'
+export { ISOMETRIC_VIEWS, ISOMETRIC_VIEW_LABELS, defaultIsometricViews } from './scene/isometric'
+export { exportIsometricSheetPDF } from './io/isometricSheet'
+export type { IsometricSheetOptions, IsometricSheetView } from './io/isometricSheet'
 export type {
   ProjectData,
   EnclosureData,
@@ -110,6 +113,9 @@ export type {
   Configurator3DProps,
   ConfiguratorTheme,
   ConfiguratorHandle,
+  IsometricView,
+  IsometricExportOptions,
+  IsometricViewImage,
   ProjectMetadata,
   Vec3,
   Euler,
