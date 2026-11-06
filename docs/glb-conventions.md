@@ -151,9 +151,15 @@ Parsing: `src/lib/io/itemSnaps.ts`. Regole di accoppiamento e matematica:
 
 ### Dichiarazione
 
-1. **Nome nodo** `SNAP_<TIPO>` (case-insensitive) — convenzione già in uso nei
-   file Sincro esportati da SolidWorks. **È il canale da usare**: l'export CAD
-   del cliente non scrive extras.
+1. **Nome stabile** `SNAP_<TIPO>__<NOME>` — il formato di produzione
+   ([contratto-glb-manifest.md](contratto-glb-manifest.md)): `<TIPO>` è il
+   kind, `<NOME>` l'id del punto, unico nel file e uguale a ogni
+   riesportazione (`SNAP_FRONTALE__END_A` → id `end_a`, kind `frontale`). I
+   nomi sono letti come scritti nel GLB, prima che il caricatore li renda
+   unici: un nome ripetuto è un errore del controllo del catalogo.
+   **Nome nodo** `SNAP_<TIPO>` (case-insensitive) — convenzione dei file Sincro
+   esportati finora da SolidWorks, ancora letta e segnalata come «marker senza
+   nome stabile».
 2. **extras** `{ "kind": "snap", "id": "<tipo>" }` (alternativa legacy, se il GLB
    viene post-processato). Per dichiarare un identificativo stabile separato
    dalla famiglia usare `{ "kind": "snap", "id": "faccia-destra", "snapKind": "laterale", "normal": [1, 0, 0] }`.
@@ -178,14 +184,10 @@ attraversamento (`frontale-1` … `frontale-10`). Così ogni punto è
 indirizzabile: `KIT01` porta dieci marker `frontale` e senza numerazione
 sarebbero tutti lo stesso punto.
 
-> **Per chi prepara i GLB**: non serve inventare nomi univoci. Ripetere
-> `SNAP_FRONTALE` su ogni posizione utile è corretto e voluto — ci pensa il
-> configuratore a numerarli.
-
-La numerazione dipende dall'ordine dei nodi. Per cataloghi aggiornati nel tempo
-e progetti salvati, preferire gli ID espliciti con `snapKind` oppure
-`catalog.snapPoints`: questi mantengono i riferimenti anche se il CAD riordina
-i marker.
+La numerazione dipende dall'ordine dei nodi: una riesportazione che li
+riordina cambia gli id e rompe manifest e progetti salvati. Per questo i nuovi
+GLB usano i nomi stabili `SNAP_<TIPO>__<NOME>`; per i file esistenti il
+manifest dichiara i punti in una correzione legata all'hash del file.
 
 ### Tabella di accoppiamento
 
@@ -208,7 +210,8 @@ dalla libreria.
 
 ### Posizione e normale
 
-Il punto è il **centro della geometria** del nodo marker (SolidWorks esporta i
+Il marker è un cubetto di circa 1 mm **centrato sulla superficie di
+contatto**. Il punto è il **centro della geometria** del nodo marker (SolidWorks esporta i
 componenti con pivot all'origine e geometria "cotta", quindi l'origine del nodo
 non è significativa); se il nodo è un Empty vale la sua posizione. I marker
 vengono nascosti a runtime.
@@ -349,7 +352,15 @@ Misure sul catalogo attuale:
 - Le tolleranze compensano export CAD non perfettamente allineati
   (`planeTolerance`) e vertici non saldati (`vertexTolerance`).
 
-## 5. Aggiungere nuove regole
+## 5. Ancoraggi dei veicoli
+
+Un nodo `anchor_<NOME>` (o extras `kind: "anchor"`) è un ancoraggio del vano.
+Se il nodo ha geometria (il cubetto esportato da SolidWorks, con il pivot
+all'origine del modello) la posizione è il **centro della geometria**; se è
+un Empty, la sua posizione. Normale: extras `normal`, altrimenti +Y del nodo.
+Gli ancoraggi dichiarati nel manifest del veicolo prevalgono su quelli del GLB.
+
+## 6. Aggiungere nuove regole
 
 1. Definire l'id (`kebab-case`) e lo schema `params`.
 2. Implementare la logica nel codice (estrazione già generica in

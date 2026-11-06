@@ -8,6 +8,12 @@ import { hydrateItemSnapsAndHide } from '../io/itemSnaps'
 import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSnapGrid'
 import { visibleBodyBounds } from './geometry'
 import { MIRROR_PAIR_RULE } from './mirrorPair'
+import { own } from '../util/record'
+
+const unit = (v: Vec3): Vec3 => {
+  const length = Math.hypot(...v)
+  return v.map((value) => +(value / length).toFixed(6)) as Vec3
+}
 
 export interface PreparedProductAsset {
   /** Shared template: clone before changing materials or transforms. */
@@ -47,7 +53,7 @@ function withMirrorPairOptions(rules: ItemRule[], options: MirrorPairOptions | u
 
 /** Only model/geometry inputs belong in the cache key, not labels or instance poses. */
 export function productAssetKey(catalog: CatalogItem): string {
-  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair])
+  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair, catalog.replaceSnapKinds, catalog.snapDirections])
 }
 
 /** Resolve once per GLB/configuration, without mutating the loader cache or requiring React/WebGL. */
@@ -84,13 +90,25 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
   const offset: Vec3 = [-center.x, -size[1] / 2 - bounds.min.y, -center.z]
   const toLocal = (position: Vec3): Vec3 => position.map((value, index) => value + offset[index]) as Vec3
   const declared = catalog.snapPoints ?? []
-  const declaredKinds = new Set(declared.map((point) => point.kind))
+  // Precedence: declared points (manifest hole columns, points, asset
+  // corrections) replace GLB markers with their id and of the kinds the
+  // catalogue names; the remaining markers take the manifest direction, else
+  // the one deduced from the face they sit on. Each correction applies once.
+  const replacedKinds = new Set(catalog.replaceSnapKinds ?? declared.map((point) => point.kind))
+  const declaredIds = new Set(declared.map((point) => point.id))
+  const directions = catalog.snapDirections ?? {}
   const metadata: ProductMetadata = {
     size,
     rules: modelRules.map((rule) => ({ ...rule, position: toLocal(rule.position) })),
     snaps: uniqueSnapIds([
-      ...[...modelSnaps, ...gridSnaps].filter((point) => !declaredKinds.has(point.kind))
-        .map((point) => ({ ...point, position: toLocal(point.position) })),
+      ...[...modelSnaps, ...gridSnaps].filter((point) => !replacedKinds.has(point.kind) && !declaredIds.has(point.id))
+        .map((point) => {
+          const direction = own(directions, point.id) ?? own(directions, point.kind)
+          return {
+            id: point.id, kind: point.kind, position: toLocal(point.position),
+            ...(direction ? { normal: unit(direction) } : point.normal ? { normal: point.normal } : {}),
+          }
+        }),
     ], structuredClone(declared)),
   }
   const prepared = { scene, offset, metadata }

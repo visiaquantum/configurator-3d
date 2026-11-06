@@ -1,0 +1,717 @@
+{
+  "id": "tasca-99003819",
+  "version": 1,
+  "enclosure": {
+    "glbUrl": "/models/IVECO-DL14L2SH3.glb",
+    "dimensions": [
+      1.81,
+      2.097,
+      3.197
+    ],
+    "scale": 1,
+    "anchors": [
+      {
+        "id": "pavimento-dx",
+        "position": [
+          0.845,
+          0.012,
+          1.211
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ]
+      },
+      {
+        "id": "pavimento-sx",
+        "position": [
+          -0.845,
+          0.012,
+          1.211
+        ],
+        "normal": [
+          0,
+          1,
+          0
+        ]
+      }
+    ]
+  },
+  "items": [
+    {
+      "id": "fianco-basso",
+      "catalogId": "ysi03036",
+      "position": [
+        0.6635,
+        0.01200000000000001,
+        0.21150000000000005
+      ],
+      "rotation": [
+        0,
+        3.141592653589793,
+        0
+      ],
+      "constraints": [
+        {
+          "type": "mirrorPair",
+          "target": "fianco-basso-specchiato",
+          "distance": 1.014
+        }
+      ]
+    },
+    {
+      "id": "fianco-basso-specchiato",
+      "catalogId": "ysi03036",
+      "position": [
+        0.6634999999999999,
+        0.01200000000000001,
+        1.1965000000000001
+      ],
+      "rotation": [
+        0,
+        3.141592653589793,
+        0
+      ],
+      "mirrored": true,
+      "constraints": [
+        {
+          "type": "mirrorPair",
+          "target": "fianco-basso",
+          "distance": 1.014
+        }
+      ]
+    },
+    {
+      "id": "fianco-alto",
+      "catalogId": "ysi01131",
+      "position": [
+        0.6385,
+        1.092,
+        0.21150000000000005
+      ],
+      "rotation": [
+        0,
+        3.141592653589793,
+        0
+      ],
+      "constraints": [
+        {
+          "type": "mirrorPair",
+          "target": "fianco-alto-specchiato",
+          "distance": 1.014
+        }
+      ]
+    },
+    {
+      "id": "fianco-alto-specchiato",
+      "catalogId": "ysi01131",
+      "position": [
+        0.6384999999999998,
+        1.092,
+        1.1965000000000001
+      ],
+      "rotation": [
+        0,
+        3.141592653589793,
+        0
+      ],
+      "mirrored": true,
+      "constraints": [
+        {
+          "type": "mirrorPair",
+          "target": "fianco-alto",
+          "distance": 1.014
+        }
+      ]
+    },
+    {
+      "id": "antina-inferiore",
+      "catalogId": "kld41000",
+      "position": [
+        0.5428000000000002,
+        0.036650000000000016,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "cassetto-208",
+      "catalogId": "kdw40636",
+      "position": [
+        0.6637000000000002,
+        0.4105000000000001,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "cassetto-136",
+      "catalogId": "kdw40436",
+      "position": [
+        0.6637000000000002,
+        0.6265000000000001,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "cassetto-100",
+      "catalogId": "kdw40336",
+      "position": [
+        0.6637000000000002,
+        0.7705500000000001,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "cassetto-64",
+      "catalogId": "kdw40236",
+      "position": [
+        0.6637000000000002,
+        0.8761000000000002,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "angolare-leggero",
+      "catalogId": "xla40400",
+      "position": [
+        0.5079999999999999,
+        0.9495,
+        0.704
+      ],
+      "rotation": [
+        0,
+        3.141592653589793,
+        0
+      ]
+    },
+    {
+      "id": "angolare-anteriore",
+      "catalogId": "kma40100",
+      "position": [
+        0.5058,
+        1.09635,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "angolare-posteriore",
+      "catalogId": "kma40100",
+      "position": [
+        0.7711999999999999,
+        1.09635,
+        0.704
+      ],
+      "rotation": [
+        0,
+        1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "antina-superiore",
+      "catalogId": "kud40900",
+      "position": [
+        0.5481,
+        1.16555,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    },
+    {
+      "id": "cassettiera",
+      "catalogId": "kdu40426kd080",
+      "position": [
+        0.6128000000000001,
+        1.488,
+        0.704
+      ],
+      "rotation": [
+        0,
+        -1.5707963267948966,
+        0
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "sourceItemId": "fianco-alto",
+      "sourceConnectorId": "side-stack-bottom",
+      "sourcePointId": "stack-bottom",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-stack-top",
+      "targetPointId": "stack-top",
+      "resolvedTransform": {
+        "position": [
+          0.6385,
+          1.092,
+          0.21150000000000005
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "fianco-alto-specchiato",
+      "sourceConnectorId": "side-stack-bottom",
+      "sourcePointId": "stack-bottom",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-stack-top",
+      "targetPointId": "stack-top",
+      "resolvedTransform": {
+        "position": [
+          0.6384999999999998,
+          1.092,
+          1.1965000000000001
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "antina-inferiore",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-11",
+      "resolvedTransform": {
+        "position": [
+          0.5428000000000002,
+          0.036650000000000016,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "antina-inferiore",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-11",
+      "resolvedTransform": {
+        "position": [
+          0.5428000000000002,
+          0.036650000000000016,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-208",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-14",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.4105000000000001,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-208",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-14",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.4105000000000001,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-136",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-19",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.6265000000000001,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-136",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-19",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.6265000000000001,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-100",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-23",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.7705500000000001,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-100",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-23",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.7705500000000001,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-64",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-25",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.8761000000000002,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassetto-64",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-25",
+      "resolvedTransform": {
+        "position": [
+          0.6637000000000002,
+          0.8761000000000002,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "angolare-leggero",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-basso",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-27",
+      "resolvedTransform": {
+        "position": [
+          0.5079999999999999,
+          0.9495,
+          0.704
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "angolare-leggero",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-basso-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-27",
+      "resolvedTransform": {
+        "position": [
+          0.5079999999999999,
+          0.9495,
+          0.704
+        ],
+        "rotation": [
+          0,
+          3.141592653589793,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "angolare-anteriore",
+      "sourceConnectorId": "angle-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-alto",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-2",
+      "resolvedTransform": {
+        "position": [
+          0.5058,
+          1.09635,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "angolare-anteriore",
+      "sourceConnectorId": "angle-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-alto-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-2",
+      "resolvedTransform": {
+        "position": [
+          0.5058,
+          1.09635,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "angolare-posteriore",
+      "sourceConnectorId": "angle-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-alto-specchiato",
+      "targetConnectorId": "side-back-hole",
+      "targetPointId": "back-2",
+      "resolvedTransform": {
+        "position": [
+          0.7711999999999999,
+          1.09635,
+          0.704
+        ],
+        "rotation": [
+          0,
+          1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "angolare-posteriore",
+      "sourceConnectorId": "angle-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-alto",
+      "targetConnectorId": "side-back-hole",
+      "targetPointId": "back-2",
+      "resolvedTransform": {
+        "position": [
+          0.7711999999999999,
+          1.09635,
+          0.704
+        ],
+        "rotation": [
+          0,
+          1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "antina-superiore",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-alto",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-8",
+      "resolvedTransform": {
+        "position": [
+          0.5481,
+          1.16555,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "antina-superiore",
+      "sourceConnectorId": "bay-end",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-alto-specchiato",
+      "targetConnectorId": "side-front-hole",
+      "targetPointId": "front-8",
+      "resolvedTransform": {
+        "position": [
+          0.5481,
+          1.16555,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassettiera",
+      "sourceConnectorId": "box-rest",
+      "sourcePointId": "end-a",
+      "targetItemId": "fianco-alto",
+      "targetConnectorId": "side-top-rest",
+      "targetPointId": "top",
+      "resolvedTransform": {
+        "position": [
+          0.6128000000000001,
+          1.488,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    },
+    {
+      "sourceItemId": "cassettiera",
+      "sourceConnectorId": "box-rest",
+      "sourcePointId": "end-b",
+      "targetItemId": "fianco-alto-specchiato",
+      "targetConnectorId": "side-top-rest",
+      "targetPointId": "top",
+      "resolvedTransform": {
+        "position": [
+          0.6128000000000001,
+          1.488,
+          0.704
+        ],
+        "rotation": [
+          0,
+          -1.5707963267948966,
+          0
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "name": "Parete 1014 — preventivo 99003819",
+    "customer": "Alberto Tasca · Syncro Cassola",
+    "quoteNumber": "99003819",
+    "vehicle": "IVECO Daily 2014 L3 H2 · guida a sinistra con 1 porta scorrevole"
+  }
+}

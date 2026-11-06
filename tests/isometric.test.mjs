@@ -2,7 +2,7 @@ import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { Box3, BoxGeometry, BufferGeometry, Float32BufferAttribute, Group, Mesh, MeshBasicMaterial, OrthographicCamera, Vector3 } from 'three'
 import { ISOMETRIC_VIEWS, defaultIsometricViews, exportIsometricSheetPDF, parseProject } from '../src/lib/index.ts'
-import { frameIsometricCamera, isometricOffset, projectedRect } from '../src/lib/scene/isometric.ts'
+import { ISOMETRIC_ELEVATION_DEG, frameIsometricCamera, isometricOffset, projectedRect } from '../src/lib/scene/isometric.ts'
 import { buildDrawingScene } from '../src/lib/io/technicalDrawing.ts'
 import { createEnclosureCutaway } from '../src/lib/scene/enclosureCutaway.ts'
 import { isometricSheetImageSize } from '../src/lib/io/isometricSheet.ts'
@@ -23,13 +23,13 @@ test('default views look at the products from the opposite side of the van', () 
   assert.deepEqual(defaultIsometricViews(turned, { min: [-1, 0, 0.7], max: [0, 1, 0.9] }), ['iso-back-right', 'iso-back-left'])
 })
 
-test('the isometric camera looks along a true diagonal and frames the bounds', () => {
+test('the isometric camera looks down at a reduced angle at 45° in plan and frames the bounds', () => {
   const bounds = new Box3(new Vector3(...van.min), new Vector3(...van.max))
   for (const view of ISOMETRIC_VIEWS) {
     const camera = frameIsometricCamera(new OrthographicCamera(), view, bounds, 1.67)
     const direction = camera.getWorldDirection(new Vector3())
-    const axes = direction.toArray().map(Math.abs)
-    assert.ok(Math.max(...axes) - Math.min(...axes) < 1e-9, view)
+    assert.ok(Math.abs(Math.abs(direction.x) - Math.abs(direction.z)) < 1e-9, view)
+    assert.ok(Math.abs(Math.asin(-direction.y) * 180 / Math.PI - ISOMETRIC_ELEVATION_DEG) < 1e-9, view)
     assert.ok(direction.dot(isometricOffset(view)) < -0.999, view)
     assert.ok(Math.abs((camera.right - camera.left) / (camera.top - camera.bottom) - 1.67) < 1e-9)
     for (const x of [van.min[0], van.max[0]]) for (const y of [van.min[1], van.max[1]]) for (const z of [van.min[2], van.max[2]]) {

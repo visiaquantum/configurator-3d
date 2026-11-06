@@ -4,6 +4,12 @@ import type { Camera, Object3D } from 'three'
 const fullGeometries = new WeakMap<BufferGeometry, BufferGeometry>()
 /** Cut bit of the roof; walls use 1, 2 (±X) and 4, 8 (±Z). */
 const ROOF = 16
+/**
+ * Depth of the outer layer of each side, as a fraction of the enclosure size
+ * on that axis: anything lying entirely inside it belongs to that wall,
+ * whatever its normal (door jambs, ledges and chamfers of a thick wall).
+ */
+const WALL_LAYER = 0.05
 
 /** View-only cuts must never remove the enclosure from a geometry export. */
 export function enclosureGeometryForExport(geometry: BufferGeometry): BufferGeometry {
@@ -24,12 +30,37 @@ export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
   const direction = new Vector3()
   const a = new Vector3(), b = new Vector3(), c = new Vector3()
   const edge = new Vector3(), edge2 = new Vector3(), normal = new Vector3(), centroid = new Vector3()
+  const low = new Vector3(), high = new Vector3()
+  const layer = size.clone().multiplyScalar(WALL_LAYER)
+  // The floor and the sills at its height stay, even next to a wall.
+  const aboveFloor = bounds.min.y + size.y * 0.02
+  const floorZone = bounds.min.y + size.y * 0.15
+  /** Wall bit of a triangle lying entirely in a side's outer layer, else 0. */
+  const outerLayerWall = (): number => {
+    if (low.y < aboveFloor) return 0
+    if (Math.abs(normal.y) > 0.9 && high.y < floorZone) return 0
+    if (low.x > bounds.max.x - layer.x) return 1
+    if (high.x < bounds.min.x + layer.x) return 2
+    if (low.z > bounds.max.z - layer.z) return 4
+    if (high.z < bounds.min.z + layer.z) return 8
+    return 0
+  }
+  /**
+   * Wall bit of the side whose outer 15% holds the centroid, else 0. The
+   * curved edges of a roof that tapers start further in, and stay with it.
+   */
+  const shoulderWall = (): number => {
+    const x = Math.abs(centroid.x) / size.x, z = Math.abs(centroid.z) / size.z
+    if (Math.max(x, z) <= 0.35) return 0
+    if (x >= z) return centroid.x > 0 ? 1 : 2
+    return centroid.z > 0 ? 4 : 8
+  }
   const entries: {
     mesh: Mesh
     original: BufferGeometry
     /** Three vertex indices per triangle. */
     corners: Uint32Array
-    /** Wall bit per triangle (0 = never hidden). */
+    /** Wall bits per triangle, hidden when any is cut (0 = never hidden). */
     walls: Uint8Array
     /** Material group per triangle. */
     materials: Uint16Array
@@ -63,16 +94,24 @@ export function createEnclosureCutaway(root: Object3D, bounds: Box3) {
       c.fromBufferAttribute(position, corners[t * 3 + 2]).applyMatrix4(object.matrixWorld)
       normal.crossVectors(edge.subVectors(b, a), edge2.subVectors(c, a)).normalize()
       centroid.copy(a).add(b).add(c).multiplyScalar(1 / 3).sub(center)
+      low.copy(a).min(b).min(c)
+      high.copy(a).max(b).max(c)
       // Keep horizontal surfaces and partitions in the middle of the cargo area.
       // Winding is irrelevant: both skins of a thick wall disappear together.
       if (Math.abs(normal.x) > Math.abs(normal.y) * 1.5 && Math.abs(normal.x) >= Math.abs(normal.z) && Math.abs(centroid.x) > size.x * 0.3) {
         walls[t] = centroid.x > 0 ? 1 : 2
       } else if (Math.abs(normal.z) > Math.abs(normal.y) * 1.5 && Math.abs(normal.z) > Math.abs(normal.x) && Math.abs(centroid.z) > size.z * 0.3) {
         walls[t] = centroid.z > 0 ? 4 : 8
-      } else if (centroid.y > size.y * 0.3 && (Math.abs(normal.y) > 0.25 || centroid.y > size.y * 0.4)) {
+      } else {
         // The roof: its skin, the curved edges towards the walls, and the
         // ribs under it.
-        walls[t] = ROOF
+        const roof = centroid.y > size.y * 0.3 && (Math.abs(normal.y) > 0.25 || centroid.y > size.y * 0.4) ? ROOF : 0
+        // Faces across or along a wall's thickness (the jambs of a side door,
+        // ledges, door-frame rails) and the steps or chamfers along the top
+        // of a side wall go with that wall too: left behind, they float as
+        // strips where the wall was. Wheel arches are lower and stay. Those
+        // also counted as roof still go when the roof is cut.
+        walls[t] = roof | (outerLayerWall() || (centroid.y > -size.y * 0.1 ? shoulderWall() : 0))
       }
       anyWall ||= walls[t] !== 0
     }

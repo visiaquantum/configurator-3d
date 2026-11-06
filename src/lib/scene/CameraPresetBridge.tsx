@@ -3,6 +3,7 @@ import { useThree } from '@react-three/fiber'
 import { OrthographicCamera } from 'three'
 import type { Camera, Vector3 as Vec3Type } from 'three'
 import { useConfiguratorStore } from '../state/store'
+import { isometricOffset } from './isometric'
 
 interface OrbitLike {
   object: Camera
@@ -56,17 +57,13 @@ export function CameraPresetBridge() {
         pos = [cx + d * 0.75, cy + d * 0.6, cz + d * 0.75]
         break
       case 'iso':
-        pos = [cx + d, cy + d, cz + d]
-        break
       case 'iso-front-left':
-        pos = [cx - d, cy + d, cz + d]
-        break
       case 'iso-back-right':
-        pos = [cx + d, cy + d, cz - d]
+      case 'iso-back-left': {
+        const offset = isometricOffset(preset).multiplyScalar(d * Math.sqrt(3))
+        pos = [cx + offset.x, cy + offset.y, cz + offset.z]
         break
-      case 'iso-back-left':
-        pos = [cx - d, cy + d, cz - d]
-        break
+      }
     }
 
     camera.position.set(pos[0], pos[1], pos[2])

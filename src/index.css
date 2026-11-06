@@ -22,6 +22,8 @@ html, body, #root {
 .app-header-actions { display: flex; gap: 8px; }
 .app-header-actions button, .app-project-tools button { display: flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--cfg-line); border-radius: 6px; background: var(--cfg-surface); color: var(--cfg-text-secondary); padding: 9px 12px; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer; min-height: 36px; }
 .app-header-actions button { font: 500 12px Inter, system-ui, sans-serif; }
+.app-header-actions .app-header-link { display: flex; align-items: center; gap: 8px; border: 1px solid var(--cfg-line); border-radius: 6px; background: var(--cfg-surface); color: var(--cfg-text-secondary); padding: 9px 12px; font: 500 12px Inter, system-ui, sans-serif; min-height: 36px; text-decoration: none; }
+.app-header-actions .app-header-link:hover { box-shadow: 0 2px 5px var(--cfg-shadow); }
 .app-header-actions .app-primary-action { background: var(--cfg-brand); border-color: var(--cfg-brand); color: var(--cfg-on-primary); }
 .app-header-actions button:not(:disabled):hover { box-shadow: 0 2px 5px var(--cfg-shadow); }
 .app-workspace { display: flex; flex: 1; min-height: 0; padding: 16px 20px; gap: 16px; }
@@ -72,6 +74,21 @@ html, body, #root {
 .app-project-tools > div { display: grid; gap: 8px; margin-top: 12px; }
 .app-project-tools button { font: 500 11px Inter, system-ui, sans-serif; }
 .app-project-tools pre { font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--cfg-text-muted); }
+.app-catalog-state { flex-direction: column; align-items: center; justify-content: center; gap: 10px; color: var(--cfg-text-secondary); }
+.app-catalog-state span { color: var(--cfg-error); font-size: 12px; max-width: 520px; text-align: center; }
+.app-catalog-issues { margin: 0 0 14px; font-size: 11px; color: var(--cfg-warning, #b45309); }
+.app-catalog-issues summary { cursor: pointer; }
+.app-catalog-issues ul { margin: 8px 0 0; padding-left: 16px; color: var(--cfg-text-muted); line-height: 1.5; }
+.app-catalog-issues li.error { color: var(--cfg-error); }
+.app-product-entry { display: grid; gap: 4px; }
+.app-product-details { font-size: 11px; color: var(--cfg-text-muted); padding: 0 10px; }
+.app-product-details summary { cursor: pointer; color: var(--cfg-text-subtle); }
+.app-product-details p, .app-product-details ol { margin: 6px 0; line-height: 1.5; }
+.app-product-details ol { padding-left: 16px; }
+.app-incompatible-note { display: block; margin-top: 6px; font-size: 9px; color: var(--cfg-text-subtle); }
+.app-import-status p { margin: 0; }
+.app-import-status ul { margin: 6px 0 0; padding-left: 16px; font-size: 11px; color: var(--cfg-text-muted); }
+.app-import-status button { margin-top: 8px; padding: 6px 10px; border: 1px solid var(--cfg-line); border-radius: 6px; background: var(--cfg-surface); color: var(--cfg-text-secondary); cursor: pointer; }
 .app-no-results { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 30px 10px; color: var(--cfg-text-secondary); text-align: center; font-size: 12px; }
 .app-no-results span { color: var(--cfg-text-subtle); font-size: 11px; }
 .app-import-status { color: var(--cfg-success); font-size: 12px; line-height: 1.5; }

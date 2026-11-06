@@ -1,0 +1,1011 @@
+{
+  "revision": "rev-f3a947f0061b",
+  "checkedAt": "2026-11-06T08:02:11.372Z",
+  "thresholds": {
+    "minBodySize": 0.002,
+    "maxBodySize": 5,
+    "markerSurfaceTolerance": 0.0002,
+    "maxTriangles": 200000,
+    "maxBytes": 8388608,
+    "sheetTolerance": 0.0001
+  },
+  "summary": {
+    "products": 19,
+    "enclosures": 3,
+    "samples": 6,
+    "errors": 0,
+    "warnings": 93,
+    "confirmations": 22
+  },
+  "blocking": false,
+  "issues": [
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "MONTANTI/YSI03036.glb",
+      "product": "ysi03036",
+      "message": "5 marker senza nome stabile (SNAP_FRONTALE-1, SNAP_LATERALE-7, SNAP_SOVRAPPOSIZIONE-1, SNAP_ORIGINE-1…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI03036.glb",
+      "product": "ysi03036",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.51 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI03036.glb",
+      "product": "ysi03036",
+      "point": "laterale",
+      "message": "Il centro del marker SNAP_LATERALE-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI03036.glb",
+      "product": "ysi03036",
+      "point": "origine",
+      "message": "Il centro del marker SNAP_ORIGINE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "MONTANTI/YSI01131.glb",
+      "product": "ysi01131",
+      "message": "5 marker senza nome stabile (SNAP_FRONTALE-1, SNAP_LATERALE-7, SNAP_SOVRAPPOSIZIONE-1, SNAP_ORIGINE-1…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI01131.glb",
+      "product": "ysi01131",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI01131.glb",
+      "product": "ysi01131",
+      "point": "laterale",
+      "message": "Il centro del marker SNAP_LATERALE-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI01131.glb",
+      "product": "ysi01131",
+      "point": "origine",
+      "message": "Il centro del marker SNAP_ORIGINE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KDW40236.glb",
+      "product": "kdw40236",
+      "message": "1 marker senza nome stabile (SNAP_FRONTALE-1)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "model-heavy",
+      "file": "ORIZZONTALI/KDW40236.glb",
+      "product": "kdw40236",
+      "message": "266109 triangoli, 1.2 MB (soglie 200000, 8 MB)",
+      "action": "Semplificare il modello o ridurre la tassellatura prima della pubblicazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KDW40336.glb",
+      "product": "kdw40336",
+      "message": "1 marker senza nome stabile (SNAP_FRONTALE-1)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDW40336.glb",
+      "product": "kdw40336",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.27 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "model-heavy",
+      "file": "ORIZZONTALI/KDW40336.glb",
+      "product": "kdw40336",
+      "message": "226658 triangoli, 1.1 MB (soglie 200000, 8 MB)",
+      "action": "Semplificare il modello o ridurre la tassellatura prima della pubblicazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KDW40436.glb",
+      "product": "kdw40436",
+      "message": "1 marker senza nome stabile (SNAP_FRONTALE-2)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDW40436.glb",
+      "product": "kdw40436",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.27 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "model-heavy",
+      "file": "ORIZZONTALI/KDW40436.glb",
+      "product": "kdw40436",
+      "message": "226572 triangoli, 1.1 MB (soglie 200000, 8 MB)",
+      "action": "Semplificare il modello o ridurre la tassellatura prima della pubblicazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KDW40636.glb",
+      "product": "kdw40636",
+      "message": "1 marker senza nome stabile (SNAP_FRONTALE-1)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDW40636.glb",
+      "product": "kdw40636",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.27 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "model-heavy",
+      "file": "ORIZZONTALI/KDW40636.glb",
+      "product": "kdw40636",
+      "message": "236283 triangoli, 1.1 MB (soglie 200000, 8 MB)",
+      "action": "Semplificare il modello o ridurre la tassellatura prima della pubblicazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KCP40531KMD02.glb",
+      "product": "kcp40531kmd02",
+      "message": "2 marker senza nome stabile (SNAP_FRONTALE-1, SNAP_FRONTALE-2)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KCP40531KMD02.glb",
+      "product": "kcp40531kmd02",
+      "point": "frontale-1",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.51 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KCP40531KMD02.glb",
+      "product": "kcp40531kmd02",
+      "point": "frontale-2",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.47 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "message": "6 marker senza nome stabile (SNAP_FRONTALE-1, SNAP_FRONTALE-2, SNAP_TERRA-5, SNAP_TERRA-10…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "point": "frontale-1",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "point": "frontale-2",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "point": "terra-1",
+      "message": "Il centro del marker SNAP_TERRA-5 è a 0.28 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "point": "terra-2",
+      "message": "Il centro del marker SNAP_TERRA-10 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "point": "terra-3",
+      "message": "Il centro del marker SNAP_TERRA-7 è a 0.28 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "point": "terra-4",
+      "message": "Il centro del marker SNAP_TERRA-11 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/XLA40400.glb",
+      "product": "xla40400",
+      "message": "2 marker senza nome stabile (SNAP_FRONTALE-2, SNAP_FRONTALE-3)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XLA40400.glb",
+      "product": "xla40400",
+      "point": "frontale-1",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.49 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XLA40400.glb",
+      "product": "xla40400",
+      "point": "frontale-2",
+      "message": "Il centro del marker SNAP_FRONTALE-3 è a 0.49 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "message": "4 marker senza nome stabile (SNAP_TERRA-2, SNAP_TERRA-4, SNAP_TERRA-3, SNAP_TERRA-8)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "point": "terra-1",
+      "message": "Il centro del marker SNAP_TERRA-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "point": "terra-2",
+      "message": "Il centro del marker SNAP_TERRA-4 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "point": "terra-3",
+      "message": "Il centro del marker SNAP_TERRA-3 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "point": "terra-4",
+      "message": "Il centro del marker SNAP_TERRA-8 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "model-heavy",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "message": "327739 triangoli, 0.6 MB (soglie 200000, 8 MB)",
+      "action": "Semplificare il modello o ridurre la tassellatura prima della pubblicazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "message": "5 marker senza nome stabile (SNAP_TERRA-1, SNAP_TERRA-2, SNAP_FRONTALE-1, SNAP_TERRA-9…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "point": "terra-1",
+      "message": "Il centro del marker SNAP_TERRA-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "point": "terra-2",
+      "message": "Il centro del marker SNAP_TERRA-2 è a 0.28 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "point": "terra-3",
+      "message": "Il centro del marker SNAP_TERRA-9 è a 0.28 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "point": "terra-4",
+      "message": "Il centro del marker SNAP_TERRA-12 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ANTINE/KUD40900.glb",
+      "product": "kud40900",
+      "message": "2 marker senza nome stabile (SNAP_FRONTALE-1, SNAP_FRONTALE-4)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KUD40900.glb",
+      "product": "kud40900",
+      "point": "frontale-1",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ANTINE/KUD40900.glb",
+      "product": "kud40900",
+      "point": "frontale-2",
+      "message": "Il centro del marker SNAP_FRONTALE-4 è a 0.44 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "MONTANTI/YSI12836.glb",
+      "product": "ysi12836",
+      "message": "5 marker senza nome stabile (SNAP_ORIGINE-1, SNAP_TERRA-7, SNAP_LATERALE-7, SNAP_FRONTALE-1…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI12836.glb",
+      "product": "ysi12836",
+      "point": "origine",
+      "message": "Il centro del marker SNAP_ORIGINE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI12836.glb",
+      "product": "ysi12836",
+      "point": "laterale",
+      "message": "Il centro del marker SNAP_LATERALE-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "MONTANTI/YSI12836.glb",
+      "product": "ysi12836",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/XDS40231KM02.glb",
+      "product": "xds40231km02",
+      "message": "1 marker senza nome stabile (SNAP_FRONTALE-2)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40231KM02.glb",
+      "product": "xds40231km02",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "message": "17 marker senza nome stabile (SNAP_LATERALE-1, SNAP_TERRA-1, SNAP_TERRA-4, SNAP_FRONTALE-7…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "laterale-1",
+      "message": "Il centro del marker SNAP_LATERALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-1",
+      "message": "Il centro del marker SNAP_TERRA-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-2",
+      "message": "Il centro del marker SNAP_TERRA-4 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "frontale-1",
+      "message": "Il centro del marker SNAP_FRONTALE-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "frontale-2",
+      "message": "Il centro del marker SNAP_FRONTALE-9 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "frontale-3",
+      "message": "Il centro del marker SNAP_FRONTALE-6 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "frontale-4",
+      "message": "Il centro del marker SNAP_FRONTALE-8 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "laterale-2",
+      "message": "Il centro del marker SNAP_LATERALE-4 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "laterale-3",
+      "message": "Il centro del marker SNAP_LATERALE-5 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "laterale-4",
+      "message": "Il centro del marker SNAP_LATERALE-3 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "laterale-5",
+      "message": "Il centro del marker SNAP_LATERALE-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "laterale-6",
+      "message": "Il centro del marker SNAP_LATERALE-12 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-3",
+      "message": "Il centro del marker SNAP_TERRA-3 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-4",
+      "message": "Il centro del marker SNAP_TERRA-12 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-5",
+      "message": "Il centro del marker SNAP_TERRA-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-6",
+      "message": "Il centro del marker SNAP_TERRA-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "point": "terra-7",
+      "message": "Il centro del marker SNAP_TERRA-5 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ORIZZONTALI/XHA40100.glb",
+      "product": "xha40100",
+      "message": "3 marker senza nome stabile (SNAP_TERRA-1, SNAP_TERRA-2, SNAP_FRONTALE-3)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XHA40100.glb",
+      "product": "xha40100",
+      "point": "terra-1",
+      "message": "Il centro del marker SNAP_TERRA-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XHA40100.glb",
+      "product": "xha40100",
+      "point": "terra-2",
+      "message": "Il centro del marker SNAP_TERRA-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ORIZZONTALI/XHA40100.glb",
+      "product": "xha40100",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-3 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ACCESSORI/PTBM-31.glb",
+      "product": "ptbm31",
+      "message": "1 marker senza nome stabile (SNAP_FRONTALE-1)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ACCESSORI/PTBM-31.glb",
+      "product": "ptbm31",
+      "point": "frontale",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "ACCESSORI/PTBM-26.glb",
+      "product": "ptbm26",
+      "message": "1 marker senza nome stabile (SNAP_LATERALE-3)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "ACCESSORI/PTBM-26.glb",
+      "product": "ptbm26",
+      "point": "laterale",
+      "message": "Il centro del marker SNAP_LATERALE-3 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-legacy",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "message": "18 marker senza nome stabile (SNAP_FRONTALE-1, SNAP_FRONTALE-2, SNAP_FRONTALE-1, SNAP_FRONTALE-2…)",
+      "action": "Riesportare con marker SNAP_<TIPO>__<NOME>: i marker numerati cambiano a ogni esportazione."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-1",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-2",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-3",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-4",
+      "message": "Il centro del marker SNAP_FRONTALE-2 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-5",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "laterale-1",
+      "message": "Il centro del marker SNAP_LATERALE-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "origine-1",
+      "message": "Il centro del marker SNAP_ORIGINE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-6",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.25 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-8",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "laterale-2",
+      "message": "Il centro del marker SNAP_LATERALE-7 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "origine-2",
+      "message": "Il centro del marker SNAP_ORIGINE-1 è a 0.50 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "marker-off-surface",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "point": "frontale-9",
+      "message": "Il centro del marker SNAP_FRONTALE-1 è a 0.25 mm dal piano della faccia",
+      "action": "Spostare il centro del marker sulla superficie di contatto."
+    },
+    {
+      "severity": "warning",
+      "code": "enclosure-geometry-missing",
+      "file": "FURGONE-INTERNO.glb",
+      "product": "furgone-interno",
+      "message": "Il GLB del veicolo non contiene geometria: si vede solo il vano dichiarato nel manifest",
+      "action": "Riesportare il GLB con le mesh del veicolo (nuvole di punti e mesh solo grafiche non vengono esportate)."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "MONTANTI/YSI03036.glb",
+      "product": "ysi03036",
+      "message": "Regole di aggancio di Fianco YSI 03036 · 1080 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "MONTANTI/YSI01131.glb",
+      "product": "ysi01131",
+      "message": "Regole di aggancio di Fianco YSI 01131 · 396 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KDW40236.glb",
+      "product": "kdw40236",
+      "message": "Regole di aggancio di Cassetto KDW 40236 · h64 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KDW40336.glb",
+      "product": "kdw40336",
+      "message": "Regole di aggancio di Cassetto KDW 40336 · h100 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KDW40436.glb",
+      "product": "kdw40436",
+      "message": "Regole di aggancio di Cassetto KDW 40436 · h136 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KDW40636.glb",
+      "product": "kdw40636",
+      "message": "Regole di aggancio di Cassetto KDW 40636 · h208 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KCP40531KMD02.glb",
+      "product": "kcp40531kmd02",
+      "message": "Regole di aggancio di Ripiano KCP 40531 KMD02 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "product": "kma40100",
+      "message": "Regole di aggancio di Angolare KMA 40100 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/XLA40400.glb",
+      "product": "xla40400",
+      "message": "Regole di aggancio di Angolare leggero XLA 40400 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "product": "kdu40426kd080",
+      "message": "Regole di aggancio di Cassettiera KDU 40426 KD080 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ANTINE/KLD41000.glb",
+      "product": "kld41000",
+      "message": "Regole di aggancio di Antina inferiore KLD 41000 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ANTINE/KUD40900.glb",
+      "product": "kud40900",
+      "message": "Regole di aggancio di Antina superiore KUD 40900 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "MONTANTI/YSI12836.glb",
+      "product": "ysi12836",
+      "message": "Regole di aggancio di Montante YSI 12836 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/XDS40231KM02.glb",
+      "product": "xds40231km02",
+      "message": "Regole di aggancio di XDS 40231 KM02 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "product": "xds40236km02",
+      "message": "Regole di aggancio di XDS 40236 KM02 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ORIZZONTALI/XHA40100.glb",
+      "product": "xha40100",
+      "message": "Regole di aggancio di XHA 40100 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ACCESSORI/PTBM-31.glb",
+      "product": "ptbm31",
+      "message": "Regole di aggancio di PTBM-31 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "ACCESSORI/PTBM-26.glb",
+      "product": "ptbm26",
+      "message": "Regole di aggancio di PTBM-26 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "KIT/KIT01.glb",
+      "product": "kit01",
+      "message": "Regole di aggancio di KIT 01 non ancora confermate dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "IVECO-DL14L2SH3.glb",
+      "product": "iveco-dl14l2sh3",
+      "message": "Dati del veicolo IVECO · Daily L2H3 non ancora confermati dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "FIAT-NDC40H2.glb",
+      "product": "fiat-ndc40h2",
+      "message": "Dati del veicolo FIAT · NDC 40H2 non ancora confermati dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    },
+    {
+      "severity": "confirm",
+      "code": "review-pending",
+      "file": "FURGONE-INTERNO.glb",
+      "product": "furgone-interno",
+      "message": "Dati del veicolo Furgone · rilievo interno (demo) non ancora confermati dal cliente",
+      "action": "Far confermare al cliente le regole di aggancio del prodotto e registrarlo in review."
+    }
+  ]
+}

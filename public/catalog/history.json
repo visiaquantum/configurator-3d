@@ -1,0 +1,44 @@
+[
+  {
+    "action": "publish",
+    "revision": "rev-938894a59454",
+    "at": "2026-11-05T17:04:33.473Z",
+    "summary": {
+      "products": 19,
+      "enclosures": 2,
+      "samples": 6,
+      "errors": 0,
+      "warnings": 92,
+      "confirmations": 21
+    },
+    "manifestSha256": "455ad0fd8b293bd7fd6740b9eccf8a54d0b183bff01acf491ec7bbac4a135e2e"
+  },
+  {
+    "action": "publish",
+    "revision": "rev-f3a947f0061b",
+    "at": "2026-11-06T08:02:11.374Z",
+    "summary": {
+      "products": 19,
+      "enclosures": 3,
+      "samples": 6,
+      "errors": 0,
+      "warnings": 93,
+      "confirmations": 22
+    },
+    "manifestSha256": "4642675ba11b85b6c0eac392057bbeb6378e109a9030945abdb8170c8c3d0c83"
+  },
+  {
+    "action": "publish",
+    "revision": "rev-720e0390d712",
+    "at": "2026-11-06T09:55:30.526Z",
+    "summary": {
+      "products": 19,
+      "enclosures": 3,
+      "samples": 6,
+      "errors": 0,
+      "warnings": 92,
+      "confirmations": 22
+    },
+    "manifestSha256": "3d9924c03da815e2f50644527520afcb5f82e491793e6892fcf3c110c4534fab"
+  }
+]

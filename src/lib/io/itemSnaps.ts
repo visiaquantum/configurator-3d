@@ -6,17 +6,22 @@ import type { Vec3 } from '../types'
 /**
  * Convention to declare snap points inside a product GLB:
  *
- * 1. Node `name` starts with `SNAP_` (or `snap:`), case-insensitive.
- *    The suffix is the point **kind**, lowercased, with any instance suffix
- *    stripped: `SNAP_TERRA-7` and `SNAP_TERRA-7_1` both yield kind `terra`.
- * 2. OR node `userData.kind === 'snap'` (glTF `extras.kind = "snap"`);
- *    `userData.id` (or the node name) supplies the kind.
+ * 1. Stable name `SNAP_<TIPO>__<NOME>` (production contract): `<TIPO>` is the
+ *    mating family, `<NOME>` the point id, unique in the file and unchanged
+ *    across re-exports. Both are lower-cased: `SNAP_FRONTALE__FORO_12` is
+ *    point `foro_12` of kind `frontale`. Letters, digits and `_` only.
+ * 2. Legacy name `SNAP_<TIPO>` with an optional CAD instance suffix
+ *    (`SNAP_TERRA-7`): the kind only. A kind that occurs once keeps the bare
+ *    kind as its id (`terra`); a kind that repeats is numbered in traversal
+ *    order (`frontale-1` … `frontale-10`). A re-export that reorders the nodes
+ *    renumbers them: these files are reported by the catalogue check.
+ * 3. OR node `userData.kind === 'snap'` (glTF `extras.kind = "snap"`);
+ *    `userData.snapKind` (or `userData.id`, or the node name) supplies the
+ *    kind, `userData.id` the stable id.
  *
- * `kind` is the mating family (see scene/mating.ts): it decides what a point
- * may be joined to. `id` identifies the point *within one model* and is what
- * the project JSON stores. A kind that occurs once keeps the bare kind as its
- * id (`terra`); a kind that repeats is numbered in traversal order
- * (`frontale-1` … `frontale-10`), so every point stays addressable.
+ * Names are read as written in the GLB (`userData.name`, kept by
+ * GLTFLoader), before the loader appends `_1` to repeated names: a duplicated
+ * stable name is reported, never silently renamed.
  *
  * The point is the world-space center of the node's geometry when it has
  * any (SolidWorks bakes marker geometry with identity pivots, so the node
@@ -26,10 +31,6 @@ import type { Vec3 } from '../types'
  * `normal` is the outward direction of the face the point sits on, derived
  * from the model bounding box (the marker nodes carry no usable rotation).
  * The mating math uses it to face two joined products at each other.
- *
- * These are the product-side counterparts of enclosure anchors: a product
- * point can be snapped onto an enclosure anchor or onto another product's
- * point.
  */
 
 // `SNAP_<KIND>[-<instance>][_<n>]`. The `-<instance>` suffix is SolidWorks'
@@ -38,17 +39,36 @@ import type { Vec3 } from '../types'
 // twice and the second becomes `SNAP_TERRA-7_1`). Both are stripped: they
 // identify the instance, never the mating family.
 const NAME_PREFIX_RE = /^snap[_:](.+?)(?:-\d+)?(?:_\d+)?$/i
+/** `SNAP_<TIPO>__<NOME>`: the stable form. Matched on the name as written in the GLB. */
+const STABLE_NAME_RE = /^snap_([a-z0-9]+)__([a-z0-9_]+)$/i
+/** Anything that starts like a marker; used to report malformed names. */
+const MARKER_LIKE_RE = /^snap[_:]/i
 
 /** Snap point in the model root's coordinate space (including the root's
  * own scale). scene/productAsset.ts converts it into the item's local frame. */
 export interface ExtractedSnapPoint {
-  /** Unique within the model. Bare `kind`, or `kind-N` when kind repeats. */
+  /** Unique within the model. Stable `<nome>`, bare `kind`, or `kind-N` when a legacy kind repeats. */
   id: string
   /** Mating family, e.g. `terra`, `frontale`, `laterale`. */
   kind: string
   position: Vec3
   /** Outward normal of the bbox face the point lies on, if one is clear. */
   normal?: Vec3
+  /** The marker's name as written in the GLB. */
+  name?: string
+  /** True when the id comes from the file (stable name or extras id), not from traversal order. */
+  stable?: boolean
+}
+
+/** What a GLB's snap markers look like to the catalogue check. */
+export interface SnapMarkerReport {
+  points: ExtractedSnapPoint[]
+  /** Stable ids carried by more than one marker. */
+  duplicates: Array<{ id: string; names: string[] }>
+  /** Markers numbered by traversal order (`SNAP_<TIPO>` or `SNAP_<TIPO>-N`). */
+  legacy: string[]
+  /** Names that look like markers but follow neither form (spaces, dots, `SNAP_X__`). */
+  malformed: string[]
 }
 
 interface ExtractedSnapNode {
@@ -64,9 +84,13 @@ interface RawSnapNode {
   kind: string
   position: Vec3
   node: Object3D
+  name: string
   explicitId?: string
   normal?: Vec3
 }
+
+/** The name as authored: GLTFLoader keeps it in `userData.name` before making it unique. */
+const authoredName = (obj: Object3D) => typeof obj.userData?.name === 'string' && obj.userData.name ? obj.userData.name as string : obj.name
 
 /**
  * Outward normal of the model bbox face nearest to `p`, or undefined when the
@@ -101,8 +125,14 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
   root.traverse((obj) => {
     const ud = (obj.userData ?? {}) as Record<string, unknown>
     let kind: string | null = null
-    const m = obj.name.match(NAME_PREFIX_RE)
-    if (m) {
+    let stableId: string | undefined
+    const name = authoredName(obj)
+    const stable = name.match(STABLE_NAME_RE)
+    const m = stable ? null : obj.name.match(NAME_PREFIX_RE)
+    if (stable) {
+      kind = stable[1].toLowerCase()
+      stableId = stable[2].toLowerCase()
+    } else if (m) {
       kind = m[1].toLowerCase()
     } else if (ud.kind === 'snap') {
       kind = (typeof ud.snapKind === 'string' ? ud.snapKind : typeof ud.id === 'string' ? ud.id : obj.name).toLowerCase()
@@ -125,7 +155,8 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
       const direction = new Vector3(...ud.normal as Vec3).applyNormalMatrix(new Matrix3().getNormalMatrix(obj.matrixWorld))
       normal = direction.toArray() as Vec3
     }
-    raw.push({ kind, position, node: obj, normal, explicitId: ud.kind === 'snap' && typeof ud.id === 'string' && ud.id ? ud.id : undefined })
+    const explicitId = stableId ?? (ud.kind === 'snap' && typeof ud.id === 'string' && ud.id ? ud.id : undefined)
+    raw.push({ kind, position, node: obj, name, normal, explicitId })
   })
 
   if (raw.length === 0) return []
@@ -153,10 +184,35 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
     }
     const normal = r.normal ?? (hasBox ? faceNormalFor(r.position, _modelBox) : undefined)
     return {
-      extracted: { id, kind: r.kind, position: r.position, normal },
+      extracted: { id, kind: r.kind, position: r.position, normal, name: r.name, stable: !!r.explicitId },
       node: r.node,
     }
   })
+}
+
+/**
+ * The markers of a model with what the catalogue check needs to report:
+ * duplicated stable ids (counted on the names as written in the GLB, before
+ * the loader makes them unique), legacy numbered markers and malformed names.
+ */
+export function inspectSnapMarkers(root: Object3D): SnapMarkerReport {
+  const found = extractItemSnapsFromObject(root)
+  const byId = new Map<string, string[]>()
+  for (const { extracted } of found) {
+    if (!extracted.stable) continue
+    byId.set(extracted.id, [...(byId.get(extracted.id) ?? []), extracted.name ?? extracted.id])
+  }
+  const malformed: string[] = []
+  root.traverse((obj) => {
+    const name = authoredName(obj)
+    if (MARKER_LIKE_RE.test(name) && !STABLE_NAME_RE.test(name) && (name.includes('__') || /[^a-z0-9_:-]/i.test(name))) malformed.push(name)
+  })
+  return {
+    points: found.map((entry) => entry.extracted),
+    duplicates: [...byId].filter(([, names]) => names.length > 1).map(([id, names]) => ({ id, names })),
+    legacy: found.filter((entry) => !entry.extracted.stable && MARKER_LIKE_RE.test(entry.extracted.name ?? '')).map((entry) => entry.extracted.name!),
+    malformed,
+  }
 }
 
 /**

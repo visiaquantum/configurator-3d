@@ -1,140 +1,41 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Configurator3D,
+  buildCatalogFromIndex,
+  catalogRevisionPointerUrl,
+  chooseAttachmentTarget,
+  compatibleCatalogIds,
+  loadCatalogRevision,
   parseProject,
+  productCompatibility,
   serializeProject,
   ProjectParseError,
   useConfiguratorStore,
   useConfiguratorStoreApi,
+  Icon,
+  themeStyles,
 } from './lib'
-import { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget } from './lib/scene/attachment'
-import { Icon } from './lib/ui/Icon'
-import { themeStyles } from './lib/ui/theme'
-import { definitionFor } from './lib/assembly/manifest'
-import { IVECO_ENCLOSURE, TASCA_CATALOG_GROUPS, buildTascaWall, tascaWallContext } from './tascaWall'
 import type {
+  AssemblyManifest,
+  BuiltCatalog,
+  CatalogEnclosure,
   CatalogItem,
   ConfiguratorHandle,
   ConfiguratorTheme,
-  EnclosureData,
+  ProjectData,
   ProjectIssue,
   ProjectMetadata,
 } from './lib'
 
-// Models were exported at 0.1× scale; apply 10× to render at real meters.
-const MODEL_SCALE = 10
+/**
+ * Test application around the configurator. It knows no product: the
+ * catalogue, its rules and the vehicles come from the published revision the
+ * backend serves (`current.json` → index of the GLB folder + manifest), so a
+ * new product is a GLB and a manifest entry, never a code change.
+ */
+const CATALOG_URL = '/catalog/current.json'
 
-// Product GLBs under public/models are exported at real meter scale, unlike the
-// enclosure which needs MODEL_SCALE. Every `size` below is the visible body
-// bbox only (SNAP_* marker nodes excluded), measured from the GLB itself.
-const catalogGroups: Array<{ category: string; items: CatalogItem[] }> = [
-  {
-    category: 'Montanti',
-    items: [
-      {
-        id: 'ysi12836',
-        label: 'YSI 12836',
-        glbUrl: '/models/MONTANTI/YSI12836.glb',
-        size: [0.36, 1.008, 0.03],
-        scale: 1,
-        // Mounting heights read off KIT01.glb, the geometric reference for this
-        // assembly. Each point is the centre of the mating face: shelves at
-        // 0.612 / 0.360 above the floor, rails at 0.305. In the item-local
-        // frame (collider centre, base at -size[1]/2) they sit 0.504 lower.
-        // The GLB only carries markers at the foot, so without these the drag
-        // finds no candidate at working height. The rails are 1.3 mm below the
-        // kit: the standalone parts are ~1 mm fatter than their copies inside
-        // KIT01, and at the kit's exact heights the lower shelf and the rails
-        // graze each other, which the collision check reads as interference.
-        // Normals point *inward* (-Z): the shelf passes through the upright and
-        // its head ends flush with the outer face, so an outward normal would
-        // mate the shelf on the wrong side.
-        snapPoints: [
-          { id: 'shelf-top', label: 'Ripiano superiore', kind: 'laterale', position: [0, 0.108, 0.015], normal: [0, 0, -1] },
-          { id: 'shelf-bottom', label: 'Ripiano inferiore', kind: 'laterale', position: [0, -0.144, 0.015], normal: [0, 0, -1] },
-          { id: 'rail-xmax', label: 'Traversa destra', kind: 'frontale', position: [0.155, -0.199, 0.0114], normal: [0, 0, -1] },
-          { id: 'rail-xmin', label: 'Traversa sinistra', kind: 'frontale', position: [-0.155, -0.199, 0.0114], normal: [0, 0, -1] },
-        ],
-      },
-    ],
-  },
-  {
-    category: 'Orizzontali',
-    items: [
-      // Temporarily no inferred or catalog-defined mounting holes: their
-      // definitive locations will be supplied and reviewed separately.
-      { id: 'xds40231km02', label: 'XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307], scale: 1 },
-      // Kit-01 members. Contact points are declared here rather than read from
-      // the GLB: the extractor numbers marker ids by traversal order, so a
-      // re-export would silently renumber them and break manifest + saved
-      // projects. Both are the centre of the end face, which is what actually
-      // seats into the upright.
-      {
-        id: 'xds40236km02',
-        label: 'XDS 40236 KM02',
-        glbUrl: '/models/ORIZZONTALI/XDS40236KM02.glb',
-        size: [1.013, 0.07117, 0.357],
-        scale: 1,
-        snapPoints: [
-          { id: 'end-a', label: 'Estremità A', kind: 'laterale', position: [-0.5065, 0, 0], normal: [-1, 0, 0] },
-          { id: 'end-b', label: 'Estremità B', kind: 'laterale', position: [0.5065, 0, 0], normal: [1, 0, 0] },
-        ],
-      },
-      {
-        id: 'xha40100',
-        label: 'XHA 40100',
-        glbUrl: '/models/ORIZZONTALI/XHA40100.glb',
-        size: [0.05, 0.035, 1.00588],
-        scale: 1,
-        snapPoints: [
-          { id: 'end-a', label: 'Estremità A', kind: 'frontale', position: [0, 0, 0.50294], normal: [0, 0, 1] },
-          { id: 'end-b', label: 'Estremità B', kind: 'frontale', position: [0, 0, -0.50294], normal: [0, 0, -1] },
-        ],
-      },
-    ],
-  },
-  {
-    category: 'Accessori',
-    items: [
-      { id: 'ptbm31', label: 'PTBM-31', glbUrl: '/models/ACCESSORI/PTBM-31.glb', size: [0.31, 0.14, 0.09], scale: 1 },
-    ],
-  },
-  {
-    category: 'Kit',
-    items: [
-      // Pre-assembled group (XDS40236 + montanti); the body bbox excludes the
-      // snap markers, which reach further on Z (full depth 1.325).
-      { id: 'kit01', label: 'KIT 01', glbUrl: '/models/KIT/KIT01.glb', size: [0.36, 0.864, 1.014], scale: 1 },
-    ],
-  },
-  // Syncro 1014 wall of quote 99003819: side panels and the parts between them.
-  ...TASCA_CATALOG_GROUPS,
-]
-
-const catalog: CatalogItem[] = catalogGroups.flatMap((g) => g.items)
-
-const ENCLOSURE: EnclosureData = {
-  glbUrl: '/models/FIAT-NDC40H2.glb',
-  scale: MODEL_SCALE,
-  // The FIAT model has no Body_interior node and its own anchor markers sit
-  // 20 cm above the floor: the cargo floor and its anchors are declared here.
-  floor: { size: [3.45, 0.035, 1.82], y: 0.02 },
-  anchors: [
-    { id: 'floor-back-side-a', position: [1.65, 0.04, -0.86], normal: [0, 1, 0] },
-    { id: 'floor-back-side-b', position: [1.65, 0.04, 0.86], normal: [0, 1, 0] },
-  ],
-}
-const VEHICLES = [
-  { label: 'FIAT · NDC 40H2', enclosure: ENCLOSURE },
-  { label: 'IVECO · Daily L2H3', enclosure: IVECO_ENCLOSURE },
-]
-const vehicleOf = (enclosure: EnclosureData | undefined) =>
-  VEHICLES.find((vehicle) => vehicle.enclosure.glbUrl === enclosure?.glbUrl) ?? VEHICLES[0]
-
-const PROJECT_METADATA: ProjectMetadata = {
-  name: 'Demo — host-driven catalog',
-  customer: 'Syncro',
-}
+const PROJECT_METADATA: ProjectMetadata = { name: 'Nuovo allestimento' }
 
 const THEME_STORAGE_KEY = 'configurator-3d:theme'
 
@@ -147,281 +48,253 @@ function initialTheme(): ConfiguratorTheme {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
+interface LoadedCatalog {
+  revision: string
+  built: BuiltCatalog
+  manifest: AssemblyManifest
+}
+
+type CatalogState = { status: 'loading' } | { status: 'error'; message: string } | { status: 'ready'; catalog: LoadedCatalog }
+
+async function fetchCatalog(pointerUrl: string, signal?: AbortSignal): Promise<LoadedCatalog> {
+  const { index, manifest } = await loadCatalogRevision(pointerUrl, { signal })
+  return { revision: index.revision, built: buildCatalogFromIndex(index, manifest), manifest }
+}
+
+type Status = { ok: boolean; msg: string; issues?: ProjectIssue[]; retry?: () => void }
+
 export default function App() {
   const [theme, setTheme] = useState<ConfiguratorTheme>(initialTheme)
   useEffect(() => {
     try { window.localStorage.setItem(THEME_STORAGE_KEY, theme) } catch { /* Keep the current session usable without storage. */ }
   }, [theme])
-  const storeApi = useConfiguratorStoreApi()
-  const cfg = useRef<ConfiguratorHandle>(null)
-  const [savedJson, setSavedJson] = useState('')
-  const [loadStatus, setLoadStatus] = useState<{ ok: boolean; msg: string; issues?: ProjectIssue[] } | null>(null)
-  const [catalogQuery, setCatalogQuery] = useState('')
-  const [compatibleOnly, setCompatibleOnly] = useState(false)
-  const fileRef = useRef<HTMLInputElement>(null)
-  const newProjectCount = useRef(0)
-  const selectedId = useConfiguratorStore((s) => s.selectedId)
-  const attachment = useConfiguratorStore((s) => s.attachment)
-  const project = useConfiguratorStore((s) => s.project)
-  const assemblyManifest = useConfiguratorStore((s) => s.assemblyManifest)
-  const selected = project?.items.find((item) => item.id === selectedId)
-  const selectedConnectors = definitionFor(assemblyManifest, selected?.catalogId ?? '')?.connectors ?? []
-
-  const connectableToSelection = (product: CatalogItem) => {
-    if (!selected) return true
-    const productConnectors = definitionFor(assemblyManifest, product.id)?.connectors ?? []
-    return productConnectors.some((candidate) => selectedConnectors.some((current) =>
-      candidate.compatibleWith?.includes(current.id) || current.compatibleWith?.includes(candidate.id),
-    ))
-  }
-
-  const handleAdd = (product: CatalogItem) => {
-    cfg.current?.addItem(product)
-  }
-
-  const handleExportJson = () => {
-    const project = cfg.current?.getProject()
-    if (!project) return
-    const blob = new Blob([serializeProject(project)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${project.id || 'project'}.json`
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const vehicle = vehicleOf(project?.enclosure)
-
-  // Swapping the van keeps the parts where they are; the validation flags what no longer fits.
-  const handleVehicle = (glbUrl: string) => {
-    const current = cfg.current?.getProject()
-    const next = VEHICLES.find((candidate) => candidate.enclosure.glbUrl === glbUrl)
-    if (current && next) cfg.current?.setProject({ ...current, enclosure: next.enclosure })
-  }
-
-  const handleTascaWall = () => {
-    if (!assemblyManifest) return
-    cfg.current?.setProject(buildTascaWall(tascaWallContext(catalog, assemblyManifest)))
-    setSavedJson('')
-    setLoadStatus({ ok: true, msg: 'Caricata la parete 1014 del preventivo 99003819 (IVECO Daily).' })
-  }
-
-  const handleNewProject = () => {
-    newProjectCount.current += 1
-    cfg.current?.setProject({
-      id: `demo-new-${newProjectCount.current}`,
-      version: 1,
-      enclosure: vehicle.enclosure,
-      items: [],
-      connections: [],
-      metadata: PROJECT_METADATA,
-    })
-    setSavedJson('')
-    setLoadStatus(null)
-  }
-
-  const handleRecordDemo = async () => {
-    const { default: html2canvas } = await import('html2canvas')
-    const recordingCanvas = document.createElement('canvas')
-    recordingCanvas.width = window.innerWidth
-    recordingCanvas.height = window.innerHeight
-    const recordingContext = recordingCanvas.getContext('2d')
-    if (!recordingContext) throw new Error('Canvas di registrazione non disponibile')
-    const stream = recordingCanvas.captureStream(30)
-    const chunks: Blob[] = []
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' })
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunks.push(event.data)
-    }
-    recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: 'video/webm' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = 'demo-kit-configuratore.webm'
-      link.click()
-      URL.revokeObjectURL(url)
-    }
-
-    const cursor = document.createElement('div')
-    Object.assign(cursor.style, {
-      position: 'fixed', zIndex: '99999', width: '22px', height: '22px',
-      borderRadius: '50%', background: '#ff4d67', border: '3px solid white',
-      boxShadow: '0 4px 18px rgba(0,0,0,.6)', pointerEvents: 'none',
-      left: '50%', top: '50%', transform: 'translate(-50%,-50%)',
-      transition: 'left .65s ease, top .65s ease, transform .14s ease',
-    })
-    const caption = document.createElement('div')
-    Object.assign(caption.style, {
-      position: 'fixed', zIndex: '99998', left: '50%', bottom: '34px',
-      transform: 'translateX(-50%)', padding: '12px 20px', borderRadius: '9px',
-      background: 'rgba(8,12,22,.88)', color: '#fff', font: '600 18px system-ui',
-      letterSpacing: '.2px', boxShadow: '0 8px 30px rgba(0,0,0,.45)', pointerEvents: 'none',
-    })
-    document.body.append(cursor, caption)
-
-    const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms))
-    let capturing = true
-    const captureFrames = async () => {
-      while (capturing) {
-        const sceneCanvas = document.querySelector<HTMLCanvasElement>('canvas')
-        const frame = await html2canvas(document.body, {
-          backgroundColor: null,
-          logging: false,
-          scale: 1,
-          useCORS: true,
-          ignoreElements: (element) => element === sceneCanvas,
-        })
-        recordingContext.fillStyle = '#0f1320'
-        recordingContext.fillRect(0, 0, recordingCanvas.width, recordingCanvas.height)
-        if (sceneCanvas) {
-          const rect = sceneCanvas.getBoundingClientRect()
-          recordingContext.drawImage(sceneCanvas, rect.left, rect.top, rect.width, rect.height)
-        }
-        recordingContext.drawImage(frame, 0, 0, recordingCanvas.width, recordingCanvas.height)
-        await wait(80)
-      }
-    }
-    const button = (text: string) => [...document.querySelectorAll<HTMLButtonElement>('button')]
-      .find((element) => element.textContent?.trim().startsWith(text))
-    const moveTo = async (element: HTMLElement, label: string) => {
-      caption.textContent = label
-      const rect = element.getBoundingClientRect()
-      cursor.style.left = `${rect.left + rect.width / 2}px`
-      cursor.style.top = `${rect.top + rect.height / 2}px`
-      await wait(760)
-    }
-    const click = async (element: HTMLElement | undefined, label: string) => {
-      if (!element) throw new Error(`Controllo non trovato: ${label}`)
-      await moveTo(element, label)
-      cursor.style.transform = 'translate(-50%,-50%) scale(.68)'
-      element.click()
-      await wait(160)
-      cursor.style.transform = 'translate(-50%,-50%) scale(1)'
-      await wait(720)
-    }
-    const attach = async (targetPoint: string, label: string) => {
-      const state = storeApi.getState()
-      const sourceId = state.selectedId
-      const target = state.project?.items.find((item) => item.catalogId === 'ysi12836')
-      if (!sourceId || !target || !beginAttachment(storeApi, sourceId)) throw new Error('Componente di partenza non disponibile')
-      caption.textContent = 'Scelgo il punto iniziale nella scena'
-      await wait(800)
-      if (!chooseAttachmentPoint(storeApi, 'end-a')) throw new Error('Punto iniziale non disponibile')
-      caption.textContent = 'Scelgo il montante di destinazione'
-      await wait(800)
-      if (!chooseAttachmentTarget(storeApi, target.id)) throw new Error('Destinatario non disponibile')
-      const interaction = storeApi.getState().attachment
-      if (interaction) storeApi.getState().setAttachment({ ...interaction, hoveredPointId: targetPoint })
-      caption.textContent = `Anteprima dell’aggancio ${label}`
-      await wait(1000)
-      if (!chooseAttachmentPoint(storeApi, targetPoint)) throw new Error(storeApi.getState().attachment?.error ?? 'Aggancio non valido')
-      await wait(800)
-    }
-
-    recorder.start(250)
-    void captureFrames()
-    try {
-      caption.textContent = 'KIT 01 — montaggio manuale nel configuratore 3D'
-      await wait(1800)
-      await click(button('Nuovo'), 'Parto da un progetto vuoto')
-      await click(button('YSI 12836'), 'Inserisco il primo montante YSI 12836')
-      await click(button('+90°'), 'Ruoto il montante nel vano')
-      document.querySelector<HTMLDetailsElement>('.cfg-inspector details')?.setAttribute('open', '')
-      await click(button('95.3 cm'), 'Creo la coppia specchiata alla distanza corretta')
-
-      await click(button('XDS 40236 KM02'), 'Aggiungo il ripiano superiore XDS 40236 KM02')
-      await attach('shelf-top', 'del ripiano superiore')
-      await click(button('XDS 40236 KM02'), 'Aggiungo il ripiano inferiore')
-      await attach('shelf-bottom', 'del ripiano inferiore')
-
-      await click(button('XHA 40100'), 'Aggiungo la prima traversa XHA 40100')
-      await attach('rail-xmax', 'della prima traversa')
-      await click(button('XHA 40100'), 'Aggiungo la seconda traversa')
-      await attach('rail-xmin', 'della seconda traversa')
-
-      await click(document.querySelector<HTMLButtonElement>('[aria-label="Centra componente"]') ?? undefined, 'Centro la vista sul KIT completo')
-      caption.textContent = 'KIT completo — configurazione valida e pronta per l’export'
-      await wait(3000)
-    } finally {
-      capturing = false
-      await wait(500)
-      recorder.stop()
-      stream.getTracks().forEach((track) => track.stop())
-      cursor.remove()
-      caption.remove()
-    }
-  }
-
-  const handleImport = async (file: File) => {
-    try {
-      const text = await file.text()
-      const { project, warnings } = parseProject(text, { catalog })
-      storeApi.getState().setProject(project)
-      setLoadStatus({
-        ok: true,
-        msg: `Caricato "${project.id}" v${project.version} con ${project.items.length} item${warnings.length ? ` (${warnings.length} warning)` : ''}`,
-        issues: warnings,
-      })
-    } catch (e) {
-      if (e instanceof ProjectParseError) {
-        setLoadStatus({ ok: false, msg: e.message, issues: e.issues })
-      } else {
-        setLoadStatus({ ok: false, msg: (e as Error).message })
-      }
-    }
-  }
-
-  const matches = catalogGroups.flatMap((group) => group.items.filter((product) => {
-    const query = catalogQuery.trim().toLowerCase()
-    return (!query || `${product.id} ${product.label}`.toLowerCase().includes(query)) && (!compatibleOnly || connectableToSelection(product))
-  }))
+  const [catalogState, setCatalogState] = useState<CatalogState>({ status: 'loading' })
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchCatalog(CATALOG_URL, controller.signal)
+      .then((catalog) => setCatalogState({ status: 'ready', catalog }))
+      .catch((error: Error) => { if (!controller.signal.aborted) setCatalogState({ status: 'error', message: error.message }) })
+    return () => controller.abort()
+  }, [])
 
   return (
     <div className="app-shell" data-theme={theme}>
       <style>{themeStyles}</style>
+      {catalogState.status === 'ready'
+        ? <Workspace catalog={catalogState.catalog} theme={theme} setTheme={setTheme}
+          onCatalog={(catalog) => setCatalogState({ status: 'ready', catalog })} />
+        : <main className="app-workspace app-catalog-state" role="status">
+          {catalogState.status === 'loading'
+            ? <><Icon name="cube" size={22} /><strong>Caricamento del catalogo…</strong></>
+            : <><Icon name="close" size={22} /><strong>Catalogo non disponibile</strong><span>{catalogState.message}</span></>}
+        </main>}
+    </div>
+  )
+}
+
+function Workspace({ catalog, theme, setTheme, onCatalog }: {
+  catalog: LoadedCatalog
+  theme: ConfiguratorTheme
+  setTheme: (theme: ConfiguratorTheme) => void
+  onCatalog: (catalog: LoadedCatalog) => void
+}) {
+  const { built, manifest, revision } = catalog
+  const items = built.items
+  const vehicles = built.enclosures
+  const storeApi = useConfiguratorStoreApi()
+  const cfg = useRef<ConfiguratorHandle>(null)
+  const [savedJson, setSavedJson] = useState('')
+  const [status, setStatus] = useState<Status | null>(null)
+  const [catalogQuery, setCatalogQuery] = useState('')
+  const [compatibleOnly, setCompatibleOnly] = useState(false)
+  const fileRef = useRef<HTMLInputElement>(null)
+  const projectCount = useRef(0)
+  const selectedId = useConfiguratorStore((s) => s.selectedId)
+  const attachment = useConfiguratorStore((s) => s.attachment)
+  const project = useConfiguratorStore((s) => s.project)
+  const selected = project?.items.find((item) => item.id === selectedId)
+  const byId = useMemo(() => new Map(items.map((item) => [item.id, item])), [items])
+  const [initialVehicle] = useState(() => vehicles[0])
+  // Props the configurator resets on: stable for the life of this revision.
+  const enclosure = useMemo(() => initialVehicle?.enclosure ?? { glbUrl: '' }, [initialVehicle])
+  const vehicle = vehicles.find((entry) => entry.id === project?.catalog?.enclosureId) ??
+    vehicles.find((entry) => entry.enclosure.glbUrl === project?.enclosure.glbUrl) ?? initialVehicle
+
+  const compatible = useMemo(() => new Set(selected ? compatibleCatalogIds(manifest, selected.catalogId) : []), [manifest, selected])
+  const newProject = useCallback((next: CatalogEnclosure | undefined = vehicle): ProjectData => {
+    projectCount.current += 1
+    return {
+      id: `allestimento-${Date.now().toString(36)}-${projectCount.current}`,
+      version: 1,
+      enclosure: next?.enclosure ?? enclosure,
+      items: [],
+      connections: [],
+      metadata: { ...PROJECT_METADATA, vehicle: next?.label },
+      catalog: { revision, ...(next ? { enclosureId: next.id } : {}) },
+    }
+  }, [enclosure, revision, vehicle])
+
+  // A project opened with another revision waits for that catalogue to reach
+  // the configurator: child effects run first, so it is in place here.
+  const pendingProject = useRef<ProjectData | null>(null)
+  useEffect(() => {
+    if (!pendingProject.current) return
+    storeApi.getState().setProject(pendingProject.current)
+    pendingProject.current = null
+  }, [revision, storeApi])
+  // Every project of this workspace names the revision its ids belong to.
+  useEffect(() => {
+    const current = storeApi.getState().project
+    if (current && current.catalog?.revision !== revision) storeApi.getState().setProject({ ...current, catalog: { revision, ...(vehicle ? { enclosureId: vehicle.id } : {}) } })
+  }, [project, revision, storeApi, vehicle])
+
+  const handleExportJson = () => {
+    const current = cfg.current?.getProject()
+    if (!current) return
+    const url = URL.createObjectURL(new Blob([serializeProject(current)], { type: 'application/json' }))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `${current.id || 'progetto'}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  // Swapping the van keeps the parts where they are; the validation flags what no longer fits.
+  const handleVehicle = (id: string) => {
+    const current = cfg.current?.getProject()
+    const next = vehicles.find((candidate) => candidate.id === id)
+    if (current && next) cfg.current?.setProject({ ...current, enclosure: next.enclosure, catalog: { revision, enclosureId: next.id }, metadata: { ...current.metadata, vehicle: next.label } })
+  }
+
+  const handleNewProject = () => {
+    cfg.current?.setProject(newProject())
+    setSavedJson('')
+    setStatus(null)
+  }
+
+  /**
+   * A project opens with the revision it was composed with: its product,
+   * point and connector ids mean what they meant then. A missing revision is
+   * reported and the user decides; nothing is replaced silently.
+   */
+  const openProject = async (text: string, force = false) => {
+    try {
+      const parsed = parseProject(text)
+      const wanted = parsed.project.catalog?.revision
+      let target = catalog
+      if (wanted && wanted !== revision && !force) {
+        try {
+          target = await fetchCatalog(catalogRevisionPointerUrl(new URL(CATALOG_URL, location.href).href, wanted))
+        } catch {
+          setStatus({ ok: false, msg: `Il progetto usa la revisione del catalogo ${wanted}, non più disponibile. Non è stato aperto: i suoi prodotti potrebbero non corrispondere a quelli attuali.`, retry: () => void openProject(text, true) })
+          return
+        }
+      }
+      const { project: loaded, warnings } = parseProject(text, { catalog: target.built.items, catalogRevision: target.revision })
+      const next = { ...loaded, catalog: { ...loaded.catalog, revision: target.revision } }
+      if (target !== catalog) {
+        pendingProject.current = next
+        onCatalog(target)
+      } else storeApi.getState().setProject(next)
+      setStatus({
+        ok: true,
+        msg: `Aperto «${loaded.metadata?.name ?? loaded.id}» con ${loaded.items.length} componenti · catalogo ${target.revision}${target !== catalog ? ' (revisione del progetto)' : ''}${warnings.length ? ` · ${warnings.length} avvisi` : ''}`,
+        issues: warnings,
+      })
+    } catch (error) {
+      setStatus(error instanceof ProjectParseError ? { ok: false, msg: error.message, issues: error.issues } : { ok: false, msg: (error as Error).message })
+    }
+  }
+
+  const query = catalogQuery.trim().toLowerCase()
+  const matches = items.filter((product) =>
+    (!query || [product.id, product.code, product.label, product.description, product.category].join(' ').toLowerCase().includes(query)) &&
+    (!compatibleOnly || !selected || compatible.has(product.id)))
+  const selectedLabel = selected ? byId.get(selected.catalogId)?.label ?? selected.catalogId : ''
+  const catalogErrors = built.issues.filter((issue) => issue.level === 'error')
+
+  return (
+    <>
       <header className="app-header">
         <div className="app-brand"><span className="app-brand-icon"><Icon name="cube" size={22} /></span><div><strong>Syncro</strong><small>Configuratore di allestimenti · 3D</small></div></div>
-        <div className="app-project-name"><span className="app-status-dot" />Allestimento furgone<span className="app-header-count">{project?.items.length ?? 0} {(project?.items.length ?? 0) === 1 ? 'componente' : 'componenti'}</span></div>
+        <div className="app-project-name"><span className="app-status-dot" />{project?.metadata?.name ?? 'Allestimento'}<span className="app-header-count">{project?.items.length ?? 0} {(project?.items.length ?? 0) === 1 ? 'componente' : 'componenti'}</span></div>
         <div className="app-header-actions">
           <div className="app-theme-switch" role="group" aria-label="Tema interfaccia">
             <button aria-label="Tema chiaro" aria-pressed={theme === 'light'} onClick={() => setTheme('light')} title="Tema chiaro"><Icon name="sun" size={15} /><span>Chiaro</span></button>
             <button aria-label="Tema scuro" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')} title="Tema scuro"><Icon name="moon" size={15} /><span>Scuro</span></button>
           </div>
+          <a className="app-header-link" href="/stl-to-glb.html" title="Converti un rilievo STL in GLB per il catalogo"><Icon name="cube" size={16} /><span>Converti STL</span></a>
           <button aria-label="Apri progetto" onClick={() => fileRef.current?.click()}><Icon name="folder" size={16} /><span>Apri progetto</span></button><button className="app-primary-action" aria-label="Nuovo progetto" onClick={handleNewProject}><Icon name="plus" size={16} /><span>Nuovo progetto</span></button>
         </div>
-        <input ref={fileRef} type="file" accept="application/json,.json" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void handleImport(file); event.target.value = '' }} />
+        <input ref={fileRef} type="file" accept="application/json,.json" hidden aria-label="File progetto" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then((text) => openProject(text)); event.target.value = '' }} />
       </header>
       <main className="app-workspace">
         <div className="app-viewport">
-          <div className="app-viewport-heading"><span><Icon name="cube" size={15} />Area di progettazione</span><select className="app-vehicle-select" aria-label="Veicolo" value={vehicle.enclosure.glbUrl} onChange={(event) => handleVehicle(event.target.value)}>{VEHICLES.map((option) => <option key={option.enclosure.glbUrl} value={option.enclosure.glbUrl}>{option.label}</option>)}</select></div>
-          <div className="app-canvas"><Configurator3D ref={cfg} theme={theme} enclosure={ENCLOSURE} projectId="demo-010" metadata={PROJECT_METADATA} catalog={catalog} assemblyManifest="/catalog/assembly-manifest.json" environmentUrl="/hdr/empty_warehouse_01_4k.hdr" onSave={(value) => setSavedJson(serializeProject(value))} /></div>
+          <div className="app-viewport-heading"><span><Icon name="cube" size={15} />Area di progettazione</span>
+            <select className="app-vehicle-select" aria-label="Veicolo" value={vehicle?.id ?? ''} onChange={(event) => handleVehicle(event.target.value)}>{vehicles.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select>
+          </div>
+          <div className="app-canvas"><Configurator3D ref={cfg} theme={theme} enclosure={enclosure} projectId="allestimento" metadata={PROJECT_METADATA} catalog={items} assemblyManifest={manifest} environmentUrl="/hdr/empty_warehouse_01_4k.hdr" onSave={(value) => setSavedJson(serializeProject(value))} /></div>
         </div>
         <aside className="app-sidebar">
-          <div className="app-sidebar-heading"><div><span className="app-eyebrow">CATALOGO PRODOTTI</span><h2>Componenti</h2></div><span className="app-count-badge">{catalog.length}</span></div>
-          <p className="app-sidebar-intro">Seleziona un componente per aggiungerlo al progetto.</p>
-          <label className="app-search"><Icon name="search" size={17} /><input aria-label="Cerca componenti" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Cerca un componente…" /></label>
-          {selected && <label className="app-compatible-filter"><input type="checkbox" checked={compatibleOnly} onChange={(event) => setCompatibleOnly(event.target.checked)} />Compatibili con {catalog.find((product) => product.id === selected.catalogId)?.label ?? selected.catalogId}</label>}
+          <div className="app-sidebar-heading"><div><span className="app-eyebrow">CATALOGO PRODOTTI</span><h2>Componenti</h2></div><span className="app-count-badge">{items.length}</span></div>
+          <p className="app-sidebar-intro">Seleziona un componente per aggiungerlo al progetto. Catalogo <code>{revision}</code>.</p>
+          {built.issues.length > 0 && <details className="app-catalog-issues"><summary>{catalogErrors.length ? `${catalogErrors.length} prodotti esclusi dal catalogo` : `${built.issues.length} avvisi del catalogo`}</summary><ul>{built.issues.map((issue, index) => <li key={index} className={issue.level}>{issue.message}</li>)}</ul></details>}
+          <label className="app-search"><Icon name="search" size={17} /><input aria-label="Cerca componenti" value={catalogQuery} onChange={(event) => setCatalogQuery(event.target.value)} placeholder="Codice, nome o descrizione…" /></label>
+          {selected && <label className="app-compatible-filter"><input type="checkbox" checked={compatibleOnly} onChange={(event) => setCompatibleOnly(event.target.checked)} />Solo compatibili con {selectedLabel}</label>}
           <div className="app-catalog">
-            {catalogGroups.map((group) => {
-              const items = group.items.filter((product) => matches.includes(product))
-              if (!items.length) return null
-              return <details key={group.category} open className="app-category"><summary>{group.category}<span>{items.length}</span></summary><div className="app-product-list">
-                {items.map((product) => <button key={product.id} className="app-product-card" disabled={!!attachment} aria-label={`Aggiungi ${product.label}`} onClick={() => handleAdd(product)}>
-                  <span className="app-product-graphic"><img src={`/catalog/previews/${product.id}.png`} alt="" width={68} height={62} loading="lazy" /></span><span className="app-product-info"><strong>{product.label}</strong><small>{product.size?.map((value) => Math.round(value * 1000)).join(' × ')} mm</small>{selected && connectableToSelection(product) && <span className="app-compatible-badge">Compatibile</span>}</span><span className="app-add-icon"><Icon name="plus" size={16} /></span>
-                </button>)}
+            {built.categories.map((category) => {
+              const group = matches.filter((product) => (product.category ?? '') === category)
+              if (!group.length) return null
+              return <details key={category} open className="app-category"><summary>{category || 'Altro'}<span>{group.length}</span></summary><div className="app-product-list">
+                {group.map((product) => <ProductCard key={product.id} product={product} disabled={!!attachment} onAdd={() => cfg.current?.addItem(product)}
+                  compatibility={selected ? productCompatibility(manifest, selected.catalogId, product.id) : null} />)}
               </div></details>
             })}
             {!matches.length && <div className="app-no-results"><Icon name="search" size={25} /><strong>Nessun componente trovato</strong><span>Prova un altro codice o disattiva il filtro.</span></div>}
           </div>
-          {!!project?.items.length && <section className="app-scene-list"><div className="app-section-heading"><Icon name="layers" size={15} />Nella scena<span>{project.items.length}</span></div>{project.items.map((item, index) => <button key={item.id} className={selectedId === item.id ? 'selected' : ''} disabled={!!attachment && attachment.stage !== 'target'} onClick={() => attachment?.stage === 'target' ? chooseAttachmentTarget(storeApi, item.id) : cfg.current?.selectItem(item.id)}><span>{String(index + 1).padStart(2, '0')}</span>{catalog.find((product) => product.id === item.catalogId)?.label ?? item.catalogId}<Icon name="focus" size={13} /></button>)}</section>}
-          <div className="app-sidebar-footer"><span className="app-tip-icon"><Icon name="link" size={16} /></span><div><strong>Unisci i componenti</strong><span>Tasto destro su un pezzo → Aggancia.</span></div></div>
-          {loadStatus && <p className={`app-import-status ${loadStatus.ok ? '' : 'error'}`} role="status">{loadStatus.msg}</p>}
-          <details className="app-project-tools"><summary>Strumenti progetto</summary><div><button onClick={handleTascaWall} disabled={!assemblyManifest}><Icon name="layers" size={14} />Parete preventivo 99003819</button><button onClick={handleExportJson}><Icon name="download" size={14} />Scarica JSON</button><button onClick={() => { void handleRecordDemo().catch((error: Error) => setLoadStatus({ ok: false, msg: error.message })) }}>Registra demo KIT</button></div>{savedJson && <details><summary>Dati dell’ultimo salvataggio</summary><pre>{savedJson}</pre></details>}</details>
+          {!!project?.items.length && <section className="app-scene-list"><div className="app-section-heading"><Icon name="layers" size={15} />Nella scena<span>{project.items.length}</span></div>{project.items.map((item, index) => <button key={item.id} className={selectedId === item.id ? 'selected' : ''} disabled={!!attachment && attachment.stage !== 'target'} onClick={() => attachment?.stage === 'target' ? chooseAttachmentTarget(storeApi, item.id) : cfg.current?.selectItem(item.id)}><span>{String(index + 1).padStart(2, '0')}</span>{byId.get(item.catalogId)?.label ?? item.catalogId}<Icon name="focus" size={13} /></button>)}</section>}
+          <div className="app-sidebar-footer"><span className="app-tip-icon"><Icon name="link" size={16} /></span><div><strong>Unisci i componenti</strong><span>Tasto destro su un pezzo → Aggancia, oppure «Aggancia nella scena» nel pannello del componente.</span></div></div>
+          {status && <div className={`app-import-status ${status.ok ? '' : 'error'}`} role="status"><p>{status.msg}</p>
+            {status.retry && <button onClick={status.retry}>Apri con la revisione corrente</button>}
+            {!!status.issues?.length && <ul>{status.issues.map((issue, index) => <li key={index}>{issue.path}: {issue.message}</li>)}</ul>}
+          </div>}
+          <details className="app-project-tools"><summary>Strumenti progetto</summary><div><button onClick={handleExportJson}><Icon name="download" size={14} />Scarica JSON</button></div>{savedJson && <details><summary>Dati dell’ultimo salvataggio</summary><pre>{savedJson}</pre></details>}</details>
         </aside>
       </main>
       <footer className="app-status-bar"><span><span>Trascina · Sposta</span><span>Rotellina · Zoom</span><span>Tasto destro · Aggancia</span></span><span>Scala reale · Coordinate in metri</span></footer>
-    </div>
+    </>
   )
+}
+
+const INCOMPATIBILITY_LABELS = {
+  'not-in-manifest': 'Non descritto nel manifest',
+  'no-connectors': 'Senza punti di aggancio',
+  'incompatible-family': 'Famiglie di aggancio non compatibili',
+} as const
+
+function ProductCard({ product, disabled, onAdd, compatibility }: {
+  product: CatalogItem
+  disabled: boolean
+  onAdd: () => void
+  compatibility: ReturnType<typeof productCompatibility> | null
+}) {
+  const [failed, setFailed] = useState(false)
+  return <div className="app-product-entry">
+    <button className="app-product-card" disabled={disabled} aria-label={`Aggiungi ${product.label}`} onClick={onAdd} title={product.description}>
+      <span className="app-product-graphic">{product.previewUrl && !failed
+        ? <img src={product.previewUrl} alt="" width={68} height={62} loading="lazy" onError={() => setFailed(true)} />
+        : <Icon name="cube" size={24} />}</span>
+      <span className="app-product-info"><strong>{product.label}</strong>
+        <small>{product.code} · {product.size?.map((value) => Math.round(value * (product.scale ?? 1) * 1000)).join(' × ')} mm</small>
+        {compatibility && (compatibility.compatible
+          ? <span className="app-compatible-badge">Compatibile</span>
+          : <span className="app-incompatible-note">{INCOMPATIBILITY_LABELS[compatibility.reason!]}</span>)}
+      </span>
+      <span className="app-add-icon"><Icon name="plus" size={16} /></span>
+    </button>
+    {(product.description || product.instructions?.length) && <details className="app-product-details"><summary>Dettagli e montaggio</summary>
+      {product.description && <p>{product.description}</p>}
+      {!!product.instructions?.length && <ol>{product.instructions.map((step, index) => <li key={index}>{step}</li>)}</ol>}
+    </details>}
+  </div>
 }

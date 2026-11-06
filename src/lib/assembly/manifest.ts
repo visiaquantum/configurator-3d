@@ -44,44 +44,143 @@ const ColliderSchema = z.object({
   size: PositiveVec3Schema,
 })
 
-export const AssemblyManifestSchema = z.object({
-  version: z.literal(1),
-  products: z.array(z.object({
-    catalogId: z.string().min(1),
-    connectors: z.array(ConnectorSchema),
-    colliders: z.array(ColliderSchema).optional(),
-    bom: z.object({ code: z.string().min(1).optional(), label: z.string().min(1).optional() }).optional(),
-  })).superRefine((products, ctx) => {
-    const ids = new Set<string>()
-    products.forEach((product, i) => {
-      if (ids.has(product.catalogId)) {
-        ctx.addIssue({ code: 'custom', path: [i, 'catalogId'], message: 'Duplicate catalogId' })
-      }
-      ids.add(product.catalogId)
-      const connectorIds = new Set<string>()
-      const colliderIds = new Set<string>()
-      product.connectors.forEach((connector, connectorIndex) => {
-        if (connectorIds.has(connector.id)) {
-          ctx.addIssue({ code: 'custom', path: [i, 'connectors', connectorIndex, 'id'], message: 'Duplicate connector id' })
-        }
-        connectorIds.add(connector.id)
-        const clearanceIds = new Set<string>()
-        connector.clearance?.forEach((clearance, clearanceIndex) => {
-          if (clearanceIds.has(clearance.id)) {
-            ctx.addIssue({ code: 'custom', path: [i, 'connectors', connectorIndex, 'clearance', clearanceIndex, 'id'], message: 'Duplicate clearance id' })
-          }
-          clearanceIds.add(clearance.id)
-        })
-      })
-      product.colliders?.forEach((collider, colliderIndex) => {
-        if (colliderIds.has(collider.id)) {
-          ctx.addIssue({ code: 'custom', path: [i, 'colliders', colliderIndex, 'id'], message: 'Duplicate collider id' })
-        }
-        colliderIds.add(collider.id)
-      })
-    })
-  }),
+const DirectionSchema = Vec3Schema.refine((v) => v.every(Number.isFinite) && Math.hypot(...v) > 1e-9, { message: 'Direction must not be zero' })
+const ManifestPointSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1).optional(),
+  kind: z.string().min(1),
+  position: Vec3Schema,
+  normal: DirectionSchema.optional(),
 })
+const HoleColumnSchema = z.object({
+  id: z.string().regex(/^[a-z0-9][a-z0-9_-]*$/, 'Column id: lowercase letters, digits, - and _'),
+  kind: z.string().min(1),
+  label: z.string().min(1).optional(),
+  first: Vec3Schema,
+  pitch: DirectionSchema,
+  count: z.number().int().positive().optional(),
+  length: z.number().nonnegative().optional(),
+  normal: DirectionSchema,
+  sheet: z.object({ outward: DirectionSchema, thickness: z.number().nonnegative() }).optional(),
+}).refine((column) => column.count === undefined || column.length === undefined, { message: 'A hole column takes count or length, not both' })
+const Sha = z.string().regex(/^[0-9a-f]{12,64}$/, 'Asset hash: 12 to 64 hex characters')
+const ReviewSchema = z.object({ confirmed: z.boolean(), by: z.string().optional(), date: z.string().optional(), notes: z.string().optional() })
+const DirectionsSchema = z.record(z.string().min(1), DirectionSchema)
+const AnchorSchema = z.object({ id: z.string().min(1), position: Vec3Schema, normal: DirectionSchema.optional() })
+const FloorSchema = z.object({ size: PositiveVec3Schema, y: z.number(), color: z.string().min(1).optional() })
+const DoorSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('rotate'), axis: z.enum(['y', 'z']), openAngle: z.number() }),
+  z.object({ kind: z.literal('slide'), axis: z.enum(['x', 'y', 'z']), distance: z.number() }),
+])
+
+const ProductSchema = z.object({
+  catalogId: z.string().min(1),
+  connectors: z.array(ConnectorSchema),
+  colliders: z.array(ColliderSchema).optional(),
+  bom: z.object({ code: z.string().min(1).optional(), label: z.string().min(1).optional() }).optional(),
+  code: z.string().min(1).optional(),
+  label: z.string().min(1).optional(),
+  description: z.string().optional(),
+  category: z.string().min(1).optional(),
+  instructions: z.array(z.string().min(1)).optional(),
+  points: z.array(ManifestPointSchema).optional(),
+  holeColumns: z.array(HoleColumnSchema).optional(),
+  mirrorPair: z.object({ axis: DirectionSchema.optional(), distances: z.array(z.number().positive()).min(1).optional() }).optional(),
+  bays: z.array(z.number().positive()).min(1).optional(),
+  directions: DirectionsSchema.optional(),
+  assetCorrections: z.array(z.object({
+    asset: Sha,
+    reason: z.string().min(1),
+    points: z.array(ManifestPointSchema).optional(),
+    replaceKinds: z.array(z.string().min(1)).optional(),
+    scale: z.number().positive().optional(),
+    directions: DirectionsSchema.optional(),
+  })).optional(),
+  review: ReviewSchema.optional(),
+})
+
+const EnclosureDefinitionSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  code: z.string().min(1).optional(),
+  description: z.string().optional(),
+  dimensions: PositiveVec3Schema.optional(),
+  floor: FloorSchema.optional(),
+  anchors: z.array(AnchorSchema).optional(),
+  doors: z.record(z.string().min(1), DoorSchema).optional(),
+  assetCorrections: z.array(z.object({
+    asset: Sha,
+    reason: z.string().min(1),
+    scale: z.number().positive().optional(),
+    dimensions: PositiveVec3Schema.optional(),
+    floor: FloorSchema.optional(),
+    anchors: z.array(AnchorSchema).optional(),
+  })).optional(),
+  review: ReviewSchema.optional(),
+})
+
+const SampleStepSchema = z.union([
+  z.object({ id: z.string().min(1), product: z.string().min(1), point: z.string().min(1), on: z.string().min(1), at: z.string().min(1) }).strict(),
+  z.object({ id: z.string().min(1), twinOf: z.string().min(1), distance: z.number().positive() }).strict(),
+  z.object({ id: z.string().min(1), product: z.string().min(1), position: Vec3Schema.optional(), yaw: z.number().optional() }).strict(),
+])
+const SampleSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+  steps: z.array(SampleStepSchema).min(1),
+  expectConnections: z.number().int().nonnegative().optional(),
+})
+
+/** Unique ids within `values`, each duplicate reported at its own path. */
+function uniqueIds(ctx: z.RefinementCtx, values: Array<{ id: string }> | undefined, path: Array<string | number>, message: string) {
+  const ids = new Set<string>()
+  values?.forEach((value, index) => {
+    if (ids.has(value.id)) ctx.addIssue({ code: 'custom', path: [...path, index, 'id'], message })
+    ids.add(value.id)
+  })
+}
+
+export const AssemblyManifestSchema = z.object({
+  version: z.union([z.literal(1), z.literal(2)]),
+  revision: z.string().min(1).optional(),
+  categories: z.record(z.string().min(1), z.string().min(1)).optional(),
+  products: z.array(ProductSchema),
+  enclosures: z.array(EnclosureDefinitionSchema).optional(),
+  samples: z.array(SampleSchema).optional(),
+}).superRefine((manifest, ctx) => {
+  const ids = new Set<string>()
+  const codes = new Set<string>()
+  manifest.products.forEach((product, i) => {
+    if (ids.has(product.catalogId)) {
+      ctx.addIssue({ code: 'custom', path: ['products', i, 'catalogId'], message: 'Duplicate catalogId' })
+    }
+    ids.add(product.catalogId)
+    const code = normalizeProductCode(product.code ?? product.catalogId)
+    if (product.code && code !== product.catalogId) {
+      ctx.addIssue({ code: 'custom', path: ['products', i, 'code'], message: `Code ${product.code} normalises to ${code}, not to the catalogId` })
+    }
+    if (codes.has(code)) ctx.addIssue({ code: 'custom', path: ['products', i, 'code'], message: 'Duplicate product code' })
+    codes.add(code)
+    uniqueIds(ctx, product.connectors, ['products', i, 'connectors'], 'Duplicate connector id')
+    product.connectors.forEach((connector, c) => uniqueIds(ctx, connector.clearance, ['products', i, 'connectors', c, 'clearance'], 'Duplicate clearance id'))
+    uniqueIds(ctx, product.colliders, ['products', i, 'colliders'], 'Duplicate collider id')
+    uniqueIds(ctx, product.holeColumns, ['products', i, 'holeColumns'], 'Duplicate hole column id')
+    uniqueIds(ctx, product.points, ['products', i, 'points'], 'Duplicate point id')
+    product.assetCorrections?.forEach((correction, c) => uniqueIds(ctx, correction.points, ['products', i, 'assetCorrections', c, 'points'], 'Duplicate point id'))
+  })
+  uniqueIds(ctx, manifest.enclosures, ['enclosures'], 'Duplicate enclosure id')
+  uniqueIds(ctx, manifest.samples, ['samples'], 'Duplicate sample id')
+  manifest.samples?.forEach((sample, s) => uniqueIds(ctx, sample.steps, ['samples', s, 'steps'], 'Duplicate step id'))
+})
+
+/**
+ * Catalogue id of a product code or GLB file name: lower case, letters and
+ * digits only (`PTBM-31.glb` → `ptbm31`). Codes that normalise to the same id
+ * are the same product.
+ */
+export function normalizeProductCode(code: string): string {
+  return code.replace(/\.glb$/i, '').toLowerCase().replace(/[^a-z0-9]/g, '')
+}
 
 export interface ManifestIssue {
   level: 'error'
@@ -129,6 +228,7 @@ export async function loadAssemblyManifest(source: AssemblyManifest | string, si
   return parseAssemblyManifest(await response.text())
 }
 
+/** The manifest entry of a product, if any. */
 export function definitionFor(
   manifest: AssemblyManifest | null | undefined,
   catalogId: string,

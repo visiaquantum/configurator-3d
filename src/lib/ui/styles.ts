@@ -48,6 +48,11 @@ ${themeStyles}
 .cfg-point-list > div { max-height: 160px; overflow: auto; display: grid; gap: 4px; margin-top: 10px; }
 .cfg-point-list button { display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid var(--cfg-line); border-radius: 7px; background: var(--cfg-surface-muted); color: var(--cfg-text-secondary); font-size: 12px; padding: 8px; cursor: pointer; text-align: left; }
 .cfg-point-list button > span { color: var(--cfg-accent); width: 18px; }
+.cfg-point-list button:disabled { cursor: not-allowed; opacity: .6; }
+.cfg-point-height { color: var(--cfg-text-subtle); font-size: 10px; }
+.cfg-point-status { margin-left: auto; font-style: normal; font-size: 10px; color: var(--cfg-success); }
+.cfg-point-list button:disabled .cfg-point-status { color: var(--cfg-error); }
+.cfg-pair-suggestion { display: grid; gap: 6px; margin-top: 12px; font-size: 11px; color: var(--cfg-text-muted); }
 .cfg-attachment-footer { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
 .cfg-attachment-footer > span { color: var(--cfg-text-subtle); font-size: 11px; line-height: 1.7; }
 .cfg-attachment-footer button { align-self: flex-start; }

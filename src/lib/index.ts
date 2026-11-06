@@ -1,4 +1,8 @@
 export { Configurator3D } from './Configurator3D'
+/** Icons and palette of the built-in panels, for host panels that should look the same. */
+export { Icon } from './ui/Icon'
+export type { IconName } from './ui/Icon'
+export { themeStyles } from './ui/theme'
 export { createEnclosureCutaway } from './scene/enclosureCutaway'
 export { useConfiguratorStore, useConfiguratorStoreApi, createConfiguratorStore } from './state/store'
 export type { ConfiguratorStore, ConfiguratorState, CameraPreset, CameraProjection } from './state/store'
@@ -6,8 +10,13 @@ export { selectAssemblyView, selectCanMove, selectCollisionBounds, selectEffecti
 export type { AssemblyView } from './state/selectors'
 export { isResolvedJoint, jointsOf, pendingJoints } from './assembly/graph'
 export type { Joint } from './assembly/graph'
-export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, computeAttachmentPreview } from './scene/attachment'
-export type { AttachmentInteraction } from './scene/attachment'
+export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, attachmentPointStates, attachmentTargetStates, computeAttachmentPreview } from './scene/attachment'
+export type { AttachmentInteraction, AttachmentPointState, AttachmentPointStatus, AttachmentTargetState } from './scene/attachment'
+export { productCompatibility, compatibleCatalogIds } from './assembly/compatibility'
+export type { ProductCompatibility, ProductIncompatibility } from './assembly/compatibility'
+export { pairSpacingOptions } from './assembly/pairSpacing'
+export type { PairSpacingOption } from './assembly/pairSpacing'
+export { setMirrorPairDistance } from './scene/commands'
 export { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
 export { configurationStatus, validationForState } from './state/readiness'
 export {
@@ -26,6 +35,8 @@ export {
   connectionsAtPose,
   connectorForSnap,
   connectorsCanMate,
+  definitionFor,
+  normalizeProductCode,
 } from './assembly/manifest'
 export type { ManifestIssue } from './assembly/manifest'
 export { validateConfiguration, hasBlockingIssues } from './assembly/validation'
@@ -62,8 +73,40 @@ export { computePartnerPlacement, mirrorPairDistances, pairDistanceForSpan } fro
 export {
   extractItemSnapsFromObject,
   hydrateItemSnapsAndHide,
+  inspectSnapMarkers,
 } from './io/itemSnaps'
-export type { ExtractedSnapPoint } from './io/itemSnaps'
+export type { ExtractedSnapPoint, SnapMarkerReport } from './io/itemSnaps'
+export { extractAnchorsFromGLB } from './io/anchors'
+export { prepareProductAsset } from './scene/productAsset'
+export type { PreparedProductAsset } from './scene/productAsset'
+export { visibleBodyBounds } from './scene/geometry'
+export {
+  buildCatalogFromIndex,
+  catalogItemFor,
+  catalogRevisionPointerUrl,
+  CatalogIndexSchema,
+  CatalogPointerSchema,
+  CatalogRevisionError,
+  CATALOG_INDEX_VERSION,
+  correctionFor,
+  enclosureFor,
+  holeColumnPositions,
+  loadCatalogRevision,
+  resolveProductPoints,
+} from './io/productCatalog'
+export type {
+  BuiltCatalog,
+  CatalogAsset,
+  CatalogBuildIssue,
+  CatalogEnclosure,
+  CatalogIndex,
+  CatalogPointer,
+  CatalogRevisionErrorCode,
+  LoadedCatalogRevision,
+  ResolvedProductPoints,
+} from './io/productCatalog'
+export { checkCatalog, composeAssemblySample, formatCatalogReport, DEFAULT_CATALOG_THRESHOLDS } from './io/catalogCheck'
+export type { CatalogCheckCode, CatalogCheckInput, CatalogCheckIssue, CatalogCheckReport, CatalogCheckSeverity, CatalogThresholds } from './io/catalogCheck'
 export {
   extractRulesFromObject,
   hydrateItemRulesAndHide,
@@ -89,6 +132,15 @@ export type { IsometricSheetOptions, IsometricSheetView } from './io/isometricSh
 export type {
   ProjectData,
   EnclosureData,
+  EnclosureDoor,
+  EnclosureDefinition,
+  ManifestSnapPoint,
+  HoleColumn,
+  AssetCorrection,
+  ManifestReview,
+  AssemblySample,
+  AssemblySampleStep,
+  ProjectCatalogRef,
   PlacedItem,
   CatalogItem,
   MirrorPairOptions,

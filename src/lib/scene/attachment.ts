@@ -1,7 +1,7 @@
 import type { ConfiguratorStore } from '../state/store'
 import type { AssemblyView } from '../state/selectors'
 import type { Euler, ItemSnapPoint } from '../types'
-import { connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
+import { DEFAULT_SNAP_TOLERANCE, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
 import { canMate, kindMatesWithAny, positionForItemSnap, snapsForItem, yawToMate } from './mating'
 import { assemblyMembers, jointsOf, pointUse } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
@@ -22,35 +22,93 @@ export interface AttachmentInteraction {
   error?: string
 }
 
-/** Available interfaces, including reflected positions for mirrored products. */
-export function attachmentPoints(state: AssemblyView, itemId: string, source?: { itemId: string; pointId: string }): ItemSnapPoint[] {
+/** Why a point is not offered, when it is shown anyway. */
+export type AttachmentPointStatus = 'free' | 'occupied' | 'incompatible' | 'bay-not-allowed'
+
+export interface AttachmentPointState {
+  point: ItemSnapPoint
+  status: AttachmentPointStatus
+  /** Default (Italian) explanation of the status. */
+  message: string
+  /** Height of the point above the cargo floor, in millimetres. */
+  heightMm: number | null
+}
+
+const POINT_MESSAGES: Record<AttachmentPointStatus, string> = {
+  free: 'Libero',
+  occupied: 'Occupato',
+  incompatible: 'Famiglia di aggancio non compatibile',
+  'bay-not-allowed': 'Campata non ammessa per questo componente',
+}
+
+/**
+ * Every interface of an item, with whether it can take `source` and why not:
+ * occupied, incompatible family, or a mirror-pair spacing the source part does
+ * not fit. Points without a manifest connector are not interfaces and are left
+ * out; positions include the reflection of mirrored halves.
+ */
+export function attachmentPointStates(state: AssemblyView, itemId: string, source?: { itemId: string; pointId: string }): AttachmentPointState[] {
   const item = state.project?.items.find((entry) => entry.id === itemId)
   if (!item || own(state.assetErrors, itemId) || !state.itemRegistry.has(itemId)) return []
   const definition = definitionFor(state.assemblyManifest, item.catalogId)
   const sourceItem = source ? state.project?.items.find((entry) => entry.id === source.itemId) : undefined
   const sourcePoint = sourceItem ? snapsForItem(sourceItem, state.itemSnaps, state.itemRules).find((point) => point.id === source?.pointId) : undefined
-  const sourceConnector = sourcePoint && sourceItem ? connectorForSnap(definitionFor(state.assemblyManifest, sourceItem.catalogId), sourcePoint) : undefined
+  const sourceDefinition = sourceItem ? definitionFor(state.assemblyManifest, sourceItem.catalogId) : undefined
+  const sourceConnector = sourcePoint ? connectorForSnap(sourceDefinition, sourcePoint) : undefined
+  const pair = item.constraints?.find((constraint) => constraint.type === 'mirrorPair')
+  const bayRefused = !!sourceDefinition?.bays && pair?.distance !== undefined &&
+    !sourceDefinition.bays.some((bay) => Math.abs(bay - pair.distance!) <= DEFAULT_SNAP_TOLERANCE)
   const joints = jointsOf(state.project!)
-  return snapsForItem(item, state.itemSnaps, state.itemRules).filter((point) => {
+  const floor = state.interiorBBox?.min[1] ?? 0
+  const height = itemHeight(state, item)
+  const states: AttachmentPointState[] = []
+  for (const point of snapsForItem(item, state.itemSnaps, state.itemRules)) {
     // The manifest names the interfaces; without one, the kind table does.
     const connector = connectorForSnap(definition, point)
-    if (state.assemblyManifest ? !connector : !kindMatesWithAny(point.kind)) return false
-    if (pointUse(joints, itemId, point.id) >= (connector?.capacity ?? 1)) return false
-    if (!source) return true
-    if (!sourcePoint) return false
-    return state.assemblyManifest
-      ? !!sourceConnector && !!connector && connectorsCanMate(sourceConnector, sourcePoint, connector, point)
-      : canMate(sourcePoint.kind, point.kind)
+    if (state.assemblyManifest ? !connector : !kindMatesWithAny(point.kind)) continue
+    let status: AttachmentPointStatus = 'free'
+    if (pointUse(joints, itemId, point.id) >= (connector?.capacity ?? 1)) status = 'occupied'
+    else if (source && (!sourcePoint || (state.assemblyManifest
+      ? !sourceConnector || !connector || !connectorsCanMate(sourceConnector, sourcePoint, connector, point)
+      : !canMate(sourcePoint.kind, point.kind)))) status = 'incompatible'
+    else if (source && bayRefused) status = 'bay-not-allowed'
+    const y = worldPoint(item, point.position, height)[1] - floor
+    states.push({ point, status, message: POINT_MESSAGES[status], heightMm: Number.isFinite(y) ? Math.round(y * 1000) : null })
+  }
+  return states
+}
+
+/** Available interfaces, including reflected positions for mirrored products. */
+export function attachmentPoints(state: AssemblyView, itemId: string, source?: { itemId: string; pointId: string }): ItemSnapPoint[] {
+  return attachmentPointStates(state, itemId, source).filter((entry) => entry.status === 'free').map((entry) => entry.point)
+}
+
+/** Why another item of the scene is not offered as a destination. */
+export interface AttachmentTargetState {
+  itemId: string
+  status: 'available' | 'same-assembly' | 'no-points' | Exclude<AttachmentPointStatus, 'free'>
+  message: string
+}
+
+/** Every other item of the scene with whether the chosen source point can go on it. */
+export function attachmentTargetStates(state: AssemblyView): AttachmentTargetState[] {
+  const interaction = state.attachment
+  if (!interaction?.sourcePointId || !state.project) return []
+  const members = assemblyMembers(state.project.items, jointsOf(state.project), interaction.sourceItemId)
+  const source = { itemId: interaction.sourceItemId, pointId: interaction.sourcePointId }
+  return state.project.items.filter((item) => item.id !== interaction.sourceItemId && state.itemRegistry.has(item.id)).map((item) => {
+    if (members.has(item.id)) return { itemId: item.id, status: 'same-assembly', message: 'Già nello stesso assieme' }
+    const points = attachmentPointStates(state, item.id, source)
+    if (points.some((entry) => entry.status === 'free')) return { itemId: item.id, status: 'available', message: 'Disponibile' }
+    // The most specific reason the user can act on comes first.
+    const reason = (['bay-not-allowed', 'occupied', 'incompatible'] as const).find((status) => points.some((entry) => entry.status === status))
+    if (!reason) return { itemId: item.id, status: 'no-points', message: 'Nessun punto di aggancio' }
+    return { itemId: item.id, status: reason, message: reason === 'occupied' ? 'Punti compatibili tutti occupati' : POINT_MESSAGES[reason] }
   })
 }
 
 export function attachmentTargetIds(state: AssemblyView): Set<string> {
-  const interaction = state.attachment
-  if (!interaction?.sourcePointId || !state.project) return new Set()
-  const members = assemblyMembers(state.project.items, jointsOf(state.project), interaction.sourceItemId)
-  return new Set(state.project.items.filter((item) => !members.has(item.id) && state.itemRegistry.has(item.id) && attachmentPoints(state, item.id, {
-    itemId: interaction.sourceItemId, pointId: interaction.sourcePointId!,
-  }).length > 0).map((item) => item.id))
+  return new Set(attachmentTargetStates(state).filter((entry) => entry.status === 'available').map((entry) => entry.itemId))
 }
 
 /** Pure preview: neither persisted poses nor live Three.js groups are changed. */
@@ -58,13 +116,17 @@ export function computeAttachmentPreview(state: AssemblyView, sourceId: string, 
   const project = state.project
   const source = project?.items.find((item) => item.id === sourceId)
   const target = project?.items.find((item) => item.id === targetId)
-  const rejected = (error: string) => ({ valid: false as const, error, patches: [], joints: [] as Joint[], warning: undefined })
+  const rejected = (error: string, reason?: string) => ({ valid: false as const, error, reason, patches: [], joints: [] as Joint[], warning: undefined })
   if (!project || !source || !target || !assemblyCanMove(state, sourceId)) return rejected('Il componente non è modificabile')
   const members = assemblyMembers(project.items, jointsOf(project), sourceId)
   if (members.has(targetId)) return rejected('Il destinatario appartiene già a questo assieme')
   const sourcePoint = attachmentPoints(state, sourceId).find((point) => point.id === sourcePointId)
   const targetPoint = attachmentPoints(state, targetId, { itemId: sourceId, pointId: sourcePointId }).find((point) => point.id === targetPointId)
-  if (!sourcePoint || !targetPoint) return rejected('Punto occupato o connettori non compatibili')
+  if (!sourcePoint) return rejected('Punto del componente non disponibile', 'occupied')
+  if (!targetPoint) {
+    const blocked = attachmentPointStates(state, targetId, { itemId: sourceId, pointId: sourcePointId }).find((entry) => entry.point.id === targetPointId)
+    return rejected(blocked?.message ?? 'Punto non disponibile', blocked?.status)
+  }
   const targetWorld = worldPoint(target, targetPoint.position, itemHeight(state, target))
   const yaw = yawToMate(sourcePoint.normal, targetPoint.normal, target.rotation[1])
   const rotation: Euler = yaw === null ? source.rotation : [source.rotation[0], yaw, source.rotation[2]]
@@ -85,7 +147,7 @@ export function computeAttachmentPreview(state: AssemblyView, sourceId: string, 
   const entry = patches.find((patch) => patch.id === sourceId)
   if (entry) entry.patch.constraints = source.constraints?.filter((constraint) => constraint.type !== 'snapToAnchor') ?? []
   return {
-    valid: !blocking, error: blocking?.message, patches, joints,
+    valid: !blocking, error: blocking?.message, reason: blocking?.reason, patches, joints,
     warning: issues.find((issue) => issue.code === 'out-of-bounds')?.message,
   }
 }

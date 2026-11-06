@@ -2,10 +2,19 @@ import { useEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { selectAssemblyView } from '../state/selectors'
-import { attachmentPoints, attachmentTargetIds, backAttachment, chooseAttachmentPoint, chooseAttachmentTarget, computeAttachmentPreview } from '../scene/attachment'
+import { attachmentPointStates, attachmentPoints, attachmentTargetIds, attachmentTargetStates, backAttachment, chooseAttachmentPoint, chooseAttachmentTarget, computeAttachmentPreview } from '../scene/attachment'
+import type { AttachmentPointState } from '../scene/attachment'
 import { snapPointLabel, snapsForItem } from '../scene/mating'
+import { pairSpacingOptions } from '../assembly/pairSpacing'
+import { MIRROR_PAIR_RULE, mirrorPairConstraint } from '../scene/mirrorPair'
+import { setMirrorPairDistance } from '../scene/commands'
 import { Icon } from './Icon'
 import { own } from '../util/record'
+
+const STATUS_LABELS: Record<AttachmentPointState['status'], string> = {
+  free: 'Libero', occupied: 'Occupato', incompatible: 'Non compatibile', 'bay-not-allowed': 'Campata non ammessa',
+}
+const formatCm = (metres: number) => (metres * 100).toFixed(1).replace(/\.0$/, '')
 
 const steps = ['Punto iniziale', 'Destinatario', 'Punto finale']
 
@@ -44,8 +53,18 @@ export function AttachmentOverlay() {
     </>
   }
   const index = interaction.stage === 'source' ? 0 : interaction.stage === 'target' ? 1 : 2
-  const points = interaction.stage === 'source' ? attachmentPoints(state, source.id) : interaction.stage === 'point' && interaction.targetItemId && interaction.sourcePointId
-    ? attachmentPoints(state, interaction.targetItemId, { itemId: source.id, pointId: interaction.sourcePointId }) : []
+  // Every interface is listed, with its height and whether it is free: the
+  // ones that cannot take this part say why instead of disappearing.
+  const pointStates = interaction.stage === 'source' ? attachmentPointStates(state, source.id) : interaction.stage === 'point' && interaction.targetItemId && interaction.sourcePointId
+    ? attachmentPointStates(state, interaction.targetItemId, { itemId: source.id, pointId: interaction.sourcePointId }) : []
+  const points = pointStates.filter((entry) => entry.status === 'free').map((entry) => entry.point)
+  const targetStates = interaction.stage === 'target' ? attachmentTargetStates(state) : []
+  const targetItem = interaction.stage === 'point' ? state.project?.items.find((item) => item.id === interaction.targetItemId) : undefined
+  // A half without its twin: offer the spacings that seat this part, so the other end lands too.
+  const spacings = targetItem && !mirrorPairConstraint(targetItem) && own(state.itemRules, targetItem.catalogId)?.some((rule) => rule.rule === MIRROR_PAIR_RULE)
+    ? pairSpacingOptions(targetItem.catalogId, { catalog: state.catalog, itemSnaps: state.itemSnaps, itemRules: state.itemRules, manifest: state.assemblyManifest })
+      .filter((option) => option.fits.includes(sourceLabel))
+    : []
   const hovered = points.find((point) => point.id === interaction.hoveredPointId)
   const preview = interaction.stage === 'point' && interaction.sourcePointId && interaction.targetItemId && interaction.hoveredPointId
     ? computeAttachmentPreview(state, source.id, interaction.sourcePointId, interaction.targetItemId, interaction.hoveredPointId) : null
@@ -59,15 +78,26 @@ export function AttachmentOverlay() {
     <ol className="cfg-steps">{steps.map((step, number) => <li key={step} className={number === index ? 'active' : number < index ? 'done' : ''}><span>{number < index ? <Icon name="check" size={12} /> : number + 1}</span>{step}</li>)}</ol>
     <h3>{title}</h3><p>{hint}</p>
     <div className="cfg-snap-feedback" role="status" aria-live="polite">
-      {interaction.error || (preview && !preview.valid) ? <span className="cfg-error-text">{interaction.error ?? preview?.error}</span>
+      {interaction.error || (preview && !preview.valid) ? <span className="cfg-error-text">{preview && !preview.valid && preview.reason === 'collision' ? 'Collisione: ' : ''}{interaction.error ?? preview?.error}</span>
         : hovered ? <><span className="cfg-point-dot" />{snapPointLabel(hovered)}{preview?.valid && <span className="cfg-positive">Pronto per l’aggancio</span>}</>
           : hoveredItem ? <><Icon name="cube" size={16} />{own(state.catalog, hoveredItem.catalogId)?.label ?? hoveredItem.catalogId}</> : <span>{sourceLabel}{selectedSourcePoint ? ` · ${snapPointLabel(selectedSourcePoint)}` : ' · scegli un punto'}</span>}
     </div>
     {preview?.warning && <small className="cfg-warning-text">Dopo l’aggancio, sposta o ruota l’assieme per farlo rientrare nel vano.</small>}
     {interaction.stage === 'target' && targets.size === 0 && <small className="cfg-warning-text">Nessun destinatario disponibile per questo punto. Torna indietro per scegliere un altro punto, oppure annulla e aggiungi un componente compatibile.</small>}
-    <details className="cfg-point-list"><summary>{interaction.stage === 'target' ? 'Elenco componenti compatibili' : `Elenco punti disponibili (${points.length})`}</summary><div>
-      {interaction.stage === 'target' ? (state.project?.items ?? []).filter((item) => targets.has(item.id)).map((item) => <button key={item.id} onClick={() => chooseAttachmentTarget(store, item.id)} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredItemId: item.id })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredItemId: undefined })}><Icon name="cube" size={15} />{own(state.catalog, item.catalogId)?.label ?? item.catalogId} · {item.id.slice(0, 4)}</button>)
-        : points.map((point, number) => <button key={point.id} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredPointId: point.id, error: undefined })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredPointId: undefined })} onFocus={() => state.setAttachment({ ...interaction, hoveredPointId: point.id, error: undefined })} onClick={() => chooseAttachmentPoint(store, point.id)}><span>{number + 1}</span>{snapPointLabel(point)}</button>)}
+    {spacings.length > 0 && <div className="cfg-pair-suggestion"><small>Il fianco non ha ancora il gemello: crea la coppia alla campata di questo componente.</small>
+      {spacings.map((option) => <button key={option.distance} className="cfg-button" onClick={() => setMirrorPairDistance(store, targetItem!.id, option.distance)}>Crea coppia · campata {formatCm(option.distance)} cm</button>)}</div>}
+    <details className="cfg-point-list" open={interaction.stage === 'point'}><summary>{interaction.stage === 'target' ? `Componenti nella scena (${targets.size} compatibili)` : `Punti di aggancio (${points.length} liberi su ${pointStates.length})`}</summary><div>
+      {interaction.stage === 'target' ? targetStates.map((entry) => {
+        const item = state.project!.items.find((candidate) => candidate.id === entry.itemId)!
+        const label = `${own(state.catalog, item.catalogId)?.label ?? item.catalogId} · ${item.id.slice(0, 4)}`
+        return entry.status === 'available'
+          ? <button key={item.id} onClick={() => chooseAttachmentTarget(store, item.id)} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredItemId: item.id })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredItemId: undefined })}><Icon name="cube" size={15} />{label}</button>
+          : <button key={item.id} disabled title={entry.message}><Icon name="cube" size={15} />{label}<em className="cfg-point-status">{entry.message}</em></button>
+      })
+        : pointStates.map((entry, number) => <button key={entry.point.id} disabled={entry.status !== 'free'} title={entry.message} data-status={entry.status}
+          onMouseEnter={() => state.setAttachment({ ...interaction, hoveredPointId: entry.point.id, error: undefined })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredPointId: undefined })}
+          onFocus={() => state.setAttachment({ ...interaction, hoveredPointId: entry.point.id, error: undefined })} onClick={() => chooseAttachmentPoint(store, entry.point.id)}>
+          <span>{number + 1}</span>{snapPointLabel(entry.point)}{entry.heightMm !== null && <small className="cfg-point-height">h {entry.heightMm} mm</small>}<em className="cfg-point-status">{STATUS_LABELS[entry.status]}</em></button>)}
     </div></details>
     <div className="cfg-attachment-footer"><button className="cfg-button cfg-quiet" disabled={index === 0} onClick={() => backAttachment(store)}><Icon name="back" size={16} />Indietro</button><span>Orbita la vista per vedere gli altri punti <kbd>Esc</kbd> per uscire</span></div>
   </div>

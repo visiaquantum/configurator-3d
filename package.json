@@ -37,7 +37,10 @@
     "check:size": "node scripts/check-size.mjs",
     "test:unit": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "catalog:check": "node scripts/catalog/check.mjs",
+    "catalog:publish": "node scripts/catalog/publish.mjs",
+    "catalog:images": "node scripts/catalog/mounting-images.mjs"
   },
   "peerDependencies": {
     "@react-three/drei": "^10",
@@ -70,8 +73,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
-    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
+    "meshoptimizer": "^1.1.1",
     "nanoid": "^5.1.11",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",

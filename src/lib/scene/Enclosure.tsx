@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef } from 'react'
-import { Box3, Color, DoubleSide, Mesh, MeshPhysicalMaterial, MathUtils } from 'three'
+import { Box3, BoxGeometry, Color, DoubleSide, EdgesGeometry, Mesh, MeshPhysicalMaterial, MathUtils, Vector3 } from 'three'
 import type { Material, Object3D } from 'three'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
 import { useGLTF } from '@react-three/drei'
 import { useFrame } from '@react-three/fiber'
 import type { EnclosureData, EnclosureDoor } from '../types'
-import { visibleBodyBounds } from './geometry'
+import { cargoFloorTop, visibleBodyBounds } from './geometry'
 import { createEnclosureCutaway } from './enclosureCutaway'
 import { hydrateAnchorsAndHide } from '../io/anchors'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
@@ -33,6 +33,7 @@ export function Enclosure({ data }: Props) {
   const scene = useMemo(() => cloneSkeleton(gltf.scene), [gltf.scene])
   const dimensionsKey = data.dimensions?.join(',')
   const floor = data.floor
+  const empty = useMemo(() => visibleBodyBounds(scene).isEmpty(), [scene])
   const setRuntimeAnchors = useConfiguratorStore((s) => s.setRuntimeAnchors)
   const setEnclosureBBox = useConfiguratorStore((s) => s.setEnclosureBBox)
   const setInteriorBBox = useConfiguratorStore((s) => s.setInteriorBBox)
@@ -190,6 +191,12 @@ export function Enclosure({ data }: Props) {
   // interior floor so the demo can showcase snap-to-anchor behaviour.
   useEffect(() => {
     const box = visibleBodyBounds(scene)
+    // A GLB without geometry (a survey whose mesh did not export) is usable
+    // only through its declared volume, which then stands in for the body.
+    if (box.isEmpty() && data.dimensions) {
+      const [w, h, d] = data.dimensions
+      box.set(new Vector3(-w / 2, 0, -d / 2), new Vector3(w / 2, h, d / 2))
+    }
     if (box.isEmpty() || ![...box.min.toArray(), ...box.max.toArray()].every(Number.isFinite)) throw new Error('Il vano non contiene geometria visibile valida')
     setEnclosureBBox({
       min: [box.min.x, box.min.y, box.min.z],
@@ -197,7 +204,12 @@ export function Enclosure({ data }: Props) {
     })
     const interior = floor ? null : scene.getObjectByName('Body_interior')
     if (data.dimensions) {
-      setInteriorBBox({ min: [-data.dimensions[0] / 2, 0, -data.dimensions[2] / 2], max: [data.dimensions[0] / 2, data.dimensions[1], data.dimensions[2] / 2] })
+      // The cargo volume rests on the floor the model draws (a 12 mm plate in
+      // the IVECO GLB), not on its lowest point: from Y = 0 products sank
+      // into the floor.
+      const [w, h, d] = data.dimensions
+      const base = cargoFloorTop(scene, data.dimensions)
+      setInteriorBBox({ min: [-w / 2, base, -d / 2], max: [w / 2, Math.max(base, h), d / 2] })
     } else if (floor) {
       // A declared cargo floor bounds the cargo area: its footprint, from its
       // top up to the top of the model. Products stay above the floor and
@@ -316,7 +328,25 @@ export function Enclosure({ data }: Props) {
     <group userData={{ exportable: true }}>
       <primitive object={scene} dispose={null} />
       {floor && <CargoFloor floor={floor} xrayEnabled={xrayEnabled} />}
+      {empty && data.dimensions && <VolumeOutline dimensions={data.dimensions} />}
     </group>
+  )
+}
+
+/** Edges of the declared cargo volume, drawn when the GLB has no geometry. */
+function VolumeOutline({ dimensions }: { dimensions: NonNullable<EnclosureData['dimensions']> }) {
+  const [w, h, d] = dimensions
+  const edges = useMemo(() => {
+    const box = new BoxGeometry(w, h, d)
+    const geometry = new EdgesGeometry(box)
+    box.dispose()
+    return geometry
+  }, [w, h, d])
+  useEffect(() => () => edges.dispose(), [edges])
+  return (
+    <lineSegments geometry={edges} position={[0, h / 2, 0]}>
+      <lineBasicMaterial color="#8a9099" />
+    </lineSegments>
   )
 }
 

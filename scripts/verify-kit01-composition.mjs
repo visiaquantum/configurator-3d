@@ -127,7 +127,7 @@ const catalog = {
   },
 }
 
-const manifest = parseAssemblyManifest(readFileSync('public/catalog/assembly-manifest.json', 'utf8'))
+const manifest = parseAssemblyManifest(readFileSync('catalog/manifest.json', 'utf8'))
 const itemSnaps = {}
 for (const product of Object.values(catalog)) itemSnaps[product.id] = await snapsFor(product)
 

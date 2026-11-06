@@ -250,6 +250,24 @@ export function validateConfiguration(
     }
   }
 
+  // A part spanning a mirror pair fits only the spacings its manifest lists.
+  if (manifest) {
+    const reported = new Set<string>()
+    for (const connection of validConnections) {
+      for (const [part, half] of [[connection.sourceItemId, connection.targetItemId], [connection.targetItemId, connection.sourceItemId]]) {
+        const item = byId.get(part)!
+        const bays = definitionFor(manifest, item.catalogId)?.bays
+        const pair = byId.get(half)?.constraints?.find((c): c is MirrorPairConstraint => c.type === 'mirrorPair')
+        if (!bays || pair?.distance === undefined || reported.has(part)) continue
+        if (bays.some((bay) => Math.abs(bay - pair.distance!) <= DEFAULT_SNAP_TOLERANCE)) continue
+        reported.add(part)
+        issues.push(validationIssue('error', 'connection', 'bay-not-allowed', [part, half], {
+          catalogId: item.catalogId, bayMm: pair.distance * 1000, allowedMm: bays.map((bay) => bay * 1000),
+        }))
+      }
+    }
+  }
+
   // Assemblies are directed from the item being positioned to the item it
   // follows. A cycle has no stable parent frame, so it must be corrected
   // before propagation or export rather than relying on a renderer guard.

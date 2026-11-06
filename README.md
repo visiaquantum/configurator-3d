@@ -43,7 +43,7 @@ export function Editor() {
         ref={ref}
         enclosure={enclosure}
         catalog="/catalog/catalog.json"
-        assemblyManifest="/catalog/assembly-manifest.json"
+        assemblyManifest="/catalog/manifest.json"
         onSave={(project: ProjectData) => saveToBackend(project)}
       />
     </div>
@@ -58,7 +58,7 @@ Il contenitore deve avere un'altezza esplicita. Unità in metri, asse verticale 
 | Dato | Cosa contiene |
 | --- | --- |
 | **Vano** (`enclosure`) | URL del GLB, oppure `{ glbUrl, scale?, dimensions?, anchors? }`. `dimensions` delimita lo spazio utile. |
-| **Catalogo** (`catalog`) | Prodotti `{ id, label, glbUrl, size?, scale?, snapPoints? }`, come array o URL di un JSON. |
+| **Catalogo** (`catalog`) | Prodotti `{ id, label, glbUrl, size?, scale?, snapPoints? }`, come array o URL di un JSON. In produzione si costruisce dalla cartella dei GLB e dal manifest con `loadCatalogRevision` + `buildCatalogFromIndex` (vedi [docs/gestione-catalogo.md](docs/gestione-catalogo.md)). |
 | **Manifest** (`assemblyManifest`) | Connettori, compatibilità, collider e codici di distinta. Facoltativo, ma senza manifest non c'è validazione tecnica né PDF. |
 
 Esempio di catalogo:

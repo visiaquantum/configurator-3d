@@ -1,0 +1,490 @@
+{
+  "version": 1,
+  "revision": "rev-f3a947f0061b",
+  "createdAt": "2026-11-06T08:02:11.374Z",
+  "products": [
+    {
+      "code": "PTBM-26",
+      "file": "ACCESSORI/PTBM-26.glb",
+      "url": "../../../models/ACCESSORI/PTBM-26.glb?v=621ddef5da95f101",
+      "category": "ACCESSORI",
+      "sha256": "621ddef5da95f1016cf795959e2b8ee4bceecede5e926c940b59c7bd8cd86664",
+      "bytes": 501648,
+      "triangles": 10578,
+      "bounds": {
+        "min": [
+          -0.13,
+          0,
+          -0.0895
+        ],
+        "max": [
+          0.13,
+          0.14,
+          0.0018
+        ]
+      },
+      "preview": "../../previews/621ddef5da95f101.png"
+    },
+    {
+      "code": "PTBM-31",
+      "file": "ACCESSORI/PTBM-31.glb",
+      "url": "../../../models/ACCESSORI/PTBM-31.glb?v=4a6891f6bffbe3f4",
+      "category": "ACCESSORI",
+      "sha256": "4a6891f6bffbe3f410065e8a2f56fccb00045bcf02c1bb9dc5850adc719f5d42",
+      "bytes": 437732,
+      "triangles": 8883,
+      "bounds": {
+        "min": [
+          -0.155,
+          0,
+          -0.0885
+        ],
+        "max": [
+          0.155,
+          0.14,
+          0.0018
+        ]
+      },
+      "preview": "../../previews/4a6891f6bffbe3f4.png"
+    },
+    {
+      "code": "KLD41000",
+      "file": "ANTINE/KLD41000.glb",
+      "url": "../../../models/ANTINE/KLD41000.glb?v=4addece479de35f4",
+      "category": "ANTINE",
+      "sha256": "4addece479de35f4c884c626889c0c89eeac924465b3b8b2e412bc6349e2b65c",
+      "bytes": 667556,
+      "triangles": 127292,
+      "bounds": {
+        "min": [
+          -0.5057,
+          -0.013022,
+          -0.180568
+        ],
+        "max": [
+          0.5057,
+          0.364671,
+          0.060986
+        ]
+      },
+      "preview": "../../previews/4addece479de35f4.png"
+    },
+    {
+      "code": "KUD40900",
+      "file": "ANTINE/KUD40900.glb",
+      "url": "../../../models/ANTINE/KUD40900.glb?v=ece2431ec81432b6",
+      "category": "ANTINE",
+      "sha256": "ece2431ec81432b662ab0f184402c078f49635364480007d8e74f0d42629ba57",
+      "bytes": 543728,
+      "triangles": 137289,
+      "bounds": {
+        "min": [
+          -0.50525,
+          -0.0013,
+          -0.136201
+        ],
+        "max": [
+          0.50525,
+          0.3194,
+          0.002301
+        ]
+      },
+      "preview": "../../previews/ece2431ec81432b6.png"
+    },
+    {
+      "code": "KIT01",
+      "file": "KIT/KIT01.glb",
+      "url": "../../../models/KIT/KIT01.glb?v=f313688dbef28a32",
+      "category": "KIT",
+      "sha256": "f313688dbef28a32d5e9fb09404dfad0a91ae07132b93a6b499fedcf5e3b2255",
+      "bytes": 4374136,
+      "triangles": 132352,
+      "bounds": {
+        "min": [
+          -0.18,
+          0,
+          -0.507
+        ],
+        "max": [
+          0.18,
+          0.864,
+          0.507
+        ]
+      },
+      "preview": "../../previews/f313688dbef28a32.png"
+    },
+    {
+      "code": "YSI01131",
+      "file": "MONTANTI/YSI01131.glb",
+      "url": "../../../models/MONTANTI/YSI01131.glb?v=6381f3b316fb27d2",
+      "category": "MONTANTI",
+      "sha256": "6381f3b316fb27d2483835b2c232536e57948687563dd4abd8f80b0b779763ac",
+      "bytes": 73040,
+      "triangles": 4894,
+      "bounds": {
+        "min": [
+          0.000001,
+          0,
+          -0.029002
+        ],
+        "max": [
+          0.312999,
+          0.396,
+          0.000002
+        ]
+      },
+      "preview": "../../previews/6381f3b316fb27d2.png"
+    },
+    {
+      "code": "YSI03036",
+      "file": "MONTANTI/YSI03036.glb",
+      "url": "../../../models/MONTANTI/YSI03036.glb?v=0ac3ce14033d0568",
+      "category": "MONTANTI",
+      "sha256": "0ac3ce14033d0568980fac680a5ef4632bc2f1971b46382a3526b9ff53bb0749",
+      "bytes": 169696,
+      "triangles": 9860,
+      "bounds": {
+        "min": [
+          0.000006,
+          0,
+          -0.029002
+        ],
+        "max": [
+          0.362994,
+          1.08,
+          0.000002
+        ]
+      },
+      "preview": "../../previews/0ac3ce14033d0568.png"
+    },
+    {
+      "code": "YSI12836",
+      "file": "MONTANTI/YSI12836.glb",
+      "url": "../../../models/MONTANTI/YSI12836.glb?v=e5263de85ac7e386",
+      "category": "MONTANTI",
+      "sha256": "e5263de85ac7e3861968b183fb315ba8106f3d0c482722e7b5c3577b15126a37",
+      "bytes": 440140,
+      "triangles": 8836,
+      "bounds": {
+        "min": [
+          0,
+          0,
+          -0.03
+        ],
+        "max": [
+          0.36,
+          1.008,
+          0
+        ]
+      },
+      "preview": "../../previews/e5263de85ac7e386.png"
+    },
+    {
+      "code": "KCP40531KMD02",
+      "file": "ORIZZONTALI/KCP40531KMD02.glb",
+      "url": "../../../models/ORIZZONTALI/KCP40531KMD02.glb?v=f2b2548b62c3329f",
+      "category": "ORIZZONTALI",
+      "sha256": "f2b2548b62c3329fcb452ad6f21a697579ec60a482baa943f3bd2d22e81619bd",
+      "bytes": 482476,
+      "triangles": 40652,
+      "bounds": {
+        "min": [
+          -0.505,
+          -0.0015,
+          -0.152993
+        ],
+        "max": [
+          0.505,
+          0.178754,
+          0.154
+        ]
+      },
+      "preview": "../../previews/f2b2548b62c3329f.png"
+    },
+    {
+      "code": "KDU40426KD080",
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "url": "../../../models/ORIZZONTALI/KDU40426KD080.glb?v=e3e13db7e8a58c5b",
+      "category": "ORIZZONTALI",
+      "sha256": "e3e13db7e8a58c5bf4d70f67d7126b200dadf03535603c5d97fd1b5653e4f521",
+      "bytes": 617000,
+      "triangles": 327739,
+      "bounds": {
+        "min": [
+          -0.507,
+          0,
+          -0.262927
+        ],
+        "max": [
+          0.507,
+          0.144,
+          0.0013
+        ]
+      },
+      "preview": "../../previews/e3e13db7e8a58c5b.png"
+    },
+    {
+      "code": "KDW40236",
+      "file": "ORIZZONTALI/KDW40236.glb",
+      "url": "../../../models/ORIZZONTALI/KDW40236.glb?v=b7a051daae02be89",
+      "category": "ORIZZONTALI",
+      "sha256": "b7a051daae02be89e2363a1a494df9a77c07a3b160a3036154c2c6be19d90f13",
+      "bytes": 1273756,
+      "triangles": 266109,
+      "bounds": {
+        "min": [
+          -0.505347,
+          -0.006002,
+          -0.18575
+        ],
+        "max": [
+          0.505347,
+          0.065394,
+          0.184049
+        ]
+      },
+      "preview": "../../previews/b7a051daae02be89.png"
+    },
+    {
+      "code": "KDW40336",
+      "file": "ORIZZONTALI/KDW40336.glb",
+      "url": "../../../models/ORIZZONTALI/KDW40336.glb?v=81afd918e20cdc43",
+      "category": "ORIZZONTALI",
+      "sha256": "81afd918e20cdc4381cc1e2c7ccb06de6a6679b7da94358e6ea3690644252725",
+      "bytes": 1147504,
+      "triangles": 226658,
+      "bounds": {
+        "min": [
+          -0.505347,
+          -0.006103,
+          -0.18575
+        ],
+        "max": [
+          0.505347,
+          0.10021,
+          0.184049
+        ]
+      },
+      "preview": "../../previews/81afd918e20cdc43.png"
+    },
+    {
+      "code": "KDW40436",
+      "file": "ORIZZONTALI/KDW40436.glb",
+      "url": "../../../models/ORIZZONTALI/KDW40436.glb?v=5dfc7b7a2a24a36b",
+      "category": "ORIZZONTALI",
+      "sha256": "5dfc7b7a2a24a36bdbfa9fedb19bc4df909b75ceb23f4f7dc11549128630b47d",
+      "bytes": 1145192,
+      "triangles": 226572,
+      "bounds": {
+        "min": [
+          -0.505347,
+          -0.006097,
+          -0.18575
+        ],
+        "max": [
+          0.505347,
+          0.134897,
+          0.184049
+        ]
+      },
+      "preview": "../../previews/5dfc7b7a2a24a36b.png"
+    },
+    {
+      "code": "KDW40636",
+      "file": "ORIZZONTALI/KDW40636.glb",
+      "url": "../../../models/ORIZZONTALI/KDW40636.glb?v=596ba2ceac59edc9",
+      "category": "ORIZZONTALI",
+      "sha256": "596ba2ceac59edc956f665dec62f2a6d45297ea58adf06cd43e010ce1e945866",
+      "bytes": 1162724,
+      "triangles": 236283,
+      "bounds": {
+        "min": [
+          -0.505347,
+          -0.0061,
+          -0.18575
+        ],
+        "max": [
+          0.505347,
+          0.2069,
+          0.184049
+        ]
+      },
+      "preview": "../../previews/596ba2ceac59edc9.png"
+    },
+    {
+      "code": "KMA40100",
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "url": "../../../models/ORIZZONTALI/KMA40100.glb?v=f12f5c16a4c80541",
+      "category": "ORIZZONTALI",
+      "sha256": "f12f5c16a4c805412ec9ad10db75477a47855301e772d484e11317673e3f7316",
+      "bytes": 321036,
+      "triangles": 131440,
+      "bounds": {
+        "min": [
+          -0.5035,
+          -0.067701,
+          -0.029
+        ],
+        "max": [
+          0.5035,
+          0.001,
+          0.029
+        ]
+      },
+      "preview": "../../previews/f12f5c16a4c80541.png"
+    },
+    {
+      "code": "XDS40231KM02",
+      "file": "ORIZZONTALI/XDS40231KM02.glb",
+      "url": "../../../models/ORIZZONTALI/XDS40231KM02.glb?v=f9a07cd0096a8688",
+      "category": "ORIZZONTALI",
+      "sha256": "f9a07cd0096a868872b2da212b7ee997f929e97a671ffd0160dbdb117fd1f975",
+      "bytes": 1819108,
+      "triangles": 52472,
+      "bounds": {
+        "min": [
+          -0.5055,
+          -0.00075,
+          -0.153
+        ],
+        "max": [
+          0.5055,
+          0.069419,
+          0.154
+        ]
+      },
+      "preview": "../../previews/f9a07cd0096a8688.png"
+    },
+    {
+      "code": "XDS40236KM02",
+      "file": "ORIZZONTALI/XDS40236KM02.glb",
+      "url": "../../../models/ORIZZONTALI/XDS40236KM02.glb?v=dc424d84c869aa7c",
+      "category": "ORIZZONTALI",
+      "sha256": "dc424d84c869aa7c1af6733b3c6c66ca3ff0c60ce58e68bb30873f450e78446f",
+      "bytes": 2108752,
+      "triangles": 60056,
+      "bounds": {
+        "min": [
+          -0.5065,
+          -0.00175,
+          -0.178
+        ],
+        "max": [
+          0.5065,
+          0.069419,
+          0.179
+        ]
+      },
+      "preview": "../../previews/dc424d84c869aa7c.png"
+    },
+    {
+      "code": "XHA40100",
+      "file": "ORIZZONTALI/XHA40100.glb",
+      "url": "../../../models/ORIZZONTALI/XHA40100.glb?v=ef868132b4a19286",
+      "category": "ORIZZONTALI",
+      "sha256": "ef868132b4a19286878133c5facf7f04af33362a69d4fef8e5e74c7d60f408cf",
+      "bytes": 97848,
+      "triangles": 2540,
+      "bounds": {
+        "min": [
+          -0.05,
+          -0.034,
+          -0.50294
+        ],
+        "max": [
+          0,
+          0.001,
+          0.50294
+        ]
+      },
+      "preview": "../../previews/ef868132b4a19286.png"
+    },
+    {
+      "code": "XLA40400",
+      "file": "ORIZZONTALI/XLA40400.glb",
+      "url": "../../../models/ORIZZONTALI/XLA40400.glb?v=c7017e5ca4f4f10d",
+      "category": "ORIZZONTALI",
+      "sha256": "c7017e5ca4f4f10df983a4a182fb388f499bb862509fbd0f83989d72ef58fdc2",
+      "bytes": 15296,
+      "triangles": 1053,
+      "bounds": {
+        "min": [
+          -0.047506,
+          -0.070998,
+          -0.503
+        ],
+        "max": [
+          0.0035,
+          0.070998,
+          0.503
+        ]
+      },
+      "preview": "../../previews/c7017e5ca4f4f10d.png"
+    }
+  ],
+  "enclosures": [
+    {
+      "code": "FIAT-NDC40H2",
+      "file": "FIAT-NDC40H2.glb",
+      "url": "../../../models/FIAT-NDC40H2.glb?v=0602178578ac336a",
+      "category": "",
+      "sha256": "0602178578ac336a72732012edb71cdf2410ce8b3dc2b42747ae036772f3922c",
+      "bytes": 8964,
+      "triangles": 313,
+      "bounds": {
+        "min": [
+          -0.177264,
+          0,
+          -0.0935
+        ],
+        "max": [
+          0.177264,
+          0.19,
+          0.0935
+        ]
+      }
+    },
+    {
+      "code": "FURGONE-INTERNO",
+      "file": "FURGONE-INTERNO.glb",
+      "url": "../../../models/FURGONE-INTERNO.glb?v=b32e61e4d226b5e4",
+      "category": "",
+      "sha256": "b32e61e4d226b5e4562da1767bd5da360ce59c7e1c61ae7d0f8922579bb4bb87",
+      "bytes": 1996,
+      "triangles": 0,
+      "bounds": {
+        "min": [
+          0,
+          0,
+          0
+        ],
+        "max": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "code": "IVECO-DL14L2SH3",
+      "file": "IVECO-DL14L2SH3.glb",
+      "url": "../../../models/IVECO-DL14L2SH3.glb?v=f1310898482afc5c",
+      "category": "",
+      "sha256": "f1310898482afc5cd0535c2e25f6694f0cfd56643767fe2b4e77ba30a4bcd12c",
+      "bytes": 26504,
+      "triangles": 1623,
+      "bounds": {
+        "min": [
+          -0.905017,
+          -0.00001,
+          -1.6
+        ],
+        "max": [
+          0.905017,
+          2.09701,
+          1.597443
+        ]
+      }
+    }
+  ]
+}

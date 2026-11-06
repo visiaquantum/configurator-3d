@@ -1,0 +1,2098 @@
+{
+  "version": 2,
+  "categories": {
+    "MONTANTI": "Montanti",
+    "ORIZZONTALI": "Orizzontali",
+    "ANTINE": "Antine",
+    "ACCESSORI": "Accessori",
+    "KIT": "Kit"
+  },
+  "products": [
+    {
+      "catalogId": "ysi03036",
+      "connectors": [
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "bay-end",
+            "angle-end"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-back-hole",
+          "snapKind": "posteriore",
+          "compatibleWith": [
+            "angle-end"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-top",
+          "snapId": "stack-top",
+          "compatibleWith": [
+            "side-stack-bottom"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-bottom",
+          "snapId": "stack-bottom",
+          "compatibleWith": [
+            "side-stack-top"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-top-rest",
+          "snapKind": "appoggio",
+          "compatibleWith": [
+            "box-rest"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "side-web",
+          "center": [
+            0,
+            0,
+            0.014
+          ],
+          "size": [
+            0.363,
+            1.08,
+            0.001
+          ]
+        }
+      ],
+      "bom": {
+        "code": "YSI03036",
+        "label": "Fianco YSI 03036 1080x360"
+      },
+      "code": "YSI03036",
+      "label": "Fianco YSI 03036 · 1080",
+      "description": "Fianco forato 1080 × 360 mm, profilo a C con lamiera frontale e posteriore da 1.5 mm, fori ogni 36 mm.",
+      "category": "Fianchi 1014",
+      "instructions": [
+        "Appoggiare il fianco esterno al pianale o su un fianco inferiore (punto «Base su fianco»).",
+        "Creare la coppia specchiata alla campata del pezzo da montare: 1014 mm per la serie 1014.",
+        "Appendere cassetti, ripiani, antine e angolari ai fori anteriori; gli angolari posteriori ai fori posteriori."
+      ],
+      "holeColumns": [
+        {
+          "id": "front",
+          "kind": "frontale",
+          "label": "Foro anteriore",
+          "first": [
+            0.363,
+            0.018,
+            -0.017
+          ],
+          "pitch": [
+            0,
+            0.036,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "sheet": {
+            "outward": [
+              1,
+              0,
+              0
+            ],
+            "thickness": 0.0015
+          }
+        },
+        {
+          "id": "back",
+          "kind": "posteriore",
+          "label": "Foro posteriore",
+          "first": [
+            0,
+            0.018,
+            -0.017
+          ],
+          "pitch": [
+            0,
+            0.036,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "sheet": {
+            "outward": [
+              -1,
+              0,
+              0
+            ],
+            "thickness": 0.0015
+          }
+        }
+      ],
+      "mirrorPair": {
+        "axis": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "assetCorrections": [
+        {
+          "asset": "0ac3ce14033d0568",
+          "reason": "Il GLB ha un solo marker SNAP_SOVRAPPOSIZIONE, senza nome stabile, e nessun punto di appoggio superiore: base, testa e appoggio sono dichiarati qui. I fori li genera la colonna di fori.",
+          "points": [
+            {
+              "id": "stack-bottom",
+              "label": "Base su fianco",
+              "kind": "sovrapposizione",
+              "position": [
+                0.363,
+                0,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "id": "stack-top",
+              "label": "Testa per fianco",
+              "kind": "sovrapposizione",
+              "position": [
+                0.363,
+                1.08,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            },
+            {
+              "id": "top",
+              "label": "Appoggio superiore",
+              "kind": "appoggio",
+              "position": [
+                0.363,
+                1.08,
+                -0.017
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false,
+        "notes": "Passo 36 mm, asse fori 17 mm dalla faccia esterna e lamiera 1.5 mm ricavati dal GLB e dal preventivo 99003819: da confermare."
+      }
+    },
+    {
+      "catalogId": "ysi01131",
+      "connectors": [
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "bay-end",
+            "angle-end"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-back-hole",
+          "snapKind": "posteriore",
+          "compatibleWith": [
+            "angle-end"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-top",
+          "snapId": "stack-top",
+          "compatibleWith": [
+            "side-stack-bottom"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-stack-bottom",
+          "snapId": "stack-bottom",
+          "compatibleWith": [
+            "side-stack-top"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-top-rest",
+          "snapKind": "appoggio",
+          "compatibleWith": [
+            "box-rest"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "side-web",
+          "center": [
+            0,
+            0,
+            0.014
+          ],
+          "size": [
+            0.313,
+            0.396,
+            0.001
+          ]
+        }
+      ],
+      "bom": {
+        "code": "YSI01131",
+        "label": "Fianco YSI 01131 396x310"
+      },
+      "code": "YSI01131",
+      "label": "Fianco YSI 01131 · 396",
+      "description": "Fianco forato 396 × 310 mm, da sovrapporre al fianco YSI 03036.",
+      "category": "Fianchi 1014",
+      "instructions": [
+        "Appoggiare il fianco esterno al pianale o su un fianco inferiore (punto «Base su fianco»).",
+        "Creare la coppia specchiata alla campata del pezzo da montare: 1014 mm per la serie 1014.",
+        "Appendere cassetti, ripiani, antine e angolari ai fori anteriori; gli angolari posteriori ai fori posteriori."
+      ],
+      "holeColumns": [
+        {
+          "id": "front",
+          "kind": "frontale",
+          "label": "Foro anteriore",
+          "first": [
+            0.313,
+            0.018,
+            -0.017
+          ],
+          "pitch": [
+            0,
+            0.036,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "sheet": {
+            "outward": [
+              1,
+              0,
+              0
+            ],
+            "thickness": 0.0015
+          }
+        },
+        {
+          "id": "back",
+          "kind": "posteriore",
+          "label": "Foro posteriore",
+          "first": [
+            0,
+            0.018,
+            -0.017
+          ],
+          "pitch": [
+            0,
+            0.036,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            -1
+          ],
+          "sheet": {
+            "outward": [
+              -1,
+              0,
+              0
+            ],
+            "thickness": 0.0015
+          }
+        }
+      ],
+      "mirrorPair": {
+        "axis": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "assetCorrections": [
+        {
+          "asset": "6381f3b316fb27d2",
+          "reason": "Il GLB ha un solo marker SNAP_SOVRAPPOSIZIONE, senza nome stabile, e nessun punto di appoggio superiore: base, testa e appoggio sono dichiarati qui. I fori li genera la colonna di fori.",
+          "points": [
+            {
+              "id": "stack-bottom",
+              "label": "Base su fianco",
+              "kind": "sovrapposizione",
+              "position": [
+                0.313,
+                0,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "id": "stack-top",
+              "label": "Testa per fianco",
+              "kind": "sovrapposizione",
+              "position": [
+                0.313,
+                0.396,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            },
+            {
+              "id": "top",
+              "label": "Appoggio superiore",
+              "kind": "appoggio",
+              "position": [
+                0.313,
+                0.396,
+                -0.017
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false,
+        "notes": "Passo 36 mm, asse fori 17 mm dalla faccia esterna e lamiera 1.5 mm ricavati dal GLB e dal preventivo 99003819: da confermare."
+      }
+    },
+    {
+      "catalogId": "kdw40236",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.0107,
+            0.0674,
+            0.3698
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KDW40236",
+        "label": "Cassetto 924x64x311"
+      },
+      "code": "KDW40236",
+      "label": "Cassetto KDW 40236 · h64",
+      "description": "Cassetto 924 × 64 × 311 mm su guide, per campata 1014.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Scegliere un foro anteriore libero del fianco: il cassetto occupa l’altezza indicata verso l’alto.",
+        "Agganciare l’estremità sinistra al fianco; l’estremità destra si aggancia al gemello della coppia.",
+        "Campata ammessa: 1014 mm."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "b7a051daae02be89",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.0119,
+                0.17925
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.0119,
+                0.17925
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kdw40336",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.0107,
+            0.1023,
+            0.3698
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KDW40336",
+        "label": "Cassetto 924x100x311"
+      },
+      "code": "KDW40336",
+      "label": "Cassetto KDW 40336 · h100",
+      "description": "Cassetto 924 × 100 × 311 mm su guide, per campata 1014.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Scegliere un foro anteriore libero del fianco: il cassetto occupa l’altezza indicata verso l’alto.",
+        "Agganciare l’estremità sinistra al fianco; l’estremità destra si aggancia al gemello della coppia.",
+        "Campata ammessa: 1014 mm."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "81afd918e20cdc43",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.0454,
+                0.17925
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.0454,
+                0.17925
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kdw40436",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.0107,
+            0.137,
+            0.3698
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KDW40436",
+        "label": "Cassetto 924x136x311"
+      },
+      "code": "KDW40436",
+      "label": "Cassetto KDW 40436 · h136",
+      "description": "Cassetto 924 × 136 × 311 mm su guide, per campata 1014.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Scegliere un foro anteriore libero del fianco: il cassetto occupa l’altezza indicata verso l’alto.",
+        "Agganciare l’estremità sinistra al fianco; l’estremità destra si aggancia al gemello della coppia.",
+        "Campata ammessa: 1014 mm."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "5dfc7b7a2a24a36b",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.0454,
+                0.17925
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.0454,
+                0.17925
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kdw40636",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.0107,
+            0.209,
+            0.3698
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KDW40636",
+        "label": "Cassetto 924x208x311"
+      },
+      "code": "KDW40636",
+      "label": "Cassetto KDW 40636 · h208",
+      "description": "Cassetto 924 × 208 × 311 mm su guide, per campata 1014.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Scegliere un foro anteriore libero del fianco: il cassetto occupa l’altezza indicata verso l’alto.",
+        "Agganciare l’estremità sinistra al fianco; l’estremità destra si aggancia al gemello della coppia.",
+        "Campata ammessa: 1014 mm."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "596ba2ceac59edc9",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.0814,
+                0.17925
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.0814,
+                0.17925
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kcp40531kmd02",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.01,
+            0.1763,
+            0.307
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KCP40531KMD02",
+        "label": "Ripiano 1014x180x310 con pannello posteriore"
+      },
+      "code": "KCP40531KMD02",
+      "label": "Ripiano KCP 40531 KMD02",
+      "description": "Ripiano 1014 × 180 × 310 mm con pannello posteriore.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Agganciare le due estremità a fori anteriori alla stessa altezza dei due fianchi."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "f2b2548b62c3329f",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.015,
+                0.153
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.015,
+                0.153
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kma40100",
+      "connectors": [
+        {
+          "id": "angle-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole",
+            "side-back-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.007,
+            0.0647,
+            0.058
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KMA40100",
+        "label": "Angolare rinforzato 1014"
+      },
+      "code": "KMA40100",
+      "label": "Angolare KMA 40100",
+      "description": "Angolare rinforzato 1014: sui fori anteriori o, ruotato, sui posteriori.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Sui fori anteriori agganciare l’estremità sinistra; sui fori posteriori l’estremità destra, con il pezzo ruotato verso la parete."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "f12f5c16a4c80541",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                -0.018,
+                0.02225
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                -0.018,
+                0.02225
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "xla40400",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.051,
+            0.138,
+            1.006
+          ]
+        }
+      ],
+      "bom": {
+        "code": "XLA40400",
+        "label": "Angolare leggero 1014x144"
+      },
+      "code": "XLA40400",
+      "label": "Angolare leggero XLA 40400",
+      "description": "Angolare leggero 1014 × 144, modellato in lunghezza su Z con la faccia verso +X.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Agganciare l’estremità sinistra al fianco esterno: la faccia resta verso il corridoio."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "c7017e5ca4f4f10d",
+          "reason": "Marker CAD numerati, con il cubetto appoggiato sulla faccia (centro 0.5 mm fuori): estremità dichiarate sulla faccia (X = 2.5 mm), sull’asse dei fori. Il modello è in lunghezza su Z.",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                0.0025,
+                -0.0545,
+                0.49
+              ],
+              "normal": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.0025,
+                -0.0545,
+                -0.49
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kdu40426kd080",
+      "connectors": [
+        {
+          "id": "box-rest",
+          "snapKind": "appoggio",
+          "compatibleWith": [
+            "side-top-rest"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.014,
+            0.14,
+            0.2642
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KDU40426KD080",
+        "label": "Cassettiera MultiBox 1014x144x260"
+      },
+      "code": "KDU40426KD080",
+      "label": "Cassettiera KDU 40426 KD080",
+      "description": "Cassettiera MultiBox 1014 × 144 × 260 mm, in appoggio sulla testa dei fianchi.",
+      "category": "Cassetti e ripiani 1014",
+      "instructions": [
+        "Appoggiare le estremità sui punti «Appoggio superiore» dei due fianchi della coppia."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "e3e13db7e8a58c5b",
+          "reason": "Il GLB porta solo marker SNAP_TERRA: i due appoggi sulla testa dei fianchi sono dichiarati qui, sull’asse dei fori.",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "appoggio",
+              "position": [
+                -0.49,
+                0,
+                0
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "appoggio",
+              "position": [
+                0.49,
+                0,
+                0
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kld41000",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            -0.00315,
+            0
+          ],
+          "size": [
+            1.0114,
+            0.3713,
+            0.2416
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KLD41000",
+        "label": "Antina inferiore 1014x360"
+      },
+      "code": "KLD41000",
+      "label": "Antina inferiore KLD 41000",
+      "description": "Antina inferiore 1014 × 360 mm con staffe laterali.",
+      "category": "Antine 1014",
+      "instructions": [
+        "Agganciare l’estremità sinistra al foro anteriore del fianco esterno; le staffe entrano nel profilo dietro la lamiera."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "4addece479de35f4",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.34029,
+                -0.00045
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.34029,
+                -0.00045
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "kud40900",
+      "connectors": [
+        {
+          "id": "bay-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
+        }
+      ],
+      "colliders": [
+        {
+          "id": "body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.0105,
+            0.3167,
+            0.1385
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KUD40900",
+        "label": "Antina superiore 1014x324"
+      },
+      "code": "KUD40900",
+      "label": "Antina superiore KUD 40900",
+      "description": "Antina superiore 1014 × 324 mm con staffe laterali.",
+      "category": "Antine 1014",
+      "instructions": [
+        "Agganciare l’estremità sinistra al foro anteriore del fianco superiore."
+      ],
+      "bays": [
+        1.014
+      ],
+      "assetCorrections": [
+        {
+          "asset": "ece2431ec81432b6",
+          "reason": "Marker CAD numerati e su una sola estremità, con il cubetto appoggiato sulla faccia della staffa (centro 0.5 mm fuori) invece che centrato: le due estremità sono dichiarate sulla faccia della staffa, sull’asse dei fori (490 mm dal centro).",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità sinistra",
+              "kind": "frontale",
+              "position": [
+                -0.49,
+                0.19524,
+                -0.0023
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità destra",
+              "kind": "frontale",
+              "position": [
+                0.49,
+                0.19524,
+                -0.0023
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ],
+          "replaceKinds": []
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "ysi12836",
+      "connectors": [
+        {
+          "id": "upright-holes",
+          "snapKind": "foro",
+          "compatibleWith": [
+            "shelf-face",
+            "accessory-face"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.04,
+          "insertionAxis": [
+            0,
+            0,
+            1
+          ],
+          "clearance": [
+            {
+              "id": "hole-seat",
+              "center": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                0.08,
+                0.12,
+                0.08
+              ]
+            }
+          ]
+        },
+        {
+          "id": "upright-shelf-seat",
+          "snapKind": "laterale",
+          "compatibleWith": [
+            "shelf-end"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.035,
+          "clearance": [
+            {
+              "id": "shelf-slot",
+              "center": [
+                0,
+                0,
+                -0.015
+              ],
+              "size": [
+                0.37,
+                0.09,
+                0.04
+              ]
+            }
+          ]
+        },
+        {
+          "id": "upright-rail-hook",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "rail-end"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.03,
+          "clearance": [
+            {
+              "id": "rail-slot",
+              "center": [
+                0,
+                0,
+                -0.0132
+              ],
+              "size": [
+                0.06,
+                0.045,
+                0.032
+              ]
+            }
+          ]
+        }
+      ],
+      "colliders": [
+        {
+          "id": "upright-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.36,
+            1.008,
+            0.03
+          ]
+        }
+      ],
+      "bom": {
+        "code": "YSI12836",
+        "label": "Montante YSI 12836"
+      },
+      "code": "YSI12836",
+      "label": "Montante YSI 12836",
+      "description": "Montante forato 1008 × 360 mm in coppia specchiata.",
+      "category": "Montanti",
+      "instructions": [
+        "Creare la coppia specchiata alla distanza del ripiano da montare.",
+        "Agganciare ripiani e traverse ai punti del montante."
+      ],
+      "assetCorrections": [
+        {
+          "asset": "e5263de85ac7e386",
+          "reason": "Il GLB ha marker solo al piede: altezze di ripiani e traverse lette da KIT01 (traverse 1.3 mm più in basso per i pezzi singoli, più spessi di 1 mm), normali verso l’interno perché il ripiano attraversa il montante.",
+          "points": [
+            {
+              "id": "shelf-top",
+              "label": "Ripiano superiore",
+              "kind": "laterale",
+              "position": [
+                0.18,
+                0.612,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            },
+            {
+              "id": "shelf-bottom",
+              "label": "Ripiano inferiore",
+              "kind": "laterale",
+              "position": [
+                0.18,
+                0.36,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            },
+            {
+              "id": "rail-xmax",
+              "label": "Traversa destra",
+              "kind": "frontale",
+              "position": [
+                0.335,
+                0.305,
+                -0.0036
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            },
+            {
+              "id": "rail-xmin",
+              "label": "Traversa sinistra",
+              "kind": "frontale",
+              "position": [
+                0.025,
+                0.305,
+                -0.0036
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "xds40231km02",
+      "connectors": [
+        {
+          "id": "shelf-face",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "upright-holes"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.04,
+          "insertionAxis": [
+            0,
+            0,
+            -1
+          ],
+          "clearance": [
+            {
+              "id": "shelf-tab",
+              "center": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                0.08,
+                0.08,
+                0.08
+              ]
+            }
+          ]
+        }
+      ],
+      "colliders": [
+        {
+          "id": "shelf-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.011,
+            0.07,
+            0.307
+          ]
+        }
+      ],
+      "bom": {
+        "code": "XDS40231KM02",
+        "label": "Orizzontale XDS 40231 KM02"
+      },
+      "code": "XDS40231KM02",
+      "label": "XDS 40231 KM02",
+      "description": "Orizzontale 1011 × 70 × 307 mm. Posizioni dei fori di montaggio in revisione.",
+      "category": "Orizzontali",
+      "review": {
+        "confirmed": false,
+        "notes": "Mappa dei fori in attesa delle coordinate certificate."
+      }
+    },
+    {
+      "catalogId": "xds40236km02",
+      "connectors": [
+        {
+          "id": "shelf-end",
+          "snapKind": "laterale",
+          "compatibleWith": [
+            "upright-shelf-seat"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.035
+        }
+      ],
+      "colliders": [
+        {
+          "id": "shelf-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            1.013,
+            0.07117,
+            0.357
+          ]
+        }
+      ],
+      "bom": {
+        "code": "XDS40236KM02",
+        "label": "Orizzontale XDS 40236 KM02"
+      },
+      "code": "XDS40236KM02",
+      "label": "XDS 40236 KM02",
+      "description": "Ripiano del KIT 01, 1013 × 71 × 357 mm.",
+      "category": "Orizzontali",
+      "assetCorrections": [
+        {
+          "asset": "dc424d84c869aa7c",
+          "reason": "Marker numerati in ordine di lettura: una riesportazione li rinumera. Estremità dichiarate al centro delle facce di testa.",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità A",
+              "kind": "laterale",
+              "position": [
+                -0.5065,
+                0.03383,
+                0.0005
+              ],
+              "normal": [
+                -1,
+                0,
+                0
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità B",
+              "kind": "laterale",
+              "position": [
+                0.5065,
+                0.03383,
+                0.0005
+              ],
+              "normal": [
+                1,
+                0,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "xha40100",
+      "connectors": [
+        {
+          "id": "rail-end",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "upright-rail-hook"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.03
+        }
+      ],
+      "colliders": [
+        {
+          "id": "rail-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.05,
+            0.035,
+            1.00588
+          ]
+        }
+      ],
+      "bom": {
+        "code": "XHA40100",
+        "label": "Traversa XHA 40100"
+      },
+      "code": "XHA40100",
+      "label": "XHA 40100",
+      "description": "Traversa del KIT 01, lunga 1006 mm.",
+      "category": "Orizzontali",
+      "assetCorrections": [
+        {
+          "asset": "ef868132b4a19286",
+          "reason": "Marker numerati in ordine di lettura: una riesportazione li rinumera. Estremità dichiarate al centro delle facce di testa.",
+          "points": [
+            {
+              "id": "end-a",
+              "label": "Estremità A",
+              "kind": "frontale",
+              "position": [
+                -0.025,
+                -0.0165,
+                0.50294
+              ],
+              "normal": [
+                0,
+                0,
+                1
+              ]
+            },
+            {
+              "id": "end-b",
+              "label": "Estremità B",
+              "kind": "frontale",
+              "position": [
+                -0.025,
+                -0.0165,
+                -0.50294
+              ],
+              "normal": [
+                0,
+                0,
+                -1
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "ptbm31",
+      "connectors": [
+        {
+          "id": "accessory-face",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "upright-holes"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.03,
+          "insertionAxis": [
+            0,
+            0,
+            -1
+          ],
+          "clearance": [
+            {
+              "id": "accessory-tab",
+              "center": [
+                0,
+                0,
+                0
+              ],
+              "size": [
+                0.06,
+                0.06,
+                0.06
+              ]
+            }
+          ]
+        }
+      ],
+      "colliders": [
+        {
+          "id": "accessory-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.31,
+            0.14,
+            0.09
+          ]
+        }
+      ],
+      "bom": {
+        "code": "PTBM-31",
+        "label": "Accessorio PTBM-31"
+      },
+      "code": "PTBM-31",
+      "label": "PTBM-31",
+      "description": "Accessorio 310 × 140 × 90 mm per montanti forati.",
+      "category": "Accessori",
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "catalogId": "ptbm26",
+      "connectors": [],
+      "colliders": [
+        {
+          "id": "accessory-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.26,
+            0.14,
+            0.0913
+          ]
+        }
+      ],
+      "bom": {
+        "code": "PTBM-26",
+        "label": "Accessorio PTBM-26"
+      },
+      "code": "PTBM-26",
+      "label": "PTBM-26",
+      "description": "Accessorio 260 × 140 × 90 mm. Regole di aggancio da definire con il cliente: si posiziona libero.",
+      "category": "Accessori",
+      "review": {
+        "confirmed": false,
+        "notes": "Nessuna regola di aggancio fornita."
+      }
+    },
+    {
+      "catalogId": "kit01",
+      "connectors": [],
+      "colliders": [
+        {
+          "id": "kit-body",
+          "center": [
+            0,
+            0,
+            0
+          ],
+          "size": [
+            0.36,
+            0.864,
+            1.014
+          ]
+        }
+      ],
+      "bom": {
+        "code": "KIT01",
+        "label": "Kit 01"
+      },
+      "code": "KIT01",
+      "label": "KIT 01",
+      "description": "Gruppo premontato: XDS 40236 con montanti YSI 12836.",
+      "category": "Kit",
+      "review": {
+        "confirmed": false
+      }
+    }
+  ],
+  "enclosures": [
+    {
+      "id": "iveco-dl14l2sh3",
+      "label": "IVECO · Daily L2H3",
+      "code": "IVECO-DL14L2SH3",
+      "description": "IVECO Daily 2014 L2 H3, solo vano di carico, in metri.",
+      "assetCorrections": [
+        {
+          "asset": "f1310898482afc5c",
+          "reason": "Il GLB non ha Body_interior né cubetti anchor_<NOME> (porta un marker SNAP_TERRA): vano e ancoraggi a pavimento sono dichiarati qui.",
+          "dimensions": [
+            1.81,
+            2.097,
+            3.197
+          ],
+          "anchors": [
+            {
+              "id": "pavimento-dx",
+              "position": [
+                0.845,
+                0.012,
+                1.211
+              ],
+              "normal": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "id": "pavimento-sx",
+              "position": [
+                -0.845,
+                0.012,
+                1.211
+              ],
+              "normal": [
+                0,
+                1,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false,
+        "notes": "Porte mobili non incluse nella prima consegna (vedi T41)."
+      }
+    },
+    {
+      "id": "fiat-ndc40h2",
+      "label": "FIAT · NDC 40H2",
+      "code": "FIAT-NDC40H2",
+      "description": "Furgone FIAT di prova.",
+      "assetCorrections": [
+        {
+          "asset": "0602178578ac336a",
+          "reason": "Modello esportato a 0.1×, senza Body_interior, con ancoraggi 20 cm sopra il pianale: scala, pianale e ancoraggi sono dichiarati qui.",
+          "scale": 10,
+          "floor": {
+            "size": [
+              3.45,
+              0.035,
+              1.82
+            ],
+            "y": 0.02
+          },
+          "anchors": [
+            {
+              "id": "floor-back-side-a",
+              "position": [
+                1.65,
+                0.04,
+                -0.86
+              ],
+              "normal": [
+                0,
+                1,
+                0
+              ]
+            },
+            {
+              "id": "floor-back-side-b",
+              "position": [
+                1.65,
+                0.04,
+                0.86
+              ],
+              "normal": [
+                0,
+                1,
+                0
+              ]
+            }
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false
+      }
+    },
+    {
+      "id": "furgone-interno",
+      "label": "Furgone · rilievo interno (demo)",
+      "code": "FURGONE-INTERNO",
+      "description": "Rilievo 3D manuale del vano di carico (demo), convertito da STL a 150.000 triangoli.",
+      "dimensions": [
+        2.05,
+        2.06,
+        4.06
+      ],
+      "floor": {
+        "size": [
+          2.05,
+          0.02,
+          4.06
+        ],
+        "y": -0.01
+      },
+      "anchors": [
+        {
+          "id": "pavimento-dx",
+          "position": [
+            0.85,
+            0,
+            1.2
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        },
+        {
+          "id": "pavimento-sx",
+          "position": [
+            -0.85,
+            0,
+            1.2
+          ],
+          "normal": [
+            0,
+            1,
+            0
+          ]
+        }
+      ],
+      "review": {
+        "confirmed": false,
+        "notes": "Rilievo parziale: pianale e ancoraggi dichiarati qui, da verificare sul furgone."
+      }
+    }
+  ],
+  "samples": [
+    {
+      "id": "fianco-cassetto",
+      "label": "Fianchi YSI 03036 con cassetto KDW 40236",
+      "steps": [
+        {
+          "id": "fianco",
+          "product": "ysi03036",
+          "yaw": 0
+        },
+        {
+          "id": "gemello",
+          "twinOf": "fianco",
+          "distance": 1.014
+        },
+        {
+          "id": "cassetto",
+          "product": "kdw40236",
+          "point": "end-a",
+          "on": "fianco",
+          "at": "front-14"
+        }
+      ],
+      "expectConnections": 2
+    },
+    {
+      "id": "fianco-antina",
+      "label": "Fianchi YSI 03036 con antina KLD 41000",
+      "steps": [
+        {
+          "id": "fianco",
+          "product": "ysi03036",
+          "yaw": 0
+        },
+        {
+          "id": "gemello",
+          "twinOf": "fianco",
+          "distance": 1.014
+        },
+        {
+          "id": "antina",
+          "product": "kld41000",
+          "point": "end-a",
+          "on": "fianco",
+          "at": "front-11"
+        }
+      ],
+      "expectConnections": 2
+    },
+    {
+      "id": "fianco-ripiano",
+      "label": "Fianchi YSI 03036 con ripiano KCP 40531",
+      "steps": [
+        {
+          "id": "fianco",
+          "product": "ysi03036",
+          "yaw": 0
+        },
+        {
+          "id": "gemello",
+          "twinOf": "fianco",
+          "distance": 1.014
+        },
+        {
+          "id": "ripiano",
+          "product": "kcp40531kmd02",
+          "point": "end-a",
+          "on": "fianco",
+          "at": "front-5"
+        }
+      ],
+      "expectConnections": 2
+    },
+    {
+      "id": "angolari-fronte-retro",
+      "label": "Angolari KMA 40100 sui fori anteriori e posteriori",
+      "steps": [
+        {
+          "id": "fianco",
+          "product": "ysi01131",
+          "yaw": 0
+        },
+        {
+          "id": "gemello",
+          "twinOf": "fianco",
+          "distance": 1.014
+        },
+        {
+          "id": "anteriore",
+          "product": "kma40100",
+          "point": "end-a",
+          "on": "fianco",
+          "at": "front-2"
+        },
+        {
+          "id": "posteriore",
+          "product": "kma40100",
+          "point": "end-b",
+          "on": "fianco",
+          "at": "back-2"
+        }
+      ],
+      "expectConnections": 4
+    },
+    {
+      "id": "angolare-leggero",
+      "label": "Angolare leggero XLA 40400",
+      "steps": [
+        {
+          "id": "fianco",
+          "product": "ysi03036",
+          "yaw": 0
+        },
+        {
+          "id": "gemello",
+          "twinOf": "fianco",
+          "distance": 1.014
+        },
+        {
+          "id": "angolare",
+          "product": "xla40400",
+          "point": "end-a",
+          "on": "fianco",
+          "at": "front-27"
+        }
+      ],
+      "expectConnections": 2
+    },
+    {
+      "id": "sovrapposizione",
+      "label": "Fianco YSI 01131 sopra YSI 03036, antina superiore e cassettiera",
+      "steps": [
+        {
+          "id": "fianco",
+          "product": "ysi03036",
+          "yaw": 0
+        },
+        {
+          "id": "gemello",
+          "twinOf": "fianco",
+          "distance": 1.014
+        },
+        {
+          "id": "alto",
+          "product": "ysi01131",
+          "point": "stack-bottom",
+          "on": "fianco",
+          "at": "stack-top"
+        },
+        {
+          "id": "alto-gemello",
+          "twinOf": "alto",
+          "distance": 1.014
+        },
+        {
+          "id": "antina",
+          "product": "kud40900",
+          "point": "end-a",
+          "on": "alto",
+          "at": "front-8"
+        },
+        {
+          "id": "cassettiera",
+          "product": "kdu40426kd080",
+          "point": "end-a",
+          "on": "alto",
+          "at": "top"
+        }
+      ],
+      "expectConnections": 6
+    }
+  ],
+  "revision": "rev-720e0390d712"
+}

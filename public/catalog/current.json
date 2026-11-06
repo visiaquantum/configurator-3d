@@ -1,0 +1,15 @@
+{
+  "revision": "rev-720e0390d712",
+  "index": "revisions/rev-720e0390d712/index.json",
+  "manifest": "revisions/rev-720e0390d712/manifest.json",
+  "report": "revisions/rev-720e0390d712/report.json",
+  "publishedAt": "2026-11-06T09:55:30.527Z",
+  "summary": {
+    "products": 19,
+    "enclosures": 3,
+    "samples": 6,
+    "errors": 0,
+    "warnings": 92,
+    "confirmations": 22
+  }
+}

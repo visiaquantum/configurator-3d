@@ -1,5 +1,5 @@
 import type { Object3D } from 'three'
-import { Quaternion, Vector3 } from 'three'
+import { Box3, Quaternion, Vector3 } from 'three'
 import type { Anchor, Vec3 } from '../types'
 
 /**
@@ -12,11 +12,14 @@ import type { Anchor, Vec3 } from '../types'
  * 3. Optional `userData.normal: [x, y, z]` (via glTF `extras.normal`)
  *    overrides the computed +Y world axis of the node.
  *
- * The node should be an Empty / Group (no geometry). Its world position is
- * the anchor position. Its world +Y direction is the default normal.
+ * A marker with geometry (the ~1 cm cube SolidWorks exports, pivot at the
+ * model origin) stands for the centre of that geometry, which is the anchor
+ * position; an Empty stands for its own world position. The world +Y
+ * direction is the default normal.
  */
 
 const NAME_PREFIX_RE = /^anchor[_:](.+)$/i
+const round = (value: number) => Math.round(value * 1e6) / 1e6
 
 interface ExtractedAnchorNode {
   anchor: Anchor
@@ -29,6 +32,7 @@ export function extractAnchorsFromObject(root: Object3D): ExtractedAnchorNode[] 
   const worldUp = new Vector3()
   const localUp = new Vector3(0, 1, 0)
   const worldQuat = new Quaternion()
+  const box = new Box3()
 
   root.traverse((obj) => {
     const ud = (obj.userData ?? {}) as Record<string, unknown>
@@ -42,9 +46,12 @@ export function extractAnchorsFromObject(root: Object3D): ExtractedAnchorNode[] 
 
     if (!id) return
 
-    obj.updateWorldMatrix(true, false)
-    obj.getWorldPosition(worldPos)
-    const position: Vec3 = [worldPos.x, worldPos.y, worldPos.z]
+    obj.updateWorldMatrix(true, true)
+    // The pivot of an exported cube is meaningless: its geometry is the marker.
+    box.setFromObject(obj)
+    if (box.isEmpty()) obj.getWorldPosition(worldPos)
+    else box.getCenter(worldPos)
+    const position: Vec3 = [round(worldPos.x), round(worldPos.y), round(worldPos.z)]
 
     let normal: Vec3 | undefined
     const overrideNormal = ud.normal as unknown

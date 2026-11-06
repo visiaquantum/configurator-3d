@@ -61,6 +61,10 @@ export default defineConfig(({ mode }) => {
     // Demo output is kept out of `dist/`: that directory is the published
     // package (`files: ["dist"]`), and a demo build would otherwise overwrite
     // the library bundle with the SPA + all of `public/`.
-    build: { outDir: 'dist-demo' },
+    build: {
+      outDir: 'dist-demo',
+      // Second page: the STL → GLB converter for vehicle surveys.
+      rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), stlToGlb: resolve(import.meta.dirname, 'stl-to-glb.html') } },
+    },
   }
 })

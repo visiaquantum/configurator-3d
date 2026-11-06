@@ -2,10 +2,14 @@ import { Box3, OrthographicCamera, Vector3 } from 'three'
 import type { IsometricView } from '../types'
 
 /*
- * The four isometric views: the camera sits on a top corner of the enclosure
- * and looks along a (±1, -1, ±1) diagonal. Names follow the camera presets
- * (`+Z` is the front, `+X` the right side).
+ * The four isometric views: the camera sits on a top corner of the enclosure,
+ * at 45° in plan, looking down by `ISOMETRIC_ELEVATION_DEG` (lower than the
+ * 35.26° of a true isometric, so the walls read better than the floor).
+ * Names follow the camera presets (`+Z` is the front, `+X` the right side).
  */
+
+/** Angle of the view direction below the horizontal, in degrees. */
+export const ISOMETRIC_ELEVATION_DEG = 20
 
 export const ISOMETRIC_VIEWS: readonly IsometricView[] = ['iso', 'iso-front-left', 'iso-back-right', 'iso-back-left']
 
@@ -31,7 +35,9 @@ export function isIsometricView(value: unknown): value is IsometricView {
 /** Unit vector from the scene centre towards the camera. */
 export function isometricOffset(view: IsometricView): Vector3 {
   const [x, z] = CORNERS[view]
-  return new Vector3(x, 1, z).normalize()
+  const elevation = ISOMETRIC_ELEVATION_DEG * Math.PI / 180
+  const horizontal = Math.cos(elevation) / Math.SQRT2
+  return new Vector3(x * horizontal, Math.sin(elevation), z * horizontal)
 }
 
 interface Bounds { min: readonly number[]; max: readonly number[] }

@@ -65,7 +65,7 @@ async function snapsFromPilotGlb(path, catalogSize, autoSnapGrid, catalogSnapPoi
   })).concat(catalogSnapPoints)
 }
 
-const manifest = parseAssemblyManifest(readFileSync('public/catalog/assembly-manifest.json', 'utf8'))
+const manifest = parseAssemblyManifest(readFileSync('catalog/manifest.json', 'utf8'))
 const catalog = {
   ysi12836: { id: 'ysi12836', label: 'Montante YSI 12836', glbUrl: '/models/MONTANTI/YSI12836.glb', size: [0.36, 1.008, 0.03] },
   xds40231km02: { id: 'xds40231km02', label: 'Orizzontale XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307] },
@@ -87,11 +87,11 @@ const itemSnaps = {
 const xdsSideHoles = itemSnaps.xds40231km02.filter((point) => point.kind === 'foro')
 check('XDS automatic mounting-hole snaps are disabled', xdsSideHoles.length === 0)
 
-// The 1014 wall of quote 99003819 declares its seats in src/tascaWall.ts;
-// tests/tasca-wall.test.mjs resolves its connectors against the real GLBs.
-const WALL_PRODUCTS = new Set(['ysi03036', 'ysi01131', 'kdw40236', 'kdw40336', 'kdw40436', 'kdw40636', 'kcp40531kmd02', 'kma40100', 'xla40400', 'kdu40426kd080', 'kld41000', 'kud40900'])
-const pilotDefinitions = manifest.products.filter((product) => !WALL_PRODUCTS.has(product.catalogId))
-check('every manifest product belongs to the pilot catalog', pilotDefinitions.every((product) => catalog[product.catalogId]))
+// The production manifest covers the whole folder; the 1014 wall's seats are
+// checked by tests/tasca-wall.test.mjs and by the catalogue check. Here only
+// the KIT pilot products, which this script describes itself.
+const pilotDefinitions = manifest.products.filter((product) => catalog[product.catalogId])
+check('every pilot product is described by the manifest', Object.keys(catalog).every((id) => manifest.products.some((product) => product.catalogId === id)))
 for (const definition of pilotDefinitions) {
   const product = catalog[definition.catalogId]
   const path = `public${product.glbUrl}`

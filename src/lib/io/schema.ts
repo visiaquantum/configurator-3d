@@ -80,6 +80,8 @@ export const ProjectDataSchema = z.object({
   items: z.array(PlacedItemSchema),
   connections: z.array(ConnectionSchema).optional(),
   metadata: ProjectMetadataSchema.optional(),
+  // Optional since v1: older files simply name no revision.
+  catalog: z.object({ revision: z.string().min(1), enclosureId: z.string().min(1).optional() }).optional(),
 }).superRefine((project, ctx) => {
   const ids = new Set<string>()
   project.items.forEach((item, index) => {

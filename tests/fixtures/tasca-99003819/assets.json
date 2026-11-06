@@ -1,0 +1,53 @@
+{
+  "note": "GLB del riferimento: il confronto vale per questi file.",
+  "assets": [
+    {
+      "file": "MONTANTI/YSI03036.glb",
+      "sha256": "0ac3ce14033d0568980fac680a5ef4632bc2f1971b46382a3526b9ff53bb0749"
+    },
+    {
+      "file": "MONTANTI/YSI01131.glb",
+      "sha256": "6381f3b316fb27d2483835b2c232536e57948687563dd4abd8f80b0b779763ac"
+    },
+    {
+      "file": "ANTINE/KLD41000.glb",
+      "sha256": "4addece479de35f4c884c626889c0c89eeac924465b3b8b2e412bc6349e2b65c"
+    },
+    {
+      "file": "ORIZZONTALI/KDW40636.glb",
+      "sha256": "596ba2ceac59edc956f665dec62f2a6d45297ea58adf06cd43e010ce1e945866"
+    },
+    {
+      "file": "ORIZZONTALI/KDW40436.glb",
+      "sha256": "5dfc7b7a2a24a36bdbfa9fedb19bc4df909b75ceb23f4f7dc11549128630b47d"
+    },
+    {
+      "file": "ORIZZONTALI/KDW40336.glb",
+      "sha256": "81afd918e20cdc4381cc1e2c7ccb06de6a6679b7da94358e6ea3690644252725"
+    },
+    {
+      "file": "ORIZZONTALI/KDW40236.glb",
+      "sha256": "b7a051daae02be89e2363a1a494df9a77c07a3b160a3036154c2c6be19d90f13"
+    },
+    {
+      "file": "ORIZZONTALI/XLA40400.glb",
+      "sha256": "c7017e5ca4f4f10df983a4a182fb388f499bb862509fbd0f83989d72ef58fdc2"
+    },
+    {
+      "file": "ORIZZONTALI/KMA40100.glb",
+      "sha256": "f12f5c16a4c805412ec9ad10db75477a47855301e772d484e11317673e3f7316"
+    },
+    {
+      "file": "ANTINE/KUD40900.glb",
+      "sha256": "ece2431ec81432b662ab0f184402c078f49635364480007d8e74f0d42629ba57"
+    },
+    {
+      "file": "ORIZZONTALI/KDU40426KD080.glb",
+      "sha256": "e3e13db7e8a58c5bf4d70f67d7126b200dadf03535603c5d97fd1b5653e4f521"
+    },
+    {
+      "file": "IVECO-DL14L2SH3.glb",
+      "sha256": "f1310898482afc5cd0535c2e25f6694f0cfd56643767fe2b4e77ba30a4bcd12c"
+    }
+  ]
+}

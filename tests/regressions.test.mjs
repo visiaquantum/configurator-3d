@@ -151,6 +151,43 @@ test('cutaway follows either camera projection, keeps the floor and restores sha
   assert.equal(mesh.geometry, original)
 })
 
+test('cutaway hides door jambs and wall shoulders with their wall, keeps floor and wheel arches', () => {
+  // A 2 × 2 × 4 m van: side walls at x = ±1, end walls at z = ±2, roof on top.
+  const root = new Group()
+  const box = (name, [x0, y0, z0], [x1, y1, z1]) => {
+    const mesh = new Mesh(new BoxGeometry(x1 - x0, y1 - y0, z1 - z0), new MeshBasicMaterial())
+    mesh.name = name
+    mesh.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2)
+    root.add(mesh)
+    return mesh
+  }
+  box('wall+x', [0.98, 0, -2], [1, 2, 2]); box('wall-x', [-1, 0, -2], [-0.98, 2, 2])
+  box('wall+z', [-1, 0, 1.98], [1, 2, 2]); box('wall-z', [-1, 0, -2], [1, 2, -1.98])
+  box('roof', [-1, 1.98, -2], [1, 2, 2])
+  const floor = box('floor', [-1, 0, -2], [1, 0.02, 2])
+  // The jamb of a side door: its faces look along Z but belong to the +X wall.
+  const jamb = box('jamb', [0.95, 0.4, -0.3], [1, 1.2, -0.25])
+  // A step along the top of each side wall, below the roof.
+  const shoulder = box('shoulder+x', [0.8, 1.6, -1], [0.95, 1.65, 1])
+  const farShoulder = box('shoulder-x', [-0.95, 1.6, -1], [-0.8, 1.65, 1])
+  const arch = box('arch', [0.6, 0, 0.8], [0.98, 0.3, 1.4])
+  const cutaway = createEnclosureCutaway(root, new Box3().setFromObject(root))
+  const camera = new PerspectiveCamera()
+  camera.position.set(5, 5, 5)
+  camera.lookAt(0, 1, 0)
+  camera.updateMatrixWorld()
+  cutaway.update(camera, true)
+  assert.equal(jamb.geometry.index.count, 0)
+  assert.equal(shoulder.geometry.index.count, 0)
+  assert.equal(farShoulder.geometry.index.count, 36, 'the shoulder of a visible wall stays')
+  assert.ok(floor.geometry.index.count >= 6, 'the floor stays')
+  assert.ok(arch.geometry.index.count >= 6, 'the wheel arch stays')
+  // Technical drawings cut the roof: its horizontal faces still go with it.
+  cutaway.update(camera, true, true)
+  assert.equal(farShoulder.geometry.index.count, 24)
+  cutaway.dispose()
+})
+
 test('GLB export preserves every wall while a cutaway is active', async () => {
   const root = new Group()
   const original = new BoxGeometry(4, 2, 2)

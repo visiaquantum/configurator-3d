@@ -20,6 +20,11 @@ export class ProjectParseError extends Error {
 export interface ParseOptions {
   /** If provided, references to unknown catalog ids and anchor ids are reported as warnings. */
   catalog?: CatalogItem[]
+  /**
+   * Catalogue revision in use. A project composed with another revision, or
+   * naming none, is reported: its ids may not mean the same products.
+   */
+  catalogRevision?: string
 }
 
 export interface ParseResult {
@@ -58,6 +63,11 @@ export function parseProject(raw: string | unknown, opts: ParseOptions = {}): Pa
 
   const project = result.data as ProjectData
   const warnings = collectReferenceWarnings(project, opts.catalog)
+  if (opts.catalogRevision && !project.catalog) {
+    warnings.push({ level: 'warning', path: '$.catalog', message: `project names no catalogue revision; opened with ${opts.catalogRevision}` })
+  } else if (opts.catalogRevision && project.catalog && project.catalog.revision !== opts.catalogRevision) {
+    warnings.push({ level: 'warning', path: '$.catalog.revision', message: `project composed with catalogue revision ${project.catalog.revision}, not ${opts.catalogRevision}` })
+  }
   return { project, warnings }
 }
 

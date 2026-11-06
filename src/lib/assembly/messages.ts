@@ -18,6 +18,7 @@ export type ValidationReason =
   | 'snaps-misaligned'
   | 'snap-point-occupied'
   | 'connection-cycle'
+  | 'bay-not-allowed'
   | 'collision'
   | 'out-of-bounds'
   | 'not-ready'
@@ -28,6 +29,9 @@ export interface ValidationParams {
   otherCatalogId?: string
   /** Snap misalignment in millimetres. */
   distanceMm?: number
+  /** Mirror-pair spacing in millimetres, and the spacings the part fits. */
+  bayMm?: number
+  allowedMm?: number[]
   /** Readiness explanation, for `not-ready`. */
   status?: string
 }
@@ -50,6 +54,7 @@ export const VALIDATION_MESSAGES_IT: Record<ValidationReason, (params: Validatio
   'snaps-misaligned': (p) => `Snap non allineati (${(p.distanceMm ?? 0).toFixed(1)} mm)`,
   'snap-point-occupied': () => 'Punto di snap già occupato',
   'connection-cycle': () => 'Connessioni cicliche non consentite',
+  'bay-not-allowed': (p) => `Campata di ${Math.round(p.bayMm ?? 0)} mm non ammessa per ${p.catalogId} (ammesse: ${(p.allowedMm ?? []).map((mm) => `${Math.round(mm)} mm`).join(', ')})`,
   'collision': (p) => `Collisione non consentita tra ${p.catalogId} e ${p.otherCatalogId}`,
   'out-of-bounds': (p) => `Prodotto ${p.catalogId} fuori dal vano`,
   'not-ready': (p) => p.status ?? 'Dati non ancora pronti',

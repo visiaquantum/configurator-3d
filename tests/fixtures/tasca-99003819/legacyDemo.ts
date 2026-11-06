@@ -1,6 +1,16 @@
-import type { AssemblyManifest, CatalogItem, Connection, EnclosureData, ItemRule, ItemSnapPoint, PlacedItem, ProjectData, Vec3 } from './lib'
-import { computePartnerPlacement, connectionsAtPose, positionForItemSnap, snapsForItem, yawToMate } from './lib'
-import { worldPoint } from './lib/scene/geometry'
+import type { AssemblyManifest, CatalogItem, Connection, EnclosureData, ItemRule, ItemSnapPoint, PlacedItem, ProjectData, Vec3 } from '../../../src/lib'
+import { computePartnerPlacement, connectionsAtPose, positionForItemSnap, snapsForItem, yawToMate } from '../../../src/lib'
+import { worldPoint } from '../../../src/lib/scene/geometry'
+
+/*
+ * TEST FIXTURE — not part of the production path.
+ *
+ * The demo's hand-written catalogue of the Syncro 1014 wall (quote 99003819)
+ * and its wall generator, kept verbatim as the reference the manifest-built
+ * catalogue and the manual composition are compared against
+ * (tests/tasca-wall.test.mjs). Every value here now lives in
+ * catalog/manifest.json as data; see README.md next to this file.
+ */
 
 // Syncro modular wall (quote 99003819, Alberto Tasca): a pair of side panels
 // drilled every 36 mm, and parts bolted between them. Every hole, and every
@@ -10,6 +20,8 @@ const PITCH = 0.036
 const SIDE_THICKNESS = 0.029
 /** The hole axis runs 17 mm inside the panel's outer face. */
 const HOLE_INSET = 0.017
+/** Sheet of the panel's front (and back) flange, the face the holes go through. */
+export const FLANGE_THICKNESS = 0.0015
 /** Outer face to outer face of a 1014 mm bay. */
 export const BAY_WIDTH = 1.014
 /** A part's ends sit in opposite holes: the bay width less both insets. */
@@ -60,13 +72,20 @@ function sidePanel(id: string, label: string, glbUrl: string, depth: number, hei
 
 /**
  * A part bolted across the bay: X is its width, +Z its front. `mount` is the
- * height and depth, in GLB coordinates, of the point that sits on a front
- * hole — the CAD `SNAP_FRONTALE` markers, which follow the drawer slide
- * rather than the drawer body.
+ * height and depth, in GLB coordinates, of the CAD `SNAP_FRONTALE` marker of
+ * a front hole, which follows the drawer slide rather than the drawer body.
+ *
+ * The CAD markers sit on or near the face of the ends that reach into the
+ * panel's C profile (slides, door brackets, angle plates): mated as drawn,
+ * that face lies on the panel's front and shows through it. Every part hung
+ * on the front holes sits one flange further back, its ends behind the
+ * flange (the light angle too, see `XLA_FACE`). A part that rests on the
+ * panels' heads keeps its marker.
  */
 function bayPart(id: string, label: string, glbUrl: string, size: Vec3, center: Vec3, mount: [y: number, z: number], kind = 'frontale'): CatalogItem {
   const local = fromGlb(center)
-  const [y, z] = mount
+  const y = mount[0]
+  const z = kind === 'frontale' ? round(mount[1] + FLANGE_THICKNESS) : mount[1]
   return {
     id, label, glbUrl, size, scale: 1,
     snapPoints: [
@@ -77,6 +96,8 @@ function bayPart(id: string, label: string, glbUrl: string, size: Vec3, center: 
 }
 
 const XLA_CENTER: Vec3 = [-0.022, 0, 0]
+/** The light angle's face (GLB X) on the panel's front, ends behind the flange. */
+const XLA_FACE = round(0.003 + FLANGE_THICKNESS)
 
 export const TASCA_CATALOG_GROUPS: Array<{ category: string; items: CatalogItem[] }> = [
   {
@@ -100,8 +121,8 @@ export const TASCA_CATALOG_GROUPS: Array<{ category: string; items: CatalogItem[
         // +Z end goes on the outer panel, which keeps the face forward.
         id: 'xla40400', label: 'Angolare leggero XLA 40400', glbUrl: '/models/ORIZZONTALI/XLA40400.glb', size: [0.051, 0.142, 1.006], scale: 1,
         snapPoints: [
-          { id: 'end-a', label: 'Estremità sinistra', kind: 'frontale', position: fromGlb(XLA_CENTER)([0.003, -0.0545, END_OFFSET]), normal: [0, 0, 1] },
-          { id: 'end-b', label: 'Estremità destra', kind: 'frontale', position: fromGlb(XLA_CENTER)([0.003, -0.0545, -END_OFFSET]), normal: [0, 0, -1] },
+          { id: 'end-a', label: 'Estremità sinistra', kind: 'frontale', position: fromGlb(XLA_CENTER)([XLA_FACE, -0.0545, END_OFFSET]), normal: [0, 0, 1] },
+          { id: 'end-b', label: 'Estremità destra', kind: 'frontale', position: fromGlb(XLA_CENTER)([XLA_FACE, -0.0545, -END_OFFSET]), normal: [0, 0, -1] },
         ],
       },
       // Spans the full bay and rests on the panels' heads, front flush.
