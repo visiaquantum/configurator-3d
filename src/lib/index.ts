@@ -10,8 +10,9 @@ export { selectAssemblyView, selectCanMove, selectCollisionBounds, selectEffecti
 export type { AssemblyView } from './state/selectors'
 export { isResolvedJoint, jointsOf, pendingJoints } from './assembly/graph'
 export type { Joint } from './assembly/graph'
-export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, attachmentPointStates, attachmentTargetStates, computeAttachmentPreview } from './scene/attachment'
+export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, attachmentPointStates, attachmentTargetStates, computeAttachmentPreview, selectAttachmentPoint, confirmAttachment } from './scene/attachment'
 export type { AttachmentInteraction, AttachmentPointState, AttachmentPointStatus, AttachmentTargetState } from './scene/attachment'
+export { snapStepPreview, stepItemSnap } from './scene/snapStep'
 export { productCompatibility, compatibleCatalogIds } from './assembly/compatibility'
 export type { ProductCompatibility, ProductIncompatibility } from './assembly/compatibility'
 export { pairSpacingOptions } from './assembly/pairSpacing'
@@ -136,6 +137,7 @@ export type {
   EnclosureDefinition,
   ManifestSnapPoint,
   HoleColumn,
+  SnapRepeat,
   AssetCorrection,
   ManifestReview,
   AssemblySample,

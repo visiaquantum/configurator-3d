@@ -12,6 +12,7 @@ import type {
 } from '../types'
 import { worldPoint as worldPointOf, normalsOppose } from '../scene/geometry'
 import { canMate, snapsForItem } from '../scene/mating'
+import { SnapRepeatsSchema } from '../io/snapRepeats'
 
 const Vec3Schema = z.tuple([z.number(), z.number(), z.number()])
 const PositiveVec3Schema = z.tuple([z.number().positive(), z.number().positive(), z.number().positive()])
@@ -85,6 +86,7 @@ const ProductSchema = z.object({
   instructions: z.array(z.string().min(1)).optional(),
   points: z.array(ManifestPointSchema).optional(),
   holeColumns: z.array(HoleColumnSchema).optional(),
+  snapRepeats: SnapRepeatsSchema.optional(),
   mirrorPair: z.object({ axis: DirectionSchema.optional(), distances: z.array(z.number().positive()).min(1).optional() }).optional(),
   bays: z.array(z.number().positive()).min(1).optional(),
   directions: DirectionsSchema.optional(),

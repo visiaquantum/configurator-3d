@@ -1,17 +1,15 @@
-import { readFileSync } from 'node:fs'
-import { Box3, Mesh, Vector3 } from 'three'
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
   buildProjectBom,
-  extractAutoSnapGridFromObject,
-  extractRulesFromObject,
+  buildCatalogFromIndex,
+  prepareProductAsset,
   hasBlockingIssues,
-  hydrateItemSnapsAndHide,
-  parseAssemblyManifest,
   positionForItemSnap,
   validateConfiguration,
   yawToMate,
+  snapsForItem,
 } from '../dist/configurator-3d.js'
+
+import { runCatalogCheck } from './catalog/check.mjs'
 
 let pass = 0
 let fail = 0
@@ -25,64 +23,13 @@ const check = (name, condition) => {
   }
 }
 
-const loadGlb = (path) => new Promise((resolve, reject) => {
-  const data = readFileSync(path)
-  new GLTFLoader().parse(data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength), '', resolve, reject)
-})
-
-function visibleBounds(root) {
-  root.updateMatrixWorld(true)
-  const bounds = new Box3()
-  const meshBounds = new Box3()
-  root.traverseVisible((object) => {
-    if (!(object instanceof Mesh)) return
-    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox()
-    meshBounds.copy(object.geometry.boundingBox).applyMatrix4(object.matrixWorld)
-    bounds.union(meshBounds)
-  })
-  return bounds
-}
-
-/** Match Item.tsx: GLB coordinates become local to the catalog collider. */
-async function snapsFromPilotGlb(path, catalogSize, autoSnapGrid, catalogSnapPoints = []) {
-  const gltf = await loadGlb(path)
-  const root = gltf.scene.clone()
-  const explicit = hydrateItemSnapsAndHide(root)
-  const modelRules = extractRulesFromObject(root).map((entry) => entry.extracted)
-  const rules = autoSnapGrid
-    ? [...modelRules.filter((rule) => rule.rule !== 'auto-snap-grid'), { rule: 'auto-snap-grid', position: [0, 0, 0], axis: [1, 0, 0], params: autoSnapGrid }]
-    : modelRules
-  const generated = extractAutoSnapGridFromObject(root, rules)
-  const bounds = visibleBounds(root)
-  const center = bounds.getCenter(new Vector3())
-  return [...explicit, ...generated].map((point) => ({
-    ...point,
-    position: [
-      point.position[0] - center.x,
-      point.position[1] - catalogSize[1] / 2 - bounds.min.y,
-      point.position[2] - center.z,
-    ],
-  })).concat(catalogSnapPoints)
-}
-
-const manifest = parseAssemblyManifest(readFileSync('catalog/manifest.json', 'utf8'))
-const catalog = {
-  ysi12836: { id: 'ysi12836', label: 'Montante YSI 12836', glbUrl: '/models/MONTANTI/YSI12836.glb', size: [0.36, 1.008, 0.03] },
-  xds40231km02: { id: 'xds40231km02', label: 'Orizzontale XDS 40231 KM02', glbUrl: '/models/ORIZZONTALI/XDS40231KM02.glb', size: [1.011, 0.07, 0.307] },
-  ptbm31: { id: 'ptbm31', label: 'Accessorio PTBM-31', glbUrl: '/models/ACCESSORI/PTBM-31.glb', size: [0.31, 0.14, 0.09] },
-  kit01: { id: 'kit01', label: 'Kit 01', glbUrl: '/models/KIT/KIT01.glb', size: [0.36, 0.864, 1.014] },
-  // Kit-01 members: this script asserts the manifest never names a product the
-  // catalogue lacks, so they belong here too. Their joint geometry is covered
-  // by verify-kit01-composition.mjs.
-  xds40236km02: { id: 'xds40236km02', label: 'Orizzontale XDS 40236 KM02', glbUrl: '/models/ORIZZONTALI/XDS40236KM02.glb', size: [1.013, 0.07117, 0.357] },
-  xha40100: { id: 'xha40100', label: 'Traversa XHA 40100', glbUrl: '/models/ORIZZONTALI/XHA40100.glb', size: [0.05, 0.035, 1.00588] },
-}
-
-console.log('\n[pilot assembly] real YSI12836 + XDS40231KM02 assets')
-const itemSnaps = {
-  ysi12836: await snapsFromPilotGlb('public/models/MONTANTI/YSI12836.glb', catalog.ysi12836.size),
-  xds40231km02: await snapsFromPilotGlb('public/models/ORIZZONTALI/XDS40231KM02.glb', catalog.xds40231km02.size),
-}
+const checked = await runCatalogCheck()
+const manifest = checked.manifest
+const built = buildCatalogFromIndex(checked.index, checked.manifest)
+const ids = ['ysi02436', 'xds40231km02', 'ptbm31', 'kit01', 'xds40236km02', 'xha40100']
+const catalog = Object.fromEntries(built.items.filter((item) => ids.includes(item.id)).map((item) => [item.id, item]))
+const itemSnaps = Object.fromEntries(Object.values(catalog).map((item) => [item.id, prepareProductAsset(checked.scan.models[item.glbUrl], item).metadata.snaps]))
+console.log('\n[pilot assembly] real YSI02436 + XDS40231KM02 assets')
 
 const xdsSideHoles = itemSnaps.xds40231km02.filter((point) => point.kind === 'foro')
 check('XDS automatic mounting-hole snaps are disabled', xdsSideHoles.length === 0)
@@ -94,10 +41,7 @@ const pilotDefinitions = manifest.products.filter((product) => catalog[product.c
 check('every pilot product is described by the manifest', Object.keys(catalog).every((id) => manifest.products.some((product) => product.catalogId === id)))
 for (const definition of pilotDefinitions) {
   const product = catalog[definition.catalogId]
-  const path = `public${product.glbUrl}`
-  const points = definition.catalogId in itemSnaps
-    ? itemSnaps[definition.catalogId]
-    : await snapsFromPilotGlb(path, product.size)
+  const points = itemSnaps[product.id]
   for (const connector of definition.connectors) {
     const found = connector.snapId
       ? points.some((point) => point.id === connector.snapId)
@@ -105,15 +49,17 @@ for (const definition of pilotDefinitions) {
     check(`${definition.catalogId}:${connector.id} resolves to a GLB snap`, found)
   }
 }
-const uprightPoint = itemSnaps.ysi12836.find((point) => point.id === 'auto-grid-xmin-r0-c1')
+const itemRules = Object.fromEntries(Object.values(catalog).map((item) => [item.id, prepareProductAsset(checked.scan.models[item.glbUrl], item).metadata.rules]))
+// This GLB authors its positive-width end; it seats on the mirrored side.
+const uprightPoint = snapsForItem({ catalogId: 'ysi02436', mirrored: true }, itemSnaps, itemRules).find((point) => point.id === 'front-2')
 const shelfPoint = itemSnaps.xds40231km02.find((point) => point.id === 'frontale')
 check('the declared YSI hole exists in the GLB', Boolean(uprightPoint))
 check('the declared XDS face exists in the GLB', Boolean(shelfPoint))
 
-const upright = { id: 'upright-1', catalogId: 'ysi12836', position: [0, 0, 0], rotation: [0, 0, 0] }
+const upright = { id: 'upright-1', catalogId: 'ysi02436', mirrored: true, position: [0, 0, 0], rotation: [0, 0, 0] }
 const targetWorld = [
   upright.position[0] + uprightPoint.position[0],
-  upright.position[1] + catalog.ysi12836.size[1] / 2 + uprightPoint.position[1],
+  upright.position[1] + catalog.ysi02436.size[1] / 2 + uprightPoint.position[1],
   upright.position[2] + uprightPoint.position[2],
 ]
 const yaw = yawToMate(shelfPoint.normal, uprightPoint.normal, upright.rotation[1])
@@ -123,15 +69,15 @@ const project = {
   id: 'pilot-ysi-xds', version: 1, enclosure: { glbUrl: '/enclosure.glb' }, items: [upright, shelf],
   connections: [{
     sourceItemId: shelf.id, sourceConnectorId: 'shelf-face', sourcePointId: shelfPoint.id,
-    targetItemId: upright.id, targetConnectorId: 'upright-holes', targetPointId: uprightPoint.id,
+    targetItemId: upright.id, targetConnectorId: 'side-front-hole', targetPointId: uprightPoint.id,
   }],
 }
-const context = { itemSnaps }
+const context = { itemSnaps, itemRules }
 const issues = validateConfiguration(project, catalog, manifest, context)
 if (hasBlockingIssues(issues)) console.log('  detail', issues.map((issue) => issue.message).join(' | '))
 check('resolved real-asset joint validates', !hasBlockingIssues(issues))
 const bom = buildProjectBom(project, Object.values(catalog), manifest)
-check('validated pilot BOM contains both products', bom.some((line) => line.code === 'YSI12836') && bom.some((line) => line.code === 'XDS40231KM02'))
+check('validated pilot BOM contains both products', bom.some((line) => line.code === 'YSI02436') && bom.some((line) => line.code === 'XDS40231KM02'))
 
 const displaced = structuredClone(project)
 displaced.items[1].position[0] += 0.02

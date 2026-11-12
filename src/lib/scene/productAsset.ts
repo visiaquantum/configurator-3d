@@ -9,6 +9,7 @@ import { AUTO_SNAP_GRID_RULE, extractAutoSnapGridFromObject } from '../io/autoSn
 import { visibleBodyBounds } from './geometry'
 import { MIRROR_PAIR_RULE } from './mirrorPair'
 import { own } from '../util/record'
+import { repeatSnapMarkers } from '../io/snapRepeats'
 
 const unit = (v: Vec3): Vec3 => {
   const length = Math.hypot(...v)
@@ -53,7 +54,7 @@ function withMirrorPairOptions(rules: ItemRule[], options: MirrorPairOptions | u
 
 /** Only model/geometry inputs belong in the cache key, not labels or instance poses. */
 export function productAssetKey(catalog: CatalogItem): string {
-  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair, catalog.replaceSnapKinds, catalog.snapDirections])
+  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair, catalog.replaceSnapKinds, catalog.snapDirections, catalog.snapRepeats])
 }
 
 /** Resolve once per GLB/configuration, without mutating the loader cache or requiring React/WebGL. */
@@ -72,7 +73,7 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
   const config = typeof catalog.autoSnapGrid === 'object' ? catalog.autoSnapGrid : {}
   const existingGrid = modelRules.some((rule) => rule.rule === AUTO_SNAP_GRID_RULE)
   // `autoSnapGrid: false` in the catalogue also switches off a rule the GLB declares.
-  const gridRules: ItemRule[] = catalog.autoSnapGrid === false
+  const gridRules: ItemRule[] = catalog.autoSnapGrid === false || catalog.snapRepeats?.length
     ? modelRules.filter((rule) => rule.rule !== AUTO_SNAP_GRID_RULE)
     : existingGrid
       ? modelRules.map((rule) => rule.rule === AUTO_SNAP_GRID_RULE ? { ...rule, params: { ...rule.params, ...config } } : rule)
@@ -99,7 +100,7 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
   const directions = catalog.snapDirections ?? {}
   const metadata: ProductMetadata = {
     size,
-    rules: modelRules.map((rule) => ({ ...rule, position: toLocal(rule.position) })),
+    rules: gridRules.map((rule) => ({ ...rule, position: toLocal(rule.position) })),
     snaps: uniqueSnapIds([
       ...[...modelSnaps, ...gridSnaps].filter((point) => !replacedKinds.has(point.kind) && !declaredIds.has(point.id))
         .map((point) => {
@@ -110,6 +111,11 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
           }
         }),
     ], structuredClone(declared)),
+  }
+  if (catalog.snapRepeats?.length) {
+    metadata.snaps = repeatSnapMarkers(metadata.snaps, catalog.snapRepeats, {
+      min: toLocal(bounds.min.toArray() as Vec3), max: toLocal(bounds.max.toArray() as Vec3),
+    }, scale)
   }
   const prepared = { scene, offset, metadata }
   if (!variants) { variants = new Map(); preparedAssets.set(source, variants) }

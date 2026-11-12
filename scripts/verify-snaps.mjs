@@ -112,7 +112,7 @@ for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI / 2, 0.7]) {
 console.log('\n--- GLB reali del catalogo ---')
 
 
-for (const p of ['public/models/MONTANTI/YSI12836.glb', 'public/models/KIT/KIT01.glb']) {
+for (const p of ['public/models/MONTANTI/YSI02436.glb', 'public/models/KIT/KIT01.glb']) {
   const gltf = await load(p)
   gltf.scene.updateMatrixWorld(true)
   const pts = extractItemSnapsFromObject(gltf.scene).map((e) => e.extracted)
@@ -155,12 +155,12 @@ ok('normale mancante -> null', yawToMate(undefined, [1, 0, 0], 0) === null)
 
 console.log('\n[7] incastro montante + orizzontale, sui GLB veri')
 {
-  const upright = await load('public/models/MONTANTI/YSI12836.glb')
+  const upright = await load('public/models/MONTANTI/YSI02436.glb')
   const shelf = await load('public/models/ORIZZONTALI/XDS40231KM02.glb')
   upright.scene.updateMatrixWorld(true)
   shelf.scene.updateMatrixWorld(true)
 
-  const uprightRules = extractRulesFromObject(upright.scene).map((r) => r.extracted)
+  const uprightRules = [...extractRulesFromObject(upright.scene).map((r) => r.extracted), { rule: 'auto-snap-grid', position: [0, 0, 0], axis: [1, 0, 0], params: {} }]
   const holes = extractAutoSnapGridFromObject(upright.scene, uprightRules)
   const shelfPts = extractItemSnapsFromObject(shelf.scene).map((e) => e.extracted)
   const shelfFront = shelfPts.find((p) => p.kind === 'frontale')

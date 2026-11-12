@@ -75,7 +75,7 @@ anche l'assenza di errori bloccanti.
 | `public/catalog/catalog.json` | Catalogo versione 1 con dimensioni, scala e snap |
 | `public/catalog/assembly-manifest.json` | Connettori, compatibilità, collider e distinta |
 | `public/catalog/project.json` | Progetto completo, inclusi posizioni e otto collegamenti |
-| `public/models/` | Vano FIAT, montante YSI12836, ripiano XDS40236KM02 e traversa XHA40100 |
+| `public/models/` | Vano FIAT, montante YSI02436, ripiano XDS40236KM02 e traversa XHA40100 |
 
 I modelli sono quelli già presenti nel repository. Il vano usa scala 10,
 i prodotti scala 1. Posizioni runtime e snap dichiarati sono in metri,

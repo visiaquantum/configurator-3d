@@ -63,10 +63,20 @@ export interface MirrorPairOptions {
   distances?: number[]
 }
 
+/** Repeat an authored GLB marker along a row of holes, in model units. */
+export interface SnapRepeat {
+  /** Stable prefix for the generated points: `<id>-1`, `<id>-2`, … */
+  id: string
+  snapId: string
+  pitch: Vec3
+  label?: string
+}
+
 export interface CatalogItem {
   id: string
   label: string
   glbUrl: string
+  snapRepeats?: SnapRepeat[]
   size?: Vec3
   /** Uniform scale applied to the loaded GLB and to `size` for collider math.
    * Same purpose as EnclosureData.scale. Default 1. */
@@ -306,6 +316,7 @@ export interface ProductAssemblyDefinition {
   /** Points the contract keeps out of the GLB (e.g. a rest on top), GLB frame. */
   points?: ManifestSnapPoint[]
   holeColumns?: HoleColumn[]
+  snapRepeats?: SnapRepeat[]
   /** Orientation and spacings of the GLB's `mirror-pair` rule, GLB frame. */
   mirrorPair?: MirrorPairOptions
   /** Mirror-pair spacings (metres) a part spanning the pair fits. Omitted: any. */

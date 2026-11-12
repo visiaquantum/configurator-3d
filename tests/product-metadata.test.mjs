@@ -148,7 +148,7 @@ test('undo and redo resolve legacy snapshots using available metadata without ad
   assert.deepEqual(store.getState().project.items[0].position, [1, 0, 0])
 })
 
-for (const path of ['MONTANTI/YSI12836.glb', 'KIT/KIT01.glb']) test(`real GLB preparation preserves marker IDs and scales coordinates: ${path}`, async () => {
+for (const path of ['MONTANTI/YSI02436.glb', 'KIT/KIT01.glb']) test(`real GLB preparation preserves marker IDs and scales coordinates: ${path}`, async () => {
   const bytes = await readFile(new URL(`../public/models/${path}`, import.meta.url))
   const gltf = await new GLTFLoader().parseAsync(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength), '')
   const first = prepareProductAsset(gltf.scene, catalog)

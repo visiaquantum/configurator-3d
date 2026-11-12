@@ -7,7 +7,7 @@ import type { CatalogItem, ConfiguratorHandle, EnclosureData } from '../../src/l
 const stores = [createConfiguratorStore(), createConfiguratorStore()]
 const enclosure: EnclosureData = { glbUrl: '/models/FIAT-NDC40H2.glb', scale: 10, floor: { size: [3.45, 0.035, 1.82], y: 0.02 } }
 const halfScaleEnclosure: EnclosureData = { glbUrl: enclosure.glbUrl, scale: 5, floor: { size: [1.725, 0.0175, 0.91], y: 0.01 } }
-const product: CatalogItem = { id: 'upright', label: 'Montante di prova', glbUrl: '/models/MONTANTI/YSI12836.glb', size: [0.36, 1.008, 0.03] }
+const product: CatalogItem = { id: 'upright', label: 'Montante di prova', glbUrl: '/models/MONTANTI/YSI02436.glb', size: [0.36, 0.864, 0.03] }
 const validCatalog = [product]
 const brokenCatalog = [{ ...product, glbUrl: '/missing-model.glb' }]
 const manifest = { version: 1, products: [{ catalogId: 'upright', connectors: [] }] }

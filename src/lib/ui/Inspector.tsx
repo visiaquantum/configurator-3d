@@ -10,6 +10,7 @@ import { rotateAssembly } from '../scene/itemMovement'
 import { assemblyLock, setAssemblyLocked, setMirrorPairDistance, snapAssemblyToAnchor, unjoinItem } from '../scene/commands'
 import { Icon } from './Icon'
 import { own } from '../util/record'
+import { snapStepPreview, stepItemSnap } from '../scene/snapStep'
 
 interface Props { readOnly?: boolean }
 
@@ -40,6 +41,8 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   const joints = graph.filter((joint) => joint.sourceItemId === item.id || joint.targetItemId === item.id)
   const canAttach = attachmentPoints(state, item.id).length > 0
   const pair = mirrorPairConstraint(item)
+  const up = snapStepPreview(state, item.id, 1)
+  const down = snapStepPreview(state, item.id, -1)
 
   return (
     <section className="cfg-inspector" aria-label="Proprietà componente" style={{ width: 280, maxWidth: '100%', minHeight: 0, flexShrink: 1, overflow: 'hidden', pointerEvents: 'auto' }}>
@@ -48,9 +51,18 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
         <button className="cfg-icon-button" onClick={() => select(null)} aria-label="Deseleziona componente"><Icon name="close" size={16} /></button>
       </div>
       <div className="cfg-inspector-body">
+        {(up || down) && <div className="cfg-snap-step">
+          <span className="cfg-property-label">Scorri sui fori del fianco</span>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="cfg-button" disabled={hostReadOnly || !down?.valid} title={down?.error ?? 'Sposta al foro inferiore'} onClick={() => stepItemSnap(storeApi, item.id, -1)}>↓ Sposta giù</button>
+            <button className="cfg-button" disabled={hostReadOnly || !up?.valid} title={up?.error ?? 'Sposta al foro superiore'} onClick={() => stepItemSnap(storeApi, item.id, 1)}>↑ Sposta su</button>
+          </div>
+          {(!down?.valid || !up?.valid) && <small>{!down?.valid ? `Giù: ${down?.error ?? 'Non disponibile'}. ` : ''}{!up?.valid ? `Su: ${up?.error ?? 'Non disponibile'}` : ''}</small>}
+        </div>}
         <button className="cfg-button cfg-primary" disabled={readOnly || !canAttach} onClick={() => beginAttachment(storeApi, item.id)} title={canAttach ? 'Scegli i punti di snap direttamente nella scena' : 'Nessun punto di snap disponibile'}><Icon name="link" size={16} />Aggancia nella scena<Icon name="arrow" size={15} /></button>
         <span className="cfg-property-label">Posizione · metri</span>
         <div className="cfg-coordinates">{[x, y, z].map((value, index) => <span key={index}><b>{['X', 'Y', 'Z'][index]}</b>{value.toFixed(3)}</span>)}</div>
+
         {size && <small style={{ display: 'block', color: 'var(--cfg-text-muted)', fontSize: 11, marginTop: 10 }}>Dimensioni {(size[0] * 100).toFixed(1)} × {(size[1] * 100).toFixed(1)} × {(size[2] * 100).toFixed(1)} cm</small>}
         <span className="cfg-property-label">Rotazione</span>
         <div style={{ display: 'flex', gap: 8 }}>

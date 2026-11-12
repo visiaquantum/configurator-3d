@@ -24,12 +24,12 @@ test('a wall is composed by hand, saved and opened again', async ({ page }, test
   await expect(page.getByText('Compatibile').first()).toBeVisible()
 
   await page.locator('.cfg-inspector').getByRole('button', { name: /Aggancia nella scena|Scegli i punti/ }).click()
-  await page.getByText(/^Punti di aggancio/).click()
   await page.getByRole('button', { name: /Estremità sinistra/ }).click()
   await page.getByRole('button', { name: /Fianco YSI 03036 · 1080 ·/ }).first().click()
   const points = page.locator('.cfg-point-list button')
-  await expect(points.filter({ hasText: /^31Foro posteriore 1h/ })).toBeDisabled()
-  await points.filter({ hasText: /^4Foro anteriore 4h/ }).click()
+  await expect(points.filter({ hasText: 'Frontale esterno' })).toHaveCount(0)
+  await points.filter({ hasText: /Frontale interno 4h/ }).click()
+  await page.getByRole('button', { name: 'Conferma aggancio', exact: true }).click()
   await expect(page.getByText('Aggancio completato')).toBeVisible()
   await expect(page.getByText('3 componenti', { exact: true })).toBeVisible()
 

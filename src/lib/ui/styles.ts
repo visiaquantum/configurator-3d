@@ -27,7 +27,7 @@ ${themeStyles}
 .cfg-menu-action svg:last-child:not(:first-child) { margin-left: auto; }
 .cfg-menu-action:hover { background: var(--cfg-surface-hover); }
 .cfg-accent { color: var(--cfg-accent); background: var(--cfg-accent-soft); }
-.cfg-attachment-panel { position: absolute; left: 16px; top: 94px; width: 310px; max-width: calc(100% - 32px); max-height: calc(100% - 114px); overflow: auto; z-index: 20; padding: 18px; }
+.cfg-attachment-panel { position: absolute; left: 16px; top: 132px; width: 310px; max-width: calc(100% - 32px); max-height: calc(100% - 148px); overflow: auto; z-index: 20; padding: 18px; }
 .cfg-attachment-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
 .cfg-mode-badge { display: inline-flex; align-items: center; gap: 7px; color: var(--cfg-accent); font-size: 11px; font-weight: 650; letter-spacing: 1.3px; }
 .cfg-steps { display: flex; padding: 0; margin: 0 0 22px; list-style: none; gap: 8px; }
@@ -44,6 +44,11 @@ ${themeStyles}
 .cfg-error-text { color: var(--cfg-error); }
 .cfg-warning-text { display: block; color: var(--cfg-warning); font-size: 12px; line-height: 1.5; margin-top: 12px; }
 .cfg-point-list { border-top: 1px solid var(--cfg-line); margin-top: 16px; padding-top: 12px; font-size: 12px; color: var(--cfg-text-muted); }
+.cfg-point-filter { display: flex; align-items: center; gap: 8px; margin-top: 12px; font-size: 12px; }
+.cfg-confirm-attachment { width: 100%; margin-top: 14px; }
+.cfg-point-list button[aria-pressed=true] { border-color: var(--cfg-accent); background: var(--cfg-accent-soft); }
+.cfg-snap-step small { display: block; color: var(--cfg-text-muted); font-size: 11px; margin-top: 8px; }
+@media (pointer: coarse) { .cfg-attachment-panel button, .cfg-inspector button, .cfg-point-list summary { min-height: 44px; touch-action: manipulation; } }
 .cfg-point-list summary { cursor: pointer; padding: 4px 0; }
 .cfg-point-list > div { max-height: 160px; overflow: auto; display: grid; gap: 4px; margin-top: 10px; }
 .cfg-point-list button { display: flex; align-items: center; gap: 8px; width: 100%; border: 1px solid var(--cfg-line); border-radius: 7px; background: var(--cfg-surface-muted); color: var(--cfg-text-secondary); font-size: 12px; padding: 8px; cursor: pointer; text-align: left; }
@@ -77,5 +82,5 @@ ${themeStyles}
 .cfg-export-menu button { text-align: left; }
 .cfg-empty-hint { position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 48px); padding: 9px 14px; background: var(--cfg-surface); border: 1px solid var(--cfg-line); border-radius: 24px; color: var(--cfg-text-secondary); font-size: 12px; white-space: nowrap; pointer-events: none; }
 @media (max-width: 700px) { .cfg-empty-hint { display: none; } .cfg-attachment-panel { width: 280px; padding: 14px; } }
-@container (max-width: 600px) { .cfg-view-controls { max-width: 220px; } .cfg-view-controls > div:first-child { flex-wrap: wrap; } .cfg-export-toolbar > button, .cfg-export-toolbar > div > button { font-size: 0 !important; width: 36px; padding: 8px; gap: 0; } .cfg-attachment-panel { top: 126px; max-height: calc(100% - 142px); } .cfg-inspector-column { max-height: calc(100% - 138px) !important; } }
+@container (max-width: 600px) { .cfg-view-controls { max-width: 220px; } .cfg-view-controls > div:first-child { flex-wrap: wrap; } .cfg-export-toolbar > button, .cfg-export-toolbar > div > button { font-size: 0 !important; width: 36px; padding: 8px; gap: 0; } .cfg-attachment-panel { top: 176px; max-height: calc(100% - 192px); } .cfg-inspector-column { max-height: calc(100% - 176px) !important; } }
 `

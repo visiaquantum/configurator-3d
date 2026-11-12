@@ -1,8 +1,8 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { selectAssemblyView } from '../state/selectors'
-import { attachmentPointStates, attachmentPoints, attachmentTargetIds, attachmentTargetStates, backAttachment, chooseAttachmentPoint, chooseAttachmentTarget, computeAttachmentPreview } from '../scene/attachment'
+import { attachmentPointStates, attachmentPoints, attachmentTargetIds, attachmentTargetStates, backAttachment, chooseAttachmentTarget, computeAttachmentPreview, selectAttachmentPoint, confirmAttachment } from '../scene/attachment'
 import type { AttachmentPointState } from '../scene/attachment'
 import { snapPointLabel, snapsForItem } from '../scene/mating'
 import { pairSpacingOptions } from '../assembly/pairSpacing'
@@ -20,6 +20,7 @@ const steps = ['Punto iniziale', 'Destinatario', 'Punto finale']
 
 export function AttachmentOverlay() {
   const store = useConfiguratorStoreApi()
+  const [showUnavailable, setShowUnavailable] = useState(false)
   const view = useConfiguratorStore(useShallow(selectAssemblyView))
   const interactionNotice = useConfiguratorStore((value) => value.interactionNotice)
   // Actions never change; reading them from the live state keeps the view the only subscription.
@@ -65,14 +66,15 @@ export function AttachmentOverlay() {
     ? pairSpacingOptions(targetItem.catalogId, { catalog: state.catalog, itemSnaps: state.itemSnaps, itemRules: state.itemRules, manifest: state.assemblyManifest })
       .filter((option) => option.fits.includes(sourceLabel))
     : []
-  const hovered = points.find((point) => point.id === interaction.hoveredPointId)
-  const preview = interaction.stage === 'point' && interaction.sourcePointId && interaction.targetItemId && interaction.hoveredPointId
-    ? computeAttachmentPreview(state, source.id, interaction.sourcePointId, interaction.targetItemId, interaction.hoveredPointId) : null
+  const previewPointId = interaction.selectedPointId ?? interaction.hoveredPointId
+  const hovered = points.find((point) => point.id === previewPointId)
+  const preview = interaction.stage === 'point' && interaction.sourcePointId && interaction.targetItemId && previewPointId
+    ? computeAttachmentPreview(state, source.id, interaction.sourcePointId, interaction.targetItemId, previewPointId) : null
   const targets = attachmentTargetIds(state)
   const hoveredItem = state.project?.items.find((item) => item.id === interaction.hoveredItemId)
   const title = interaction.stage === 'source' ? 'Scegli il punto sul componente' : interaction.stage === 'target' ? 'Scegli a quale pezzo agganciarlo' : 'Scegli il punto di destinazione'
-  const hint = interaction.stage === 'source' ? 'Clicca un punto azzurro nella scena.' : interaction.stage === 'target'
-    ? `${targets.size} component${targets.size === 1 ? 'e compatibile' : 'i compatibili'}. Passa sopra un pezzo e clicca per sceglierlo.` : 'Passa su un punto per vedere l’anteprima. Clicca per agganciare.'
+  const hint = interaction.stage === 'source' ? 'Clicca o tocca un punto azzurro, oppure sceglilo dall’elenco.' : interaction.stage === 'target'
+    ? `${targets.size} component${targets.size === 1 ? 'e compatibile' : 'i compatibili'}. Clicca o tocca un pezzo, oppure sceglilo dall’elenco.` : 'Clicca o tocca un punto, controlla l’anteprima e conferma l’aggancio.'
   return <div className="cfg-attachment-panel" aria-label="Modalità aggancio">
     <div className="cfg-attachment-heading"><span className="cfg-mode-badge"><Icon name="link" size={15} />AGGANCIO</span><button className="cfg-icon-button" aria-label="Annulla aggancio" title="Annulla aggancio (Esc)" onClick={() => state.setAttachment(null)}><Icon name="close" /></button></div>
     <ol className="cfg-steps">{steps.map((step, number) => <li key={step} className={number === index ? 'active' : number < index ? 'done' : ''}><span>{number < index ? <Icon name="check" size={12} /> : number + 1}</span>{step}</li>)}</ol>
@@ -86,7 +88,8 @@ export function AttachmentOverlay() {
     {interaction.stage === 'target' && targets.size === 0 && <small className="cfg-warning-text">Nessun destinatario disponibile per questo punto. Torna indietro per scegliere un altro punto, oppure annulla e aggiungi un componente compatibile.</small>}
     {spacings.length > 0 && <div className="cfg-pair-suggestion"><small>Il fianco non ha ancora il gemello: crea la coppia alla campata di questo componente.</small>
       {spacings.map((option) => <button key={option.distance} className="cfg-button" onClick={() => setMirrorPairDistance(store, targetItem!.id, option.distance)}>Crea coppia · campata {formatCm(option.distance)} cm</button>)}</div>}
-    <details className="cfg-point-list" open={interaction.stage === 'point'}><summary>{interaction.stage === 'target' ? `Componenti nella scena (${targets.size} compatibili)` : `Punti di aggancio (${points.length} liberi su ${pointStates.length})`}</summary><div>
+    {interaction.stage === 'point' && <label className="cfg-point-filter"><input type="checkbox" checked={showUnavailable} onChange={(event) => setShowUnavailable(event.target.checked)} />Mostra anche i punti non compatibili</label>}
+    <details className="cfg-point-list" open><summary>{interaction.stage === 'target' ? `Componenti nella scena (${targets.size} compatibili)` : `Punti di aggancio (${points.length} liberi su ${pointStates.length})`}</summary><div>
       {interaction.stage === 'target' ? targetStates.map((entry) => {
         const item = state.project!.items.find((candidate) => candidate.id === entry.itemId)!
         const label = `${own(state.catalog, item.catalogId)?.label ?? item.catalogId} · ${item.id.slice(0, 4)}`
@@ -94,11 +97,12 @@ export function AttachmentOverlay() {
           ? <button key={item.id} onClick={() => chooseAttachmentTarget(store, item.id)} onMouseEnter={() => state.setAttachment({ ...interaction, hoveredItemId: item.id })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredItemId: undefined })}><Icon name="cube" size={15} />{label}</button>
           : <button key={item.id} disabled title={entry.message}><Icon name="cube" size={15} />{label}<em className="cfg-point-status">{entry.message}</em></button>
       })
-        : pointStates.map((entry, number) => <button key={entry.point.id} disabled={entry.status !== 'free'} title={entry.message} data-status={entry.status}
+        : pointStates.filter((entry) => interaction.stage !== 'point' || showUnavailable || entry.status !== 'incompatible').map((entry, number) => <button key={entry.point.id} disabled={entry.status !== 'free'} title={entry.message} data-status={entry.status} aria-pressed={interaction.selectedPointId === entry.point.id}
           onMouseEnter={() => state.setAttachment({ ...interaction, hoveredPointId: entry.point.id, error: undefined })} onMouseLeave={() => state.setAttachment({ ...interaction, hoveredPointId: undefined })}
-          onFocus={() => state.setAttachment({ ...interaction, hoveredPointId: entry.point.id, error: undefined })} onClick={() => chooseAttachmentPoint(store, entry.point.id)}>
+          onFocus={() => state.setAttachment({ ...interaction, hoveredPointId: entry.point.id, error: undefined })} onClick={() => selectAttachmentPoint(store, entry.point.id)}>
           <span>{number + 1}</span>{snapPointLabel(entry.point)}{entry.heightMm !== null && <small className="cfg-point-height">h {entry.heightMm} mm</small>}<em className="cfg-point-status">{STATUS_LABELS[entry.status]}</em></button>)}
     </div></details>
+    {interaction.stage === 'point' && <button className="cfg-button cfg-primary cfg-confirm-attachment" disabled={!interaction.selectedPointId || !preview?.valid} onClick={() => confirmAttachment(store)}>Conferma aggancio</button>}
     <div className="cfg-attachment-footer"><button className="cfg-button cfg-quiet" disabled={index === 0} onClick={() => backAttachment(store)}><Icon name="back" size={16} />Indietro</button><span>Orbita la vista per vedere gli altri punti <kbd>Esc</kbd> per uscire</span></div>
   </div>
 }

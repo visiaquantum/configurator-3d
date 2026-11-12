@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { CatalogItem } from '../types'
+import { SnapRepeatsSchema } from './snapRepeats'
 
 export const CATALOG_SCHEMA_VERSION = 1
 
@@ -39,6 +40,7 @@ const CatalogItemSchema = z.object({
   scale: z.number().positive().optional(),
   autoSnapGrid: z.union([z.boolean(), AutoSnapGridOptionsSchema]).optional(),
   snapPoints: z.array(SnapPointSchema).optional(),
+  snapRepeats: SnapRepeatsSchema.optional(),
   mirrorPair: MirrorPairOptionsSchema.optional(),
   replaceSnapKinds: z.array(z.string().min(1)).optional(),
   snapDirections: z.record(z.string().min(1), NonZeroVec3Schema).optional(),

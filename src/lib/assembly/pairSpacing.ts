@@ -1,7 +1,9 @@
 import type { AssemblyManifest, CatalogItem, ItemRule, ItemSnapPoint } from '../types'
 import { DEFAULT_SNAP_TOLERANCE, connectorForSnap, connectorsCanMate, definitionFor } from './manifest'
-import { canMate } from '../scene/mating'
-import { MIRROR_PAIR_RULE, mirrorPairDistances, pairDistanceForSpan } from '../scene/mirrorPair'
+import { canMate, yawToMate } from '../scene/mating'
+import { rotateVector } from '../scene/geometry'
+import { MIRROR_PAIR_RULE, mirrorAxisOf, mirrorPairDistances, pairDistanceForSpan } from '../scene/mirrorPair'
+import type { Vec3 } from '../types'
 import { own } from '../util/record'
 
 export interface PairSpacingOption {
@@ -61,12 +63,18 @@ export function pairSpacingOptions(
         : canMate(seat.kind, point.kind)
     }
     const points = certifiedPoints(own(context.itemSnaps, part.id) ?? part.snapPoints ?? [], part.snapPoints)
-    for (const seat of own(context.catalog, catalogId)?.snapPoints ?? []) {
+    for (const seat of own(context.itemSnaps, catalogId) ?? own(context.catalog, catalogId)?.snapPoints ?? []) {
       const fitting = points.filter((point) => takes(seat, point))
       for (const a of fitting) {
         for (const b of fitting) {
           if (a === b) continue
-          const span = Math.hypot(a.position[0] - b.position[0], a.position[1] - b.position[1], a.position[2] - b.position[2])
+          const yaw = yawToMate(a.normal, seat.normal, 0)
+          const delta = rotateVector(a.position.map((value, i) => value - b.position[i]) as Vec3, [0, yaw ?? 0, 0])
+          const spanAxis = mirrorAxisOf(rule) === 'z' ? 2 : 0
+          // Points on different rows or on the same end do not define a bay.
+          if (yaw !== null && delta.some((value, axis) => axis !== spanAxis && Math.abs(value) > DEFAULT_SNAP_TOLERANCE)) continue
+          const span = yaw === null ? Math.hypot(...delta) : Math.abs(delta[spanAxis])
+          if (span <= DEFAULT_SNAP_TOLERANCE) continue
           const key = Math.round(pairDistanceForSpan(rule, span, seat.position) * 1000) / 1000
           if (key <= 0) continue
           const labels = seating.get(key) ?? []

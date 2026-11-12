@@ -2,7 +2,7 @@
   "version": 1,
   "products": [
     {
-      "catalogId": "ysi12836",
+      "catalogId": "ysi02436",
       "connectors": [
         {
           "id": "upright-shelf-seat",
@@ -21,8 +21,8 @@
           "clearance": [{ "id": "rail-slot", "center": [0, 0, -0.0132], "size": [0.06, 0.045, 0.032] }]
         }
       ],
-      "colliders": [{ "id": "upright-body", "center": [0, 0, 0], "size": [0.36, 1.008, 0.03] }],
-      "bom": { "code": "YSI12836", "label": "Montante YSI 12836" }
+      "colliders": [{ "id": "upright-body", "center": [0, 0, 0], "size": [0.36, 0.864, 0.03] }],
+      "bom": { "code": "YSI02436", "label": "Montante YSI 02436" }
     },
     {
       "catalogId": "xds40236km02",

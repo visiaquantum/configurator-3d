@@ -283,14 +283,20 @@ function sheetOverlaps(project: ProjectData, context: SampleContext, prepared: R
     ]) {
       const part = byId.get(partId)!
       const side = byId.get(sideId)!
-      const column = definitionFor(context.manifest, side.catalogId)?.holeColumns
+      const definition = definitionFor(context.manifest, side.catalogId)
+      const column = definition?.holeColumns
         ?.find((entry) => entry.sheet && new RegExp(`^${entry.id}-\\d+$`).test(sidePointId))
       const asset = own(prepared, part.catalogId)
-      if (!column?.sheet || !asset) continue
       const hole = snapsForItem(side, context.itemSnaps, context.itemRules).find((point) => point.id === sidePointId)!
+      const repeatedInside = hole?.kind.endsWith('_int') && definition?.snapRepeats?.some((row) => new RegExp(`^${row.id}-\\d+$`).test(sidePointId))
+      const sheetOutward = repeatedInside && hole.normal
+        ? hole.normal.map((value) => -value) as Vec3
+        : column?.sheet?.outward
+      if (!sheetOutward || !asset) continue
       const mirror = mirrorScaleFor(side, context.itemRules) ?? [1, 1, 1]
-      const length = Math.hypot(...column.sheet.outward)
-      const outward = rotateVector(column.sheet.outward.map((value, i) => value / length * mirror[i]) as Vec3, side.rotation)
+      const length = Math.hypot(...sheetOutward)
+      // Repeated marker normals already include the mirror; declared column normals do not.
+      const outward = rotateVector(sheetOutward.map((value, i) => value / length * (repeatedInside ? 1 : mirror[i])) as Vec3, side.rotation)
       const axis = [0, 1, 2].reduce((best, i) => Math.abs(outward[i]) > Math.abs(outward[best]) ? i : best, 0)
       const sign = Math.sign(outward[axis])
       const plane = worldPoint(side, hole.position, heightOf(side))[axis] * sign

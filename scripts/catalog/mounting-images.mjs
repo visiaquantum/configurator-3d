@@ -142,7 +142,10 @@ try {
     const ends = (project.connections ?? []).flatMap((connection) => [[connection.sourceItemId, connection.sourcePointId], [connection.targetItemId, connection.targetPointId]])
     for (const [sideId, pointId] of ends) {
       const side = project.items.find((item) => item.id === sideId)
-      const column = definitionFor(manifest, side.catalogId)?.holeColumns?.find((entry) => entry.sheet && pointId.startsWith(`${entry.id}-`))
+      const definition = definitionFor(manifest, side.catalogId)
+      const ownsPoint = (entry) => new RegExp(`^${entry.id}-\\d+$`).test(pointId)
+      const column = definition?.holeColumns?.find((entry) => entry.sheet && ownsPoint(entry)) ??
+        definition?.snapRepeats?.find((entry) => entry.snapId.endsWith('_int') && ownsPoint(entry))
       if (!column || seen.has(column.id) || side.mirrored) continue
       seen.add(column.id)
       const hole = snapsForItem(side, context.itemSnaps, context.itemRules).find((point) => point.id === pointId)

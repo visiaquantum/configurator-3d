@@ -17,6 +17,7 @@ export interface AttachmentInteraction {
   targetItemId?: string
   hoveredItemId?: string
   hoveredPointId?: string
+  selectedPointId?: string
   menuPosition?: [number, number]
   previousXray: boolean
   error?: string
@@ -188,12 +189,24 @@ export function chooseAttachmentTarget(store: ConfiguratorStore, itemId: string)
   return true
 }
 
+/** Destination selection previews first, so a touch never commits an unseen pose. */
+export function selectAttachmentPoint(store: ConfiguratorStore, pointId: string): void {
+  const interaction = store.getState().attachment
+  if (interaction?.stage !== 'point') { chooseAttachmentPoint(store, pointId); return }
+  store.getState().setAttachment({ ...interaction, selectedPointId: pointId, hoveredPointId: undefined, error: undefined })
+}
+
+export function confirmAttachment(store: ConfiguratorStore): boolean {
+  const pointId = store.getState().attachment?.selectedPointId
+  return !!pointId && chooseAttachmentPoint(store, pointId)
+}
+
 export function backAttachment(store: ConfiguratorStore): void {
   const state = store.getState()
   const interaction = state.attachment
   if (!interaction) return
   state.setAttachment({ ...interaction, stage: interaction.stage === 'point' ? 'target' : 'source',
     ...(interaction.stage !== 'point' ? { sourcePointId: undefined } : {}),
-    targetItemId: undefined, hoveredPointId: undefined, hoveredItemId: undefined, error: undefined })
+    targetItemId: undefined, selectedPointId: undefined, hoveredPointId: undefined, hoveredItemId: undefined, error: undefined })
   if (interaction.stage === 'menu') state.setXrayEnabled(true)
 }

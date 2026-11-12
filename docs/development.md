@@ -19,7 +19,7 @@ npm run build:demo
 
 `tests/commands.test.mjs` verifica senza React né WebGL le regole di dominio estratte dai componenti: mappa delle scorciatoie, comandi dell'Inspector (rotazione, ancoraggio al vano, sgancio, distanza della coppia specchiata, aggiunta di prodotti), opzioni di distanza calcolate dal catalogo e compatibilità dichiarata dal manifest.
 
-`tests/product-metadata.test.mjs` copre la preparazione condivisa dei GLB, le coordinate di collider e snap, la cache per configurazione, l'isolamento tra store e la migrazione dei progetti legacy nei diversi ordini di caricamento. Include i modelli reali YSI12836 e KIT01.
+`tests/product-metadata.test.mjs` copre la preparazione condivisa dei GLB, le coordinate di collider e snap, la cache per configurazione, l'isolamento tra store e la migrazione dei progetti legacy nei diversi ordini di caricamento. Include i modelli reali YSI02436 e KIT01.
 
 I prodotti usati nella scena vengono caricati per `catalogId`. `scene/productAsset.ts` prepara un modello condiviso senza modificarne la sorgente; `ProductInstances` pubblica dimensioni, snap e regole insieme attraverso `hydrateProduct`, prima di montare le istanze. Ogni istanza mantiene materiali e trasformazioni propri. La telemetria `asset-load` dei prodotti segnala il caricamento per prodotto, anziché per pezzo inserito.
 
@@ -107,3 +107,26 @@ PNG e GLB richiedono modelli caricati senza errori. PDF/BOM richiedono anche un 
 Il GLB contiene le geometrie esportabili, esclude wireframe e marker dell'interfaccia, conserva i transform mondiali e non modifica materiali o oggetti live. Il PDF divide descrizioni lunghe e tabelle su più pagine, ripetendo l'intestazione. L'helper `exportProjectPDF` usato direttamente produce un documento con stato “verifica tecnica non eseguita”: il chiamante può indicare `validated: true` solo dopo aver verificato asset, manifest e geometria correnti.
 
 La scena usa un ambiente procedurale locale a bassa risoluzione con illuminazione diffusa e pannelli di riflessione su tutti i lati. Passare `environmentUrl` per un HDR servito dall'host oppure `null` per disabilitare i riflessi; le luci dirette restano attive. La demo passa esplicitamente il proprio HDR locale. Nessun URL `/hdr/...` viene richiesto implicitamente dalla libreria. `onTelemetry` è facoltativo e locale: l'host decide se e dove inviare gli eventi.
+
+### Aggancio con mouse/touch e scorrimento sui fori
+
+Il flusso guidato seleziona punto iniziale, destinatario e punto finale.
+La selezione finale tramite scena o elenco apre un'anteprima persistente;
+«Conferma aggancio» rivalida e registra l'operazione. Spostare il puntatore
+fuori dal punto non cambia la destinazione selezionata. L'elenco mostra
+inizialmente i punti compatibili, con un filtro per includere quelli esclusi.
+Il picking usa il centro proiettato più vicino; un trascinamento sul marker
+non viene interpretato come una scelta. Su touch i bersagli sono più ampi.
+
+Il pannello del componente montato espone «Sposta su» / «Sposta giù».
+`snapStepPreview` separa il componente dai supporti con serie `snapRepeats`,
+calcola il foro immediatamente adiacente della stessa serie per ciascun
+aggancio e verifica capacità, compatibilità, collisioni e contenimento.
+`stepItemSnap` registra posizioni e agganci con una sola operazione undo.
+I fianchi e gli altri prodotti appesi restano fermi; i componenti collegati
+al pezzo spostato seguono il suo movimento. Un foro occupato, un'estremità,
+un passo non verticale o discordante, un vincolo o un errore di validazione
+blocca l'intero comando. Non si saltano fori. Sono preservati INT/EST,
+connettori, doppio aggancio e specchiatura. Il comando opera anche se il
+supporto è bloccato, purché i componenti effettivamente spostati siano liberi.
+Le sedi specifiche del KIT prive di una serie ripetuta non offrono questo comando.

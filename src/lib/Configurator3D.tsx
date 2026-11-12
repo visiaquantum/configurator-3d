@@ -272,7 +272,7 @@ const inspectorColumnStyle: React.CSSProperties = {
   position: 'absolute',
   left: 12,
   bottom: 12,
-  maxHeight: 'calc(100% - 96px)',
+  maxHeight: 'calc(100% - 132px)',
   maxWidth: 'calc(100% - 24px)',
   display: 'flex',
   flexDirection: 'column',

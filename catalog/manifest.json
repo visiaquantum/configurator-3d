@@ -21,37 +21,9 @@
       ],
       "holeColumns": [
         {
-          "id": "front",
-          "kind": "frontale",
-          "label": "Foro anteriore",
-          "first": [
-            0.363,
-            0.018,
-            -0.017
-          ],
-          "pitch": [
-            0,
-            0.036,
-            0
-          ],
-          "normal": [
-            0,
-            0,
-            -1
-          ],
-          "sheet": {
-            "outward": [
-              1,
-              0,
-              0
-            ],
-            "thickness": 0.0015
-          }
-        },
-        {
           "id": "back",
-          "kind": "posteriore",
-          "label": "Foro posteriore",
+          "kind": "posteriore_int",
+          "label": "Posteriore interno",
           "first": [
             0,
             0.018,
@@ -63,9 +35,9 @@
             0
           ],
           "normal": [
+            1,
             0,
-            0,
-            -1
+            0
           ],
           "sheet": {
             "outward": [
@@ -86,7 +58,7 @@
       },
       "assetCorrections": [
         {
-          "asset": "0ac3ce14033d0568",
+          "asset": "79abe7daccd52677",
           "reason": "Il GLB ha un solo marker SNAP_SOVRAPPOSIZIONE, senza nome stabile, e nessun punto di appoggio superiore: base, testa e appoggio sono dichiarati qui. I fori li genera la colonna di fori.",
           "points": [
             {
@@ -139,17 +111,8 @@
       ],
       "connectors": [
         {
-          "id": "side-front-hole",
-          "snapKind": "frontale",
-          "compatibleWith": [
-            "bay-end",
-            "angle-end"
-          ],
-          "capacity": 1
-        },
-        {
           "id": "side-back-hole",
-          "snapKind": "posteriore",
+          "snapKind": "posteriore_int",
           "compatibleWith": [
             "angle-end"
           ],
@@ -176,6 +139,42 @@
           "snapKind": "appoggio",
           "compatibleWith": [
             "box-rest"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale_int",
+          "compatibleWith": [
+            "bay-end",
+            "angle-end",
+            "shelf-face",
+            "rail-face",
+            "shelf-front"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-lateral-int",
+          "snapKind": "laterale_int",
+          "compatibleWith": [
+            "shelf-side"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-front-ext",
+          "snapKind": "frontale_est",
+          "compatibleWith": [
+            "accessory-face"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-lateral-ext",
+          "snapKind": "laterale_est",
+          "compatibleWith": [
+            "accessory-side"
           ],
           "capacity": 1
         }
@@ -201,8 +200,72 @@
       },
       "review": {
         "confirmed": false,
-        "notes": "Passo 36 mm, asse fori 17 mm dalla faccia esterna e lamiera 1.5 mm ricavati dal GLB e dal preventivo 99003819: da confermare."
-      }
+        "notes": "Passo 36 mm, asse fori 17 mm dalla faccia esterna e lamiera 1.5 mm ricavati dal GLB e dal preventivo 99003819: da confermare. Ripetizione dei marker INT/EST ogni 36 mm; prodotti di allestimento su INT, accessori su EST."
+      },
+      "directions": {
+        "frontale_int": [
+          -1,
+          0,
+          0
+        ],
+        "frontale_est": [
+          1,
+          0,
+          0
+        ],
+        "laterale_int": [
+          0,
+          0,
+          -1
+        ],
+        "laterale_est": [
+          0,
+          0,
+          1
+        ]
+      },
+      "snapRepeats": [
+        {
+          "id": "front",
+          "snapId": "frontale_int",
+          "label": "Frontale interno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "front-ext",
+          "snapId": "frontale_est",
+          "label": "Frontale esterno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "lateral-int",
+          "snapId": "laterale_int",
+          "label": "Laterale interno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "lateral-ext",
+          "snapId": "laterale_est",
+          "label": "Laterale esterno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        }
+      ]
     },
     {
       "catalogId": "ysi01131",
@@ -217,37 +280,9 @@
       ],
       "holeColumns": [
         {
-          "id": "front",
-          "kind": "frontale",
-          "label": "Foro anteriore",
-          "first": [
-            0.313,
-            0.018,
-            -0.017
-          ],
-          "pitch": [
-            0,
-            0.036,
-            0
-          ],
-          "normal": [
-            0,
-            0,
-            -1
-          ],
-          "sheet": {
-            "outward": [
-              1,
-              0,
-              0
-            ],
-            "thickness": 0.0015
-          }
-        },
-        {
           "id": "back",
-          "kind": "posteriore",
-          "label": "Foro posteriore",
+          "kind": "posteriore_int",
+          "label": "Posteriore interno",
           "first": [
             0,
             0.018,
@@ -259,9 +294,9 @@
             0
           ],
           "normal": [
+            1,
             0,
-            0,
-            -1
+            0
           ],
           "sheet": {
             "outward": [
@@ -282,7 +317,7 @@
       },
       "assetCorrections": [
         {
-          "asset": "6381f3b316fb27d2",
+          "asset": "a9c4fb895bc45dbc",
           "reason": "Il GLB ha un solo marker SNAP_SOVRAPPOSIZIONE, senza nome stabile, e nessun punto di appoggio superiore: base, testa e appoggio sono dichiarati qui. I fori li genera la colonna di fori.",
           "points": [
             {
@@ -335,17 +370,8 @@
       ],
       "connectors": [
         {
-          "id": "side-front-hole",
-          "snapKind": "frontale",
-          "compatibleWith": [
-            "bay-end",
-            "angle-end"
-          ],
-          "capacity": 1
-        },
-        {
           "id": "side-back-hole",
-          "snapKind": "posteriore",
+          "snapKind": "posteriore_int",
           "compatibleWith": [
             "angle-end"
           ],
@@ -374,6 +400,42 @@
             "box-rest"
           ],
           "capacity": 1
+        },
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale_int",
+          "compatibleWith": [
+            "bay-end",
+            "angle-end",
+            "shelf-face",
+            "rail-face",
+            "shelf-front"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-lateral-int",
+          "snapKind": "laterale_int",
+          "compatibleWith": [
+            "shelf-side"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-front-ext",
+          "snapKind": "frontale_est",
+          "compatibleWith": [
+            "accessory-face"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-lateral-ext",
+          "snapKind": "laterale_est",
+          "compatibleWith": [
+            "accessory-side"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
@@ -397,8 +459,72 @@
       },
       "review": {
         "confirmed": false,
-        "notes": "Passo 36 mm, asse fori 17 mm dalla faccia esterna e lamiera 1.5 mm ricavati dal GLB e dal preventivo 99003819: da confermare."
-      }
+        "notes": "Passo 36 mm, asse fori 17 mm dalla faccia esterna e lamiera 1.5 mm ricavati dal GLB e dal preventivo 99003819: da confermare. Ripetizione dei marker INT/EST ogni 36 mm; prodotti di allestimento su INT, accessori su EST."
+      },
+      "directions": {
+        "frontale_int": [
+          -1,
+          0,
+          0
+        ],
+        "frontale_est": [
+          1,
+          0,
+          0
+        ],
+        "laterale_int": [
+          0,
+          0,
+          -1
+        ],
+        "laterale_est": [
+          0,
+          0,
+          1
+        ]
+      },
+      "snapRepeats": [
+        {
+          "id": "front",
+          "snapId": "frontale_int",
+          "label": "Frontale interno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "front-ext",
+          "snapId": "frontale_est",
+          "label": "Frontale esterno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "lateral-int",
+          "snapId": "laterale_int",
+          "label": "Laterale interno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "lateral-ext",
+          "snapId": "laterale_est",
+          "label": "Laterale esterno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        }
+      ]
     },
     {
       "catalogId": "kdw40236",
@@ -429,9 +555,9 @@
                 0.17925
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -444,9 +570,9 @@
                 0.17925
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -515,9 +641,9 @@
                 0.17925
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -530,9 +656,9 @@
                 0.17925
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -601,9 +727,9 @@
                 0.17925
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -616,9 +742,9 @@
                 0.17925
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -687,9 +813,9 @@
                 0.17925
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -702,9 +828,9 @@
                 0.17925
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -771,9 +897,9 @@
                 0.153
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -786,9 +912,9 @@
                 0.153
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -855,9 +981,9 @@
                 0.02225
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -870,9 +996,9 @@
                 0.02225
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -972,9 +1098,9 @@
                 0.49
               ],
               "normal": [
+                1,
                 0,
-                0,
-                1
+                0
               ]
             },
             {
@@ -987,9 +1113,9 @@
                 -0.49
               ],
               "normal": [
+                1,
                 0,
-                0,
-                -1
+                0
               ]
             }
           ]
@@ -1107,9 +1233,9 @@
                 -0.00045
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -1122,9 +1248,9 @@
                 -0.00045
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -1191,9 +1317,9 @@
                 -0.0023
               ],
               "normal": [
-                -1,
                 0,
-                0
+                0,
+                1
               ]
             },
             {
@@ -1206,9 +1332,9 @@
                 -0.0023
               ],
               "normal": [
-                1,
                 0,
-                0
+                0,
+                1
               ]
             }
           ],
@@ -1249,24 +1375,24 @@
       }
     },
     {
-      "catalogId": "ysi12836",
-      "code": "YSI12836",
-      "label": "Montante YSI 12836",
+      "catalogId": "ysi02436",
+      "code": "YSI02436",
+      "label": "Fianco YSI 02436 · 864",
       "category": "Montanti",
-      "description": "Montante forato 1008 × 360 mm in coppia specchiata.",
+      "description": "Fianco forato 864 × 360 mm in coppia specchiata.",
       "instructions": [
         "Creare la coppia specchiata alla distanza del ripiano da montare.",
         "Agganciare ripiani e traverse ai punti del montante."
       ],
       "assetCorrections": [
         {
-          "asset": "e5263de85ac7e386",
-          "reason": "Il GLB ha marker solo al piede: altezze di ripiani e traverse lette da KIT01 (traverse 1.3 mm più in basso per i pezzi singoli, più spessi di 1 mm), normali verso l’interno perché il ripiano attraversa il montante.",
+          "asset": "8cb639f764d5d1d0",
+          "reason": "GLB YSI02436: marker interni ed esterni al piede; colonne anteriori e posteriori a passo 36 mm. Sedi ripiani e traverse mantenute alle quote del KIT01 (traverse −1.3 mm per i pezzi singoli), con normali verso l’interno.",
           "points": [
             {
               "id": "shelf-top",
               "label": "Ripiano superiore",
-              "kind": "laterale",
+              "kind": "laterale_seat_int",
               "position": [
                 0.18,
                 0.612,
@@ -1281,7 +1407,7 @@
             {
               "id": "shelf-bottom",
               "label": "Ripiano inferiore",
-              "kind": "laterale",
+              "kind": "laterale_seat_int",
               "position": [
                 0.18,
                 0.36,
@@ -1296,7 +1422,7 @@
             {
               "id": "rail-xmax",
               "label": "Traversa destra",
-              "kind": "frontale",
+              "kind": "frontale_seat_int",
               "position": [
                 0.335,
                 0.305,
@@ -1311,7 +1437,7 @@
             {
               "id": "rail-xmin",
               "label": "Traversa sinistra",
-              "kind": "frontale",
+              "kind": "frontale_seat_int",
               "position": [
                 0.025,
                 0.305,
@@ -1328,38 +1454,8 @@
       ],
       "connectors": [
         {
-          "id": "upright-holes",
-          "snapKind": "foro",
-          "compatibleWith": [
-            "shelf-face",
-            "accessory-face"
-          ],
-          "capacity": 1,
-          "insertionDepth": 0.04,
-          "insertionAxis": [
-            0,
-            0,
-            1
-          ],
-          "clearance": [
-            {
-              "id": "hole-seat",
-              "center": [
-                0,
-                0,
-                0
-              ],
-              "size": [
-                0.08,
-                0.12,
-                0.08
-              ]
-            }
-          ]
-        },
-        {
           "id": "upright-shelf-seat",
-          "snapKind": "laterale",
+          "snapKind": "laterale_seat_int",
           "compatibleWith": [
             "shelf-end"
           ],
@@ -1383,7 +1479,7 @@
         },
         {
           "id": "upright-rail-hook",
-          "snapKind": "frontale",
+          "snapKind": "frontale_seat_int",
           "compatibleWith": [
             "rail-end"
           ],
@@ -1404,30 +1500,168 @@
               ]
             }
           ]
+        },
+        {
+          "id": "side-back-hole",
+          "snapKind": "posteriore_int",
+          "compatibleWith": [
+            "angle-end"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-front-hole",
+          "snapKind": "frontale_int",
+          "compatibleWith": [
+            "bay-end",
+            "angle-end",
+            "shelf-face",
+            "rail-face",
+            "shelf-front"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-lateral-int",
+          "snapKind": "laterale_int",
+          "compatibleWith": [
+            "shelf-side"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-front-ext",
+          "snapKind": "frontale_est",
+          "compatibleWith": [
+            "accessory-face"
+          ],
+          "capacity": 1
+        },
+        {
+          "id": "side-lateral-ext",
+          "snapKind": "laterale_est",
+          "compatibleWith": [
+            "accessory-side"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
         {
-          "id": "upright-body",
+          "id": "side-web",
           "center": [
             0,
             0,
-            0
+            0.01425
           ],
           "size": [
             0.36,
-            1.008,
-            0.03
+            0.864,
+            0.0015
           ]
         }
       ],
       "bom": {
-        "code": "YSI12836",
-        "label": "Montante YSI 12836"
+        "code": "YSI02436",
+        "label": "Fianco YSI 02436 864x360"
       },
       "review": {
-        "confirmed": false
-      }
+        "confirmed": false,
+        "notes": "Colonne anteriori e posteriori e sedi del KIT01 riportate sul nuovo fianco da 864 mm: regole meccaniche da confermare. Ripetizione dei marker INT/EST ogni 36 mm; prodotti di allestimento su INT, accessori su EST."
+      },
+      "directions": {
+        "frontale_int": [
+          -1,
+          0,
+          0
+        ],
+        "frontale_est": [
+          1,
+          0,
+          0
+        ],
+        "laterale_int": [
+          0,
+          0,
+          -1
+        ],
+        "laterale_est": [
+          0,
+          0,
+          1
+        ]
+      },
+      "mirrorPair": {
+        "axis": [
+          0,
+          0,
+          -1
+        ]
+      },
+      "holeColumns": [
+        {
+          "id": "back",
+          "kind": "posteriore_int",
+          "label": "Posteriore interno",
+          "first": [
+            0,
+            0.018,
+            -0.017
+          ],
+          "pitch": [
+            0,
+            0.036,
+            0
+          ],
+          "normal": [
+            1,
+            0,
+            0
+          ]
+        }
+      ],
+      "snapRepeats": [
+        {
+          "id": "front",
+          "snapId": "frontale_int",
+          "label": "Frontale interno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "front-ext",
+          "snapId": "frontale_est",
+          "label": "Frontale esterno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "lateral-int",
+          "snapId": "laterale_int",
+          "label": "Laterale interno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        },
+        {
+          "id": "lateral-ext",
+          "snapId": "laterale_est",
+          "label": "Laterale esterno",
+          "pitch": [
+            0,
+            0.036,
+            0
+          ]
+        }
+      ]
     },
     {
       "catalogId": "xds40231km02",
@@ -1440,7 +1674,7 @@
           "id": "shelf-face",
           "snapKind": "frontale",
           "compatibleWith": [
-            "upright-holes"
+            "side-front-hole"
           ],
           "capacity": 1,
           "insertionDepth": 0.04,
@@ -1504,7 +1738,7 @@
             {
               "id": "end-a",
               "label": "Estremità A",
-              "kind": "laterale",
+              "kind": "laterale_seat_int",
               "position": [
                 -0.5065,
                 0.03383,
@@ -1519,7 +1753,7 @@
             {
               "id": "end-b",
               "label": "Estremità B",
-              "kind": "laterale",
+              "kind": "laterale_seat_int",
               "position": [
                 0.5065,
                 0.03383,
@@ -1537,12 +1771,29 @@
       "connectors": [
         {
           "id": "shelf-end",
-          "snapKind": "laterale",
+          "snapKind": "laterale_seat_int",
           "compatibleWith": [
             "upright-shelf-seat"
           ],
           "capacity": 1,
           "insertionDepth": 0.035
+        },
+        {
+          "id": "shelf-side",
+          "snapKind": "laterale",
+          "compatibleWith": [
+            "side-lateral-int"
+          ],
+          "capacity": 1,
+          "insertionDepth": 0.035
+        },
+        {
+          "id": "shelf-front",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
@@ -1582,7 +1833,7 @@
             {
               "id": "end-a",
               "label": "Estremità A",
-              "kind": "frontale",
+              "kind": "frontale_seat_int",
               "position": [
                 -0.025,
                 -0.0165,
@@ -1597,7 +1848,7 @@
             {
               "id": "end-b",
               "label": "Estremità B",
-              "kind": "frontale",
+              "kind": "frontale_seat_int",
               "position": [
                 -0.025,
                 -0.0165,
@@ -1615,12 +1866,20 @@
       "connectors": [
         {
           "id": "rail-end",
-          "snapKind": "frontale",
+          "snapKind": "frontale_seat_int",
           "compatibleWith": [
             "upright-rail-hook"
           ],
           "capacity": 1,
           "insertionDepth": 0.03
+        },
+        {
+          "id": "rail-face",
+          "snapKind": "frontale",
+          "compatibleWith": [
+            "side-front-hole"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
@@ -1657,7 +1916,7 @@
           "id": "accessory-face",
           "snapKind": "frontale",
           "compatibleWith": [
-            "upright-holes"
+            "side-front-ext"
           ],
           "capacity": 1,
           "insertionDepth": 0.03,
@@ -1712,7 +1971,16 @@
       "label": "PTBM-26",
       "category": "Accessori",
       "description": "Accessorio 260 × 140 × 90 mm. Regole di aggancio da definire con il cliente: si posiziona libero.",
-      "connectors": [],
+      "connectors": [
+        {
+          "id": "accessory-side",
+          "snapKind": "laterale",
+          "compatibleWith": [
+            "side-lateral-ext"
+          ],
+          "capacity": 1
+        }
+      ],
       "colliders": [
         {
           "id": "accessory-body",

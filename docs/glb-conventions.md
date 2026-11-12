@@ -44,7 +44,7 @@ resta utilizzabile senza la funzione.
 
 ## 2. Regola `mirror-pair` (coppia specchiata)
 
-Prodotti come **YSI12836** esistono solo in coppia: due istanze identiche,
+Prodotti come **YSI02436** esistono solo in coppia: due istanze identiche,
 specchiate, a distanze discrete (es. 30 / 60 / 90 cm), formano un blocco unico.
 
 ### Dichiarazione
@@ -67,8 +67,8 @@ modi (vale per tutte le regole, v. §1):
 - con `params.axis: [x, y, z]` negli extras (override esplicito, comodo in
   post-processing quando il CAD non controlla l'orientamento del marker).
 
-Esempio reale (nodo iniettato in `public/models/MONTANTI/YSI12836.glb`, figlio del
-nodo prodotto): lo YSI si accoppia **frontalmente** verso −Z, quindi il nodo
+Esempio storico (nodo iniettato nel precedente `YSI12836.glb`, sostituito
+nel catalogo da `YSI02436.glb`): lo YSI si accoppia **frontalmente** verso −Z, quindi il nodo
 sta sulla faccia a −Z e dichiara `axis: [0, 0, -1]`:
 
 ```json
@@ -88,7 +88,8 @@ sta sulla faccia a −Z e dichiara `axis: [0, 0, -1]`:
 Per gli export CAD che non scrivono extras basta il nome del nodo:
 `RULE_MIRRORPAIR_D254.507.761.1014.1268.1521` dichiara la coppia con le
 distanze in **millimetri** separate da punto dopo `_D` (i suffissi d'istanza
-`-N` / `_N` sono ignorati). È il formato dei fianchi `YSI03036` / `YSI01131`.
+`-N` / `_N` sono ignorati). È il formato dei fianchi `YSI03036` / `YSI01131` / `YSI02436`.
+Il manifest corrente orienta il loro asse di coppia verso −Z.
 
 Il nome non può portare l'asse: vale il +X locale del nodo, che di solito
 non è quello giusto. La voce di catalogo lo corregge con `mirrorPair`:
@@ -367,3 +368,39 @@ Gli ancoraggi dichiarati nel manifest del veicolo prevalgono su quelli del GLB.
    `io/rules.ts`; aggiungere il modulo in `src/lib/scene/`).
 3. Documentare qui: extras, semantica geometrica del nodo (cosa significano
    posizione e asse), comportamento runtime.
+
+## Ripetizione dai marker INT/EST dei fianchi
+
+I fianchi YSI03036, YSI02436 e YSI01131 usano `snapRepeats` nel manifest.
+La serie parte dal centro del marker nel GLB e ne conserva tipo, profondità e
+direzione; si ripete ogni 36 mm fino all'ultimo centro dentro il corpo.
+
+```json
+{
+  "snapRepeats": [
+    { "id": "front", "snapId": "frontale_int", "pitch": [0, 0.036, 0], "label": "Frontale interno" },
+    { "id": "front-ext", "snapId": "frontale_est", "pitch": [0, 0.036, 0], "label": "Frontale esterno" },
+    { "id": "lateral-int", "snapId": "laterale_int", "pitch": [0, 0.036, 0], "label": "Laterale interno" },
+    { "id": "lateral-ext", "snapId": "laterale_est", "pitch": [0, 0.036, 0], "label": "Laterale esterno" }
+  ]
+}
+```
+
+La prima copia sostituisce il marker iniziale, senza un secondo punto coincidente.
+Gli ID sono `<id>-1` … `<id>-N`; anche le copie subiscono scala e specchiatura.
+Un marker mancante o un ID duplicato blocca la preparazione del modello.
+Il catalogo conserva questa configurazione anche nel formato JSON per l'integrazione.
+
+Questa regola disattiva `auto-snap-grid` sul prodotto, anche se presente nel GLB:
+nessuna seconda ricerca dei fori nella mesh. Sui tre fianchi sostituisce inoltre
+la vecchia colonna frontale con coordinate e spessore fissi. La funzione generica
+`auto-snap-grid` resta disponibile per altri asset e integrazioni esistenti.
+
+I connettori del manifest limitano cassetti, ripiani, antine e traverse agli
+interni; PTBM-31 al frontale esterno e PTBM-26 al laterale esterno. I punti
+posteriori senza marker, la sovrapposizione, l'appoggio superiore e le sedi
+nominate del KIT conservano le loro definizioni specifiche. Le sedi del KIT
+sono interne e distinte dalle serie generate dai marker.
+
+Le copie dei nuovi marker usano il centro del cubetto esportato, come gli
+altri snap GLB: nessuno spostamento aggiuntivo basato su uno spessore presunto.

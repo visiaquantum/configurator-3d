@@ -13,7 +13,7 @@ export function AttachmentVisuals() {
   const sourceId = interaction?.sourceItemId
   const sourcePoint = interaction?.sourcePointId
   const targetId = interaction?.targetItemId
-  const targetPoint = interaction?.hoveredPointId
+  const targetPoint = interaction?.selectedPointId ?? interaction?.hoveredPointId
   const preview = useMemo(() => sourceId && sourcePoint && targetId && targetPoint && interaction?.stage === 'point'
     ? computeAttachmentPreview(state, sourceId, sourcePoint, targetId, targetPoint) : null,
   [state, sourceId, sourcePoint, targetId, targetPoint, interaction?.stage])

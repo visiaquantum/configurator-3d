@@ -33,7 +33,6 @@ import { TASCA_CATALOG_GROUPS, buildTascaWall, tascaWallContext } from './fixtur
 
 const PITCH = 0.036
 const BAY = 1.014
-const SHEET = 0.0015
 const WALL = ['ysi03036', 'ysi01131', 'kdw40236', 'kdw40336', 'kdw40436', 'kdw40636', 'kcp40531kmd02', 'kma40100', 'xla40400', 'kdu40426kd080', 'kld41000', 'kud40900']
 const HUNG = WALL.filter((id) => !id.startsWith('ysi') && id !== 'kdu40426kd080')
 const near = (a, b, tol = 1e-4) => Math.abs(a - b) <= tol
@@ -66,27 +65,42 @@ test('the production catalogue carries the whole wall, built from files and mani
     // Every correction belongs to the very file it was written for.
     assert.ok(definition(id).assetCorrections.every((correction) => product.assetHash.startsWith(correction.asset)), id)
   }
-  assert.deepEqual(production.built.enclosures.map((vehicle) => vehicle.id).sort(), ['fiat-ndc40h2', 'iveco-dl14l2sh3'])
+  assert.deepEqual(production.built.enclosures.map((vehicle) => vehicle.id).sort(), ['fiat-ndc40h2', 'furgone-interno', 'iveco-dl14l2sh3'])
 })
 
-test('side panels: hole columns on the inner face of each flange, numbered from the floor', () => {
-  for (const [id, depth, height, holes] of [['ysi03036', 0.363, 1.08, 30], ['ysi01131', 0.313, 0.396, 11]]) {
-    const snaps = production.prepare(id).metadata.snaps
-    const center = visibleBodyBounds(production.scenes[production.fileOf[id]]).getCenter(new Vector3())
-    const glb = (point) => point.position.map((value, i) => value + center.getComponent(i))
-    for (const [column, face, inward] of [['front', depth, -SHEET], ['back', 0, SHEET]]) {
-      const points = snaps.filter((point) => point.id.startsWith(`${column}-`))
-      assert.equal(points.length, holes, `${id} ${column}`)
-      points.forEach((point, k) => {
-        assert.equal(point.id, `${column}-${k + 1}`)
-        const [x, y, z] = glb(point)
-        assert.ok(near(x, face + inward, 1e-5) && near(y, PITCH / 2 + k * PITCH, 1e-5) && near(z, -0.017, 1e-5), `${id} ${point.id} ${[x, y, z]}`)
-        assert.deepEqual(point.normal, [0, 0, -1])
-      })
+test('the replacement side panels keep internal and external markers and the 864 mm upright', () => {
+  assert.deepEqual(production.built.items.filter((entry) => entry.id.startsWith('ysi')).map((entry) => entry.id).sort(), ['ysi01131', 'ysi02436', 'ysi03036'])
+  for (const [id, height] of [['ysi01131', 0.396], ['ysi02436', 0.864], ['ysi03036', 1.08]]) {
+    const { metadata, scene } = production.prepare(id)
+    assert.ok(near(metadata.size[1], height, 1e-6), id)
+    for (const [pointId, normal] of [['front-1', [-1, 0, 0]], ['front-ext-1', [1, 0, 0]], ['lateral-int-1', [0, 0, -1]], ['lateral-ext-1', [0, 0, 1]]]) {
+      assert.deepEqual(metadata.snaps.find((point) => point.id === pointId)?.normal, normal, `${id}:${pointId}`)
     }
-    // The CAD's own numbered SNAP_FRONTALE marker is replaced by the column, not added to it.
-    assert.equal(snaps.filter((point) => point.kind === 'frontale').length, holes)
-    assert.ok(near(glb(snaps.find((point) => point.id === 'stack-top'))[1], height, 1e-5))
+    scene.traverse((node) => {
+      if (/^(SNAP|RULE)_/.test(node.name)) assert.equal(node.visible, false, node.name)
+    })
+  }
+  const holes = production.prepare('ysi02436').metadata.snaps.filter((point) => point.kind === 'frontale_int' || point.kind === 'frontale_est')
+  assert.equal(holes.length, 48)
+  assert.ok(holes.some((point) => point.id === 'front-24'))
+  assert.ok(holes.some((point) => point.id === 'front-ext-24'))
+})
+
+test('side panel rows follow the GLB contact markers, keeping the posterior column separate', () => {
+  for (const [id, height, holes] of [['ysi03036', 1.08, 30], ['ysi01131', 0.396, 11]]) {
+    const snaps = production.prepare(id).metadata.snaps
+    const scene = production.scenes[production.fileOf[id]]
+    const center = visibleBodyBounds(scene).getCenter(new Vector3())
+    const marker = extractItemSnapsFromObject(scene).find((entry) => entry.extracted.id === 'frontale_int').extracted
+    const points = snaps.filter((point) => /^front-\d+$/.test(point.id))
+    assert.equal(points.length, holes)
+    points.forEach((point, k) => {
+      const glb = point.position.map((value, axis) => value + center.getComponent(axis))
+      assert.ok(near(glb[0], marker.position[0], 1e-6) && near(glb[1], marker.position[1] + k * PITCH, 1e-6) && near(glb[2], marker.position[2], 1e-6))
+      assert.deepEqual(point.normal, [-1, 0, 0])
+    })
+    assert.equal(snaps.filter((point) => point.kind === 'frontale_int').length, holes)
+    assert.ok(near(snaps.find((point) => point.id === 'stack-top').position[1] + center.y, height, 1e-5))
   }
 })
 
@@ -99,7 +113,7 @@ test('every hung part bears on the sheet with its CAD marker corrected once', ()
     assert.equal(ends.length, 2, id)
     // No raw CAD marker of the corrected kind survives next to the corrected ends.
     assert.equal(snaps.filter((point) => point.kind === 'frontale').length, 2, id)
-    const width = ends[0].normal[0] !== 0 ? 0 : 2
+    const width = Math.abs(ends[0].position[0] - ends[1].position[0]) > Math.abs(ends[0].position[2] - ends[1].position[2]) ? 0 : 2
     const depth = 2 - width
     for (const marker of extractItemSnapsFromObject(scene).filter((entry) => entry.extracted.kind === 'frontale')) {
       const cad = marker.extracted.position.map((value, i) => value - center.getComponent(i))
@@ -140,9 +154,10 @@ test('the catalogue check passes on the real folder: samples compose, nothing cr
   assert.ok(report.issues.some((entry) => entry.code === 'review-pending'))
 })
 
-test('the reference wall is still what the former demo generator produced', () => {
+test('the reference wall is still what the former demo generator produced', async () => {
+  const legacyManifest = await fixture('legacy-manifest.json')
   const catalog = TASCA_CATALOG_GROUPS.flatMap((group) => group.items)
-  const regenerated = JSON.parse(serializeProject(buildTascaWall(tascaWallContext(catalog, production.manifest))))
+  const regenerated = JSON.parse(serializeProject(buildTascaWall(tascaWallContext(catalog, legacyManifest))))
   assert.deepEqual(regenerated, reference)
 })
 
@@ -224,7 +239,10 @@ function assertMatchesReference(project, ids, label) {
   assert.equal(project.items.length, reference.items.length, label)
   for (const expected of reference.items) {
     const actual = project.items.find((entry) => entry.id === ids[expected.id])
-    expected.position.forEach((value, axis) => assert.ok(near(actual.position[axis], value, REFERENCE_TOLERANCE), `${label} ${expected.id}[${axis}] ${actual.position[axis]} vs ${value}`))
+    // New front INT markers place the hung fronts 2.1 mm deeper than the
+    // old 1.5 mm sheet correction. Heights, bay span and rear/rest joints stay fixed.
+    const frontHung = reference.connections.some((joint) => joint.sourceItemId === expected.id && /^front-\d+$/.test(joint.targetPointId))
+    expected.position.forEach((value, axis) => assert.ok(near(actual.position[axis], value + (frontHung && axis === 0 ? 0.0021 : 0), REFERENCE_TOLERANCE), `${label} ${expected.id}[${axis}] ${actual.position[axis]} vs ${value}`))
     assert.ok(near(Math.sin(actual.rotation[1]), Math.sin(expected.rotation[1]), 1e-9) && near(Math.cos(actual.rotation[1]), Math.cos(expected.rotation[1]), 1e-9), `${label} ${expected.id} yaw`)
     assert.equal(!!actual.mirrored, !!expected.mirrored, `${label} ${expected.id} mirrored`)
   }
@@ -350,10 +368,10 @@ test('a part hung on the reference wall stays behind the flange in the scene too
   const state = editor.store.getState()
   const side = state.project.items.find((entry) => entry.id === ids['fianco-basso'])
   const hole = snapsForItem(side, state.itemSnaps, state.itemRules).find((point) => point.id === 'front-14')
-  // The panel faces -X here (turned 180°): the flange's outer face is 1.5 mm in front of the hole.
+  // New INT marker centre is 3.6 mm behind the outer front face, read from the GLB.
   const holeWorld = worldPoint(side, hole.position, state.itemSizes.ysi03036[1])
   const outer = side.position[0] - 0.363 / 2
-  assert.ok(near(holeWorld[0], outer + SHEET, 1e-6))
+  assert.ok(near(holeWorld[0], outer + 0.0036, 1e-6))
   const sideBox = new Box3().setFromCenterAndSize(new Vector3(side.position[0], side.position[1] + 0.54, side.position[2]), new Vector3(0.363, 1.08, 0.029))
   assert.ok(sideBox.containsPoint(new Vector3(...holeWorld)))
 })

@@ -7,7 +7,7 @@ import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.j
 import { TransformControls } from '@react-three/drei'
 import { useShallow } from 'zustand/react/shallow'
 import { useFrame, useThree, type ThreeEvent } from '@react-three/fiber'
-import { attachmentPoints, attachmentTargetIds, beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget } from './attachment'
+import { attachmentPoints, attachmentTargetIds, beginAttachment, selectAttachmentPoint, chooseAttachmentTarget } from './attachment'
 import type { Anchor, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
 import { buildLocalCorners } from './itemRegistry'
@@ -480,7 +480,9 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
 function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoint[]; interactive?: boolean }) {
   const store = useConfiguratorStoreApi()
   const ref = useRef<InstancedMesh>(null)
-  const hovered = useConfiguratorStore((state) => state.attachment?.hoveredPointId)
+  const hovered = useConfiguratorStore((state) => state.attachment?.selectedPointId ?? state.attachment?.hoveredPointId)
+  const touch = useRef(typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches)
+  const pressed = useRef<{ x: number; y: number } | null>(null)
 
   useLayoutEffect(() => {
     const mesh = ref.current
@@ -495,6 +497,23 @@ function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoi
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
   }, [points, hovered])
 
+  const { camera, gl } = useThree()
+  const pointAt = (event: ThreeEvent<PointerEvent> | ThreeEvent<MouseEvent>) => {
+    const mesh = ref.current
+    if (!mesh) return undefined
+    const rect = gl.domElement.getBoundingClientRect()
+    let best = (touch.current ? 24 : 14) ** 2
+    let chosen: ItemSnapPoint | undefined
+    for (const point of points) {
+      const v = mesh.localToWorld(new Vector3(...point.position)).project(camera)
+      if (v.z < -1 || v.z > 1) continue
+      const distance = (rect.left + (v.x + 1) * rect.width / 2 - event.clientX) ** 2 +
+        (rect.top + (1 - v.y) * rect.height / 2 - event.clientY) ** 2
+      if (distance < best) { best = distance; chosen = point }
+    }
+    return chosen
+  }
+
   // Markers keep a constant on-screen size. Instance matrices are rewritten
   // only when that size or the hovered point changes, not on every frame.
   const written = useRef<{ radius: number; hovered: string | undefined; points: ItemSnapPoint[] } | null>(null)
@@ -505,7 +524,7 @@ function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoi
     const worldPerPixel = camera instanceof OrthographicCamera
       ? (camera.top - camera.bottom) / camera.zoom / pixels
       : camera.position.distanceTo(mesh.getWorldPosition(_markerWorld)) * 2 * Math.tan(((camera as PerspectiveCamera).fov ?? 45) * Math.PI / 360) / pixels
-    const radius = Math.max(0.007, worldPerPixel * 6)
+    const radius = Math.max(0.007, worldPerPixel * (touch.current ? 12 : 6))
     const last = written.current
     if (last && last.points === points && last.hovered === hovered && Math.abs(last.radius - radius) <= radius * 0.01) return
     written.current = { radius, hovered, points }
@@ -526,16 +545,20 @@ function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoi
       args={[undefined, undefined, points.length]}
       renderOrder={1001}
       frustumCulled={false}
-      onPointerDown={interactive ? (event) => event.stopPropagation() : undefined}
+      onPointerDown={interactive ? (event) => {
+        event.stopPropagation()
+        touch.current = event.pointerType === 'touch'
+        pressed.current = { x: event.clientX, y: event.clientY }
+      } : undefined}
       onPointerOver={interactive ? (event) => {
         event.stopPropagation()
-        const point = points[event.instanceId ?? -1]
+        const point = pointAt(event)
         const state = store.getState()
         if (point && state.attachment) state.setAttachment({ ...state.attachment, hoveredPointId: point.id, error: undefined })
       } : undefined}
       onPointerMove={interactive ? (event) => {
         event.stopPropagation()
-        const point = points[event.instanceId ?? -1]
+        const point = pointAt(event)
         const state = store.getState()
         if (point && state.attachment && state.attachment.hoveredPointId !== point.id) state.setAttachment({ ...state.attachment, hoveredPointId: point.id, error: undefined })
       } : undefined}
@@ -546,8 +569,11 @@ function SnapPointMarkers({ points, interactive = false }: { points: ItemSnapPoi
       onClick={interactive ? (event) => {
         event.stopPropagation()
         if (event.button !== 0) return
-        const point = points[event.instanceId ?? -1]
-        if (point) chooseAttachmentPoint(store, point.id)
+        const point = pointAt(event)
+        const start = pressed.current
+        pressed.current = null
+        if (start && Math.hypot(event.clientX - start.x, event.clientY - start.y) > 8) return
+        if (point) selectAttachmentPoint(store, point.id)
       } : undefined}
     >
       <sphereGeometry args={[interactive ? 1 : SNAP_POINT_MARKER_RADIUS, 12, 8]} />
