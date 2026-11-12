@@ -143,12 +143,13 @@ try {
     for (const [sideId, pointId] of ends) {
       const side = project.items.find((item) => item.id === sideId)
       const definition = definitionFor(manifest, side.catalogId)
+      const hole = snapsForItem(side, context.itemSnaps, context.itemRules).find((point) => point.id === pointId)
       const ownsPoint = (entry) => new RegExp(`^${entry.id}-\\d+$`).test(pointId)
       const column = definition?.holeColumns?.find((entry) => entry.sheet && ownsPoint(entry)) ??
-        definition?.snapRepeats?.find((entry) => entry.snapId.endsWith('_int') && ownsPoint(entry))
+        definition?.snapRepeats?.find((entry) => entry.snapId.endsWith('_int') && ownsPoint(entry)) ??
+        (definition?.sideHoleSnaps && hole?.series && hole.kind.endsWith('_int') ? { id: hole.series } : undefined)
       if (!column || seen.has(column.id) || side.mirrored) continue
       seen.add(column.id)
-      const hole = snapsForItem(side, context.itemSnaps, context.itemRules).find((point) => point.id === pointId)
       const size = context.itemSizes[side.catalogId]
       const world = new Vector3(...hole.position).applyEuler(new Euler(...side.rotation)).add(new Vector3(side.position[0], side.position[1] + size[1] / 2, side.position[2]))
       const section = await page.evaluate((input) => globalThis.renderAssembly(input), { items, view: { section: world.y + 0.004, target: world.toArray(), half: 0.035, up: [-1, 0, 0] } })

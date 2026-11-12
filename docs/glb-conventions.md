@@ -404,3 +404,28 @@ sono interne e distinte dalle serie generate dai marker.
 
 Le copie dei nuovi marker usano il centro del cubetto esportato, come gli
 altri snap GLB: nessuno spostamento aggiuntivo basato su uno spessore presunto.
+
+### Tutti i fori laterali: `sideHoleSnaps`
+
+Il manifest dei tre fianchi abilita `sideHoleSnaps: true`. La geometria è ora
+la fonte dei fori: si analizzano i contorni chiusi sulle facce verticali X/Z,
+comprese le facce interne del profilo, e si abbinano le aperture allineate
+sulle due facce della lamiera. Le facce con normale Y sono escluse.
+
+Ogni foro passante rilevato riceve uno snap interno e uno esterno con normali
+opposte, usando lo spessore effettivo, anche su lamiere doppie. La convenzione
+del centro marker (0.5 mm dalla faccia) resta quella dei GLB attuali. I fori
+sono cercati tra 3 e 30 mm, con abbinamento di facce entro 12 mm; superfici
+aperte senza una seconda faccia forata non producono uno spessore presunto.
+Questa modalità riguarda i profili con facce allineate agli assi del contratto.
+
+I vecchi ID e le calibrazioni sono conservati quando corrispondono a un foro
+reale. I punti del retro che assumevano una singola lamiera vengono ricollocati
+sulla faccia interna effettiva della doppia lamiera. Le copie teoriche senza
+un foro corrispondente sono eliminate: la ripetizione a passo fisso non
+aggiunge una seconda serie di punti.
+
+Ogni punto riporta `series`, che identifica la sua colonna fisica. «Sposta su»
+e «Sposta giù» usano i fori realmente presenti nella stessa colonna, mantenendo
+INT/EST e tutti i controlli di validità. Punti posteriori, frontali e laterali
+conservano le famiglie e le compatibilità dichiarate dal catalogo.

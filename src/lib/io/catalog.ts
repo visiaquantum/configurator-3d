@@ -19,6 +19,7 @@ const AutoSnapGridOptionsSchema = z.object({
 const SnapPointSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1).optional(),
+  series: z.string().min(1).optional(),
   kind: z.string().min(1),
   position: Vec3Schema,
   normal: Vec3Schema.optional(),
@@ -41,6 +42,7 @@ const CatalogItemSchema = z.object({
   autoSnapGrid: z.union([z.boolean(), AutoSnapGridOptionsSchema]).optional(),
   snapPoints: z.array(SnapPointSchema).optional(),
   snapRepeats: SnapRepeatsSchema.optional(),
+  sideHoleSnaps: z.boolean().optional(),
   mirrorPair: MirrorPairOptionsSchema.optional(),
   replaceSnapKinds: z.array(z.string().min(1)).optional(),
   snapDirections: z.record(z.string().min(1), NonZeroVec3Schema).optional(),

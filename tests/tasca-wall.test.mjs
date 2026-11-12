@@ -241,8 +241,9 @@ function assertMatchesReference(project, ids, label) {
     const actual = project.items.find((entry) => entry.id === ids[expected.id])
     // New front INT markers place the hung fronts 2.1 mm deeper than the
     // old 1.5 mm sheet correction. Heights, bay span and rear/rest joints stay fixed.
+    const rearHung = reference.connections.some((joint) => joint.sourceItemId === expected.id && /^back-\d+$/.test(joint.targetPointId))
     const frontHung = reference.connections.some((joint) => joint.sourceItemId === expected.id && /^front-\d+$/.test(joint.targetPointId))
-    expected.position.forEach((value, axis) => assert.ok(near(actual.position[axis], value + (frontHung && axis === 0 ? 0.0021 : 0), REFERENCE_TOLERANCE), `${label} ${expected.id}[${axis}] ${actual.position[axis]} vs ${value}`))
+    expected.position.forEach((value, axis) => assert.ok(near(actual.position[axis], value + (axis === 0 ? (frontHung ? 0.0021 : rearHung ? -0.0021 : 0) : 0), REFERENCE_TOLERANCE), `${label} ${expected.id}[${axis}] ${actual.position[axis]} vs ${value}`))
     assert.ok(near(Math.sin(actual.rotation[1]), Math.sin(expected.rotation[1]), 1e-9) && near(Math.cos(actual.rotation[1]), Math.cos(expected.rotation[1]), 1e-9), `${label} ${expected.id} yaw`)
     assert.equal(!!actual.mirrored, !!expected.mirrored, `${label} ${expected.id} mirrored`)
   }

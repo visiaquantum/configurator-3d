@@ -110,6 +110,7 @@ disponibile l'utente lo vede e decide (§ 6 di [gestione-catalogo.md](gestione-c
 | `bom` | — | codice e descrizione in distinta |
 | `points[]` | m, frame GLB | punti che il contratto tiene fuori dal GLB |
 | `holeColumns[]` | m, frame GLB | colonne di fori (§ 3.2) |
+| `sideHoleSnaps` | boolean | rileva le coppie INT/EST dei fori sulle facce verticali X/Z, escludendo alto/basso; usa la geometria reale |
 | `snapRepeats[]` | m, frame GLB | `id`, `snapId`, `pitch`, `label?`: ripete un marker GLB fino al limite del corpo; disattiva `auto-snap-grid` sul prodotto |
 | `mirrorPair` | frame GLB | `axis` verso il gemello, `distances` (m) che sostituiscono quelle del GLB |
 | `bays[]` | m | campate (distanze della coppia) in cui il pezzo entra; assente = qualsiasi |

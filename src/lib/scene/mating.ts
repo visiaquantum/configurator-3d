@@ -44,6 +44,8 @@ export const SNAP_KIND_LABELS: Record<string, string> = {
   frontale_est: 'Frontale esterno',
   laterale_int: 'Laterale interno',
   laterale_est: 'Laterale esterno',
+  posteriore_int: 'Posteriore interno',
+  posteriore_est: 'Posteriore esterno',
   sovrapposizione: 'Sovrapposizione',
   origine: 'Origine',
   [AUTO_GRID_SNAP_KIND]: 'Foro',

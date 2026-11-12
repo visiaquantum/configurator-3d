@@ -13,13 +13,19 @@ import { restoreLiveItems } from './itemMovement'
 /** Move the mounted part along its support rows, leaving the supporting frame fixed. */
 export function snapStepPreview(state: AssemblyView, id: string, direction: -1 | 1) {
   const project = state.project
-  if (!project || state.catalog[project.items.find((item) => item.id === id)?.catalogId ?? '']?.snapRepeats?.length) return null
+  const isSupport = (catalogId: string) => !!(state.catalog[catalogId]?.snapRepeats?.length || state.catalog[catalogId]?.sideHoleSnaps)
+  if (!project || isSupport(project.items.find((item) => item.id === id)?.catalogId ?? '')) return null
   const byId = new Map(project.items.map((item) => [item.id, item]))
   const rowAt = (itemId: string, pointId: string) => {
     const item = byId.get(itemId)
+    const point = item && state.itemSnaps[item.catalogId]?.find((entry) => entry.id === pointId)
+    if (item && point?.series) {
+      const ordered = snapsForItem(item, state.itemSnaps, state.itemRules).filter((entry) => entry.series === point.series).sort((a, b) => a.position[1] - b.position[1])
+      return { item, row: { id: point.series, pitch: [0, 1, 0] as Vec3 }, index: ordered.findIndex((entry) => entry.id === pointId), ordered }
+    }
     const row = item && state.catalog[item.catalogId]?.snapRepeats?.find((entry) =>
       pointId.startsWith(`${entry.id}-`) && /^\d+$/.test(pointId.slice(entry.id.length + 1)))
-    return item && row ? { item, row, index: Number(pointId.slice(row.id.length + 1)) } : null
+    return item && row ? { item, row, ordered: undefined, index: Number(pointId.slice(row.id.length + 1)) } : null
   }
   const current = jointsOf(project)
   const supports = current.filter((joint) => rowAt(joint.sourceItemId, joint.sourcePointId) || rowAt(joint.targetItemId, joint.targetPointId))
@@ -29,7 +35,7 @@ export function snapStepPreview(state: AssemblyView, id: string, direction: -1 |
   const rejected = (error: string) => ({ valid: false as const, error, patches: [], joints: current, step: 0 })
   if (state.readOnly || state.walkMode || state.attachment) return rejected('Il componente non è modificabile')
   const moving = project.items.filter((item) => members.has(item.id))
-  if (moving.some((item) => item.locked || item.constraints?.some((c) => c.type === 'lockAxis' || c.type === 'snapToAnchor') || state.catalog[item.catalogId]?.snapRepeats?.length)) return rejected('Un componente da spostare è bloccato o vincolato')
+  if (moving.some((item) => item.locked || item.constraints?.some((c) => c.type === 'lockAxis' || c.type === 'snapToAnchor') || isSupport(item.catalogId))) return rejected('Un componente da spostare è bloccato o vincolato')
   let delta: Vec3 | undefined
   const replacements = new Map<Joint, Joint>()
   for (const joint of boundary) {
@@ -41,8 +47,9 @@ export function snapStepPreview(state: AssemblyView, id: string, direction: -1 |
     const pitch = rotateVector(row.pitch, item.rotation)
     if (Math.abs(pitch[0]) > 1e-6 || Math.abs(pitch[2]) > 1e-6 || Math.abs(pitch[1]) < 1e-6) return rejected('La serie di fori non è verticale')
     const points = snapsForItem(item, state.itemSnaps, state.itemRules)
-    const before = points.find((point) => point.id === `${row.id}-${index}`)
-    const after = points.find((point) => point.id === `${row.id}-${index + direction * Math.sign(pitch[1])}`)
+    const before = support.ordered?.[index] ?? points.find((point) => point.id === `${row.id}-${index}`)
+    const next = index + direction * Math.sign(pitch[1])
+    const after = support.ordered ? support.ordered[next] : points.find((point) => point.id === `${row.id}-${next}`)
     if (!before || !after) return rejected(direction > 0 ? 'Ultimo foro superiore raggiunto' : 'Ultimo foro inferiore raggiunto')
     const connector = connectorForSnap(definitionFor(state.assemblyManifest, item.catalogId), after)
     if (pointUse(current.filter((entry) => !boundary.includes(entry)), item.id, after.id) >= (connector?.capacity ?? 1)) return rejected('Il foro adiacente è occupato')

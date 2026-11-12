@@ -17,17 +17,13 @@ import { own } from '../util/record'
  * needs React or a mounted scene.
  */
 
-const ADD_GAP = 0.05
-
-/** Where a newly added product goes: right of the last item, on the floor. */
-export function nextItemPosition(state: Pick<ConfiguratorState, 'project' | 'catalog' | 'interiorBBox' | 'enclosureBBox'>, product: CatalogItem): Vec3 {
-  const items = state.project?.items ?? []
-  const last = items[items.length - 1]
-  const lastCat = last ? own(state.catalog, last.catalogId) : undefined
-  const stepSize = (lastCat?.size?.[0] ?? 0.1) * (lastCat?.scale ?? 1) || (product.size?.[0] ?? 0.1) * (product.scale ?? 1)
-  const floorY = selectCollisionBounds(state)?.min[1] ?? 0
-  return last
-    ? [last.position[0] + stepSize + ADD_GAP, Math.max(last.position[1], floorY), last.position[2]]
+/** Centre of the cargo area in X/Z, with the product's base on the floor. */
+export function nextItemPosition(state: Pick<ConfiguratorState, 'project' | 'interiorBBox' | 'enclosureBBox'>): Vec3 {
+  const bounds = selectCollisionBounds(state)
+  const floor = state.project?.enclosure.floor
+  const floorY = state.interiorBBox?.min[1] ?? (floor ? floor.y + floor.size[1] / 2 : bounds?.min[1] ?? 0)
+  return bounds
+    ? [(bounds.min[0] + bounds.max[0]) / 2, floorY, (bounds.min[2] + bounds.max[2]) / 2]
     : [0, floorY, 0]
 }
 
@@ -35,7 +31,7 @@ export function nextItemPosition(state: Pick<ConfiguratorState, 'project' | 'cat
 export function addItemToScene(store: ConfiguratorStore, product: CatalogItem, opts?: { position?: Vec3; select?: boolean }): string {
   const s = store.getState()
   if (!s.project || s.readOnly) throw new Error('Il progetto non è modificabile')
-  const position = opts?.position ?? nextItemPosition(s, product)
+  const position = opts?.position ?? nextItemPosition(s)
   s.addCatalogItem(product)
   const id = nanoid(8)
   store.getState().addItem({ id, catalogId: product.id, position, rotation: [0, 0, 0] })

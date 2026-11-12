@@ -476,3 +476,57 @@ export function extractAutoSnapGridFromObject(
 
   return withUniqueIds([...all.values()])
 }
+
+/** Detect both contact faces of every through-hole on vertical, axis-aligned sheet faces. */
+export function extractSideHolePairs(root: Object3D, scale = 1): ExtractedSnapPoint[] {
+  const triangles = collectTriangles(root)
+  const box = trianglesBBox(triangles)
+  const faces = new Map<string, { axis: AxisIndex; coord: number; sign: number; triangles: Triangle[] }>()
+  for (const triangle of triangles) {
+    const a = new Vector3(...triangle[1]).sub(new Vector3(...triangle[0]))
+    const normal = a.cross(new Vector3(...triangle[2]).sub(new Vector3(...triangle[0]))).normalize()
+    for (const axis of [0, 2] as const) {
+      if (Math.abs(normal.getComponent(axis)) < 0.99999) continue
+      const coord = triangle.reduce((sum, point) => sum + point[axis], 0) / 3
+      const sign = Math.sign(normal.getComponent(axis))
+      const key = `${axis}:${Math.round(coord / (1e-6 * scale))}:${sign}`
+      const face = faces.get(key) ?? { axis, coord, sign, triangles: [] }
+      face.triangles.push(triangle)
+      faces.set(key, face)
+    }
+  }
+  const lines = new Map<string, Array<{ axis: AxisIndex; point: ExtractedSnapPoint; sign: number }>>()
+  for (const face of faces.values()) {
+    const plane = makePlane(face.axis, face.sign > 0 ? 'max' : 'min', face.coord, 1e-6 * scale)
+    for (const point of detectHolesOnPlane(face.triangles, plane, 0.003 * scale, 0.03 * scale, 1e-5 * scale)) {
+      const cross = point.position.filter((_, i) => i !== face.axis)
+      const key = `${face.axis}:${cross.map((value) => Math.round(value / (0.0001 * scale))).join(':')}`
+      lines.set(key, [...(lines.get(key) ?? []), { axis: face.axis, point, sign: face.sign }])
+    }
+  }
+  const result: ExtractedSnapPoint[] = []
+  for (const line of lines.values()) {
+    line.sort((a, b) => a.point.position[a.axis] - b.point.position[b.axis])
+    const groups: typeof line[] = []
+    for (const face of line) {
+      const group = groups[groups.length - 1]
+      if (!group || face.point.position[face.axis] - group[group.length - 1].point.position[face.axis] > 0.012 * scale) groups.push([face])
+      else group.push(face)
+    }
+    for (const group of groups) {
+      const low = group[0], high = group[group.length - 1], axis = low.axis
+      // A sheet encloses material: the low face looks negative, the high face positive.
+      if (low.sign !== -1 || high.sign !== 1 || high.point.position[axis] - low.point.position[axis] < 0.0001 * scale) continue
+      const middle = (low.point.position[axis] + high.point.position[axis]) / 2
+      const positive = Math.abs(box.max.getComponent(axis) - middle) < Math.abs(middle - box.min.getComponent(axis))
+      const outer = positive ? high : low, inner = positive ? low : high
+      const family = axis === 2 ? 'laterale' : positive ? 'frontale' : 'posteriore'
+      for (const [side, face] of [['int', inner], ['est', outer]] as const) {
+        const normal: Vec3 = [0, 0, 0]; normal[axis] = face.sign
+        result.push({ ...face.point, id: `side-hole-${result.length}`, kind: `${family}_${side}`,
+          normal, position: face.point.position.map((value, i) => value + normal[i] * 0.0005 * scale) as Vec3 })
+      }
+    }
+  }
+  return result
+}

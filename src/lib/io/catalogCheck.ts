@@ -288,7 +288,7 @@ function sheetOverlaps(project: ProjectData, context: SampleContext, prepared: R
         ?.find((entry) => entry.sheet && new RegExp(`^${entry.id}-\\d+$`).test(sidePointId))
       const asset = own(prepared, part.catalogId)
       const hole = snapsForItem(side, context.itemSnaps, context.itemRules).find((point) => point.id === sidePointId)!
-      const repeatedInside = hole?.kind.endsWith('_int') && definition?.snapRepeats?.some((row) => new RegExp(`^${row.id}-\\d+$`).test(sidePointId))
+      const repeatedInside = hole?.kind.endsWith('_int') && (definition?.sideHoleSnaps && hole.series || definition?.snapRepeats?.some((row) => new RegExp(`^${row.id}-\\d+$`).test(sidePointId)))
       const sheetOutward = repeatedInside && hole.normal
         ? hole.normal.map((value) => -value) as Vec3
         : column?.sheet?.outward

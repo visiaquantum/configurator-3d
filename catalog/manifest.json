@@ -177,6 +177,14 @@
             "accessory-side"
           ],
           "capacity": 1
+        },
+        {
+          "id": "side-back-ext",
+          "snapKind": "posteriore_est",
+          "compatibleWith": [
+            "accessory-face"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
@@ -265,7 +273,8 @@
             0
           ]
         }
-      ]
+      ],
+      "sideHoleSnaps": true
     },
     {
       "catalogId": "ysi01131",
@@ -436,6 +445,14 @@
             "accessory-side"
           ],
           "capacity": 1
+        },
+        {
+          "id": "side-back-ext",
+          "snapKind": "posteriore_est",
+          "compatibleWith": [
+            "accessory-face"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
@@ -524,7 +541,8 @@
             0
           ]
         }
-      ]
+      ],
+      "sideHoleSnaps": true
     },
     {
       "catalogId": "kdw40236",
@@ -1544,6 +1562,14 @@
             "accessory-side"
           ],
           "capacity": 1
+        },
+        {
+          "id": "side-back-ext",
+          "snapKind": "posteriore_est",
+          "compatibleWith": [
+            "accessory-face"
+          ],
+          "capacity": 1
         }
       ],
       "colliders": [
@@ -1661,7 +1687,8 @@
             0
           ]
         }
-      ]
+      ],
+      "sideHoleSnaps": true
     },
     {
       "catalogId": "xds40231km02",
@@ -1916,7 +1943,8 @@
           "id": "accessory-face",
           "snapKind": "frontale",
           "compatibleWith": [
-            "side-front-ext"
+            "side-front-ext",
+            "side-back-ext"
           ],
           "capacity": 1,
           "insertionDepth": 0.03,

@@ -33,7 +33,7 @@ test('real side panels duplicate the four CAD interfaces at every 36 mm hole wit
     assert.ok(!metadata.snaps.some((p) => p.id.startsWith('auto-grid-')))
     assert.equal(new Set(metadata.snaps.map((p) => p.id)).size, metadata.snaps.length)
     for (const [prefix, kind, normal] of rows) {
-      const points = metadata.snaps.filter((p) => p.kind === kind)
+      const points = metadata.snaps.filter((p) => new RegExp(`^${prefix}-\\d+$`).test(p.id))
       assert.equal(points.length, count, `${id}:${kind}`)
       const seed = markers.find((p) => p.id === kind)
       assert.ok(!metadata.snaps.some((p) => p.id === seed.id), 'row 1 replaces its seed')

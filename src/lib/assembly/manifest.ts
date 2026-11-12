@@ -87,6 +87,7 @@ const ProductSchema = z.object({
   points: z.array(ManifestPointSchema).optional(),
   holeColumns: z.array(HoleColumnSchema).optional(),
   snapRepeats: SnapRepeatsSchema.optional(),
+  sideHoleSnaps: z.boolean().optional(),
   mirrorPair: z.object({ axis: DirectionSchema.optional(), distances: z.array(z.number().positive()).min(1).optional() }).optional(),
   bays: z.array(z.number().positive()).min(1).optional(),
   directions: DirectionsSchema.optional(),

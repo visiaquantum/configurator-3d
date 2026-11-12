@@ -58,7 +58,7 @@ test('inspector rotation of a free part follows the gesture rules: push-out, one
 test('adding, anchoring and unjoining are plain store commands with one undo entry each', () => {
   const store = setup([part('a'), part('b', [1, 0, 0])], [joint('b', 'a')], [{ id: 'bay', position: [5, 0, 5] }])
   const id = commands.addItemToScene(store, { id: 'part', label: 'Part', glbUrl: '/part.glb', size: [1, 1, 1] })
-  assert.deepEqual(store.getState().project.items.find((it) => it.id === id).position, [2.05, 0, 0])
+  assert.deepEqual(store.getState().project.items.find((it) => it.id === id).position, [0, 0, 0])
   assert.equal(store.getState().selectedId, id)
   commands.snapAssemblyToAnchor(store, 'a', 'bay')
   assert.deepEqual(store.getState().project.items.slice(0, 2).map((it) => it.position), [[5, 0, 5], [6, 0, 5]])
@@ -66,6 +66,25 @@ test('adding, anchoring and unjoining are plain store commands with one undo ent
   commands.unjoinItem(store, 'b')
   assert.deepEqual(store.getState().project.connections, [])
   assert.equal(store.getState().past.length, 3)
+})
+
+test('new products use the centre and floor of the cargo area, independently of existing products', () => {
+  const store = setup([part('high', [8, 3, -2])])
+  store.getState().setEnclosureBBox({ min: [-8, -0.4, -9], max: [6, 4, 7] })
+  store.getState().setInteriorBBox({ min: [-2, 0.12, 1], max: [4, 2.5, 5] })
+  const product = { id: 'large', label: 'Large', glbUrl: '/large.glb', size: [1, 0.8, 1.5], scale: 2 }
+  for (let n = 0; n < 2; n++) {
+    const id = commands.addItemToScene(store, product)
+    assert.deepEqual(store.getState().project.items.find((item) => item.id === id).position, [1, 0.12, 3])
+  }
+  const explicit = commands.addItemToScene(store, product, { position: [2, 0.5, 4], select: false })
+  assert.deepEqual(store.getState().project.items.find((item) => item.id === explicit).position, [2, 0.5, 4])
+  store.getState().setInteriorBBox(null)
+  assert.deepEqual(commands.nextItemPosition(store.getState()), [-1, -0.4, -1])
+  store.getState().setProject({ id: 'floor', version: 1, enclosure: { glbUrl: '/floor.glb', floor: { size: [3, 0.04, 4], y: 0.02 } }, items: [] })
+  store.getState().setInteriorBBox(null)
+  store.getState().setEnclosureBBox(null)
+  assert.deepEqual(commands.nextItemPosition(store.getState()), [0, 0.04, 0])
 })
 
 test('mirror pair spacing: the command creates then moves the twin; options come from catalogue seats', () => {

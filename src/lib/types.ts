@@ -76,6 +76,7 @@ export interface CatalogItem {
   id: string
   label: string
   glbUrl: string
+  sideHoleSnaps?: boolean
   snapRepeats?: SnapRepeat[]
   size?: Vec3
   /** Uniform scale applied to the loaded GLB and to `size` for collider math.
@@ -176,6 +177,8 @@ export interface ItemSnapPoint {
   label?: string
   /** Mating family (`terra`, `frontale`, `laterale`, `foro`, ...). Decides
    * what this point may be joined to — see scene/mating.ts. */
+  /** Vertical series of actual detected holes, shared by points that may slide between rows. */
+  series?: string
   kind: string
   position: Vec3
   /** Outward normal of the face the point sits on, in the item's local frame. */
@@ -316,6 +319,7 @@ export interface ProductAssemblyDefinition {
   /** Points the contract keeps out of the GLB (e.g. a rest on top), GLB frame. */
   points?: ManifestSnapPoint[]
   holeColumns?: HoleColumn[]
+  sideHoleSnaps?: boolean
   snapRepeats?: SnapRepeat[]
   /** Orientation and spacings of the GLB's `mirror-pair` rule, GLB frame. */
   mirrorPair?: MirrorPairOptions
@@ -543,8 +547,8 @@ export interface ConfiguratorHandle {
   /**
    * Place a catalog product into the scene. If the product id is unknown to
    * the configurator, it is registered first so the item can be rendered.
-   * Auto-positions to the right of the last item unless `opts.position` is
-   * given. Returns the new placed-item id.
+   * Auto-positions at the cargo area's centre with its base on the floor,
+   * unless `opts.position` is given. Returns the new placed-item id.
    */
   addItem(product: CatalogItem, opts?: { position?: Vec3; select?: boolean }): string
   removeItem(id: string): void

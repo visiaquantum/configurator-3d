@@ -57,3 +57,27 @@ test('a wall is composed by hand, saved and opened again', async ({ page }, test
   await page.getByRole('button', { name: 'Apri con la revisione corrente' }).click()
   await expect(page.getByText(/Aperto «.*» con 3 componenti.*avvisi/)).toBeVisible()
 })
+
+test('new catalog products start at the centre of the cargo floor', async ({ page }) => {
+  await expect(page.getByText('Caricamento modelli 3D…', { exact: true })).toHaveCount(0, { timeout: 30_000 })
+  await page.getByRole('button', { name: 'Aggiungi Cassetto KDW 40236 · h64', exact: true }).click()
+  await expect(page.getByText('Caricamento modelli 3D…', { exact: true })).toHaveCount(0, { timeout: 30_000 })
+  const save = async () => {
+    await page.getByRole('button', { name: 'Salva', exact: true }).click()
+    return JSON.parse((await page.locator('.app-project-tools pre').textContent())!)
+  }
+  const first = await save()
+  // The initial IVECO model's interior floor is 12 mm above the scene origin.
+  expect(first.items[0].position[0]).toBe(0)
+  expect(first.items[0].position[1]).toBeCloseTo(0.012, 5)
+  expect(first.items[0].position[2]).toBe(0)
+  await page.getByRole('checkbox', { name: 'Pareti auto' }).check()
+  await page.getByRole('checkbox', { name: 'X-ray' }).check()
+  await page.getByRole('button', { name: 'Centra componente', exact: true }).click()
+  await page.screenshot({ path: 'docs/montaggio/inserimento-centro-vano.png', fullPage: true })
+  await page.getByRole('button', { name: 'Aggiungi Fianco YSI 03036 · 1080', exact: true }).click()
+  const second = await save()
+  expect(second.items).toHaveLength(2)
+  expect(second.items[1].position).toEqual(first.items[0].position)
+  expect(second.items[0].position).toEqual(first.items[0].position)
+})

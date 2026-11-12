@@ -236,6 +236,7 @@ export function catalogItemFor(definition: ProductAssemblyDefinition, asset: Cat
     scale: resolved.scale,
     category,
     assetHash: asset.sha256,
+    ...(definition.sideHoleSnaps ? { sideHoleSnaps: true, autoSnapGrid: false } : {}),
     ...(definition.snapRepeats?.length ? { snapRepeats: definition.snapRepeats, autoSnapGrid: false } : {}),
     ...(definition.description ? { description: definition.description } : {}),
     ...(definition.instructions?.length ? { instructions: definition.instructions } : {}),

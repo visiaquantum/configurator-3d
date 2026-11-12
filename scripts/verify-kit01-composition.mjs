@@ -179,7 +179,7 @@ check('the mirrored pair validates with the shelf in place', !hasBlockingIssues(
 // has to be recorded from the twin's own side — nothing else moves, so without
 // it the insertion overlap at that seat reads as interference.
 const twinJoints = connectionsAtPose(pairB, pairB, { items: [pairA, pairShelf], itemSnaps, itemRules: { ysi02436: [pairRule] }, manifest, heightOf: pairHeight })
-check('the new twin records the joint it lands on', twinJoints.length === 1, `got ${twinJoints.length}`)
+check('the new twin records the joint it lands on', twinJoints.some((joint) => joint.sourcePointId === 'shelf-top' && joint.targetPointId === 'end-b') && twinJoints.every((joint) => joint.sourceItemId === pairB.id && joint.targetItemId === pairShelf.id), `got ${twinJoints.length}`)
 const mirroredLate = {
   ...pairProject,
   connections: [...pairJoints.filter((c) => c.targetItemId === pairA.id), ...twinJoints],
@@ -220,7 +220,7 @@ check(
 )
 check(
   'a joint with one end left behind is dropped',
-  jointsSurvivingMove([pairA], mirroredLate.connections).length === 1,
+  jointsSurvivingMove([pairA], mirroredLate.connections).length === twinJoints.length,
 )
 
 const offSpacing = computePartnerPlacement(pairA, pairRule, spacing + 0.02)

@@ -10,6 +10,7 @@ import { visibleBodyBounds } from './geometry'
 import { MIRROR_PAIR_RULE } from './mirrorPair'
 import { own } from '../util/record'
 import { repeatSnapMarkers } from '../io/snapRepeats'
+import { sideHoleSnaps } from '../io/sideHoleSnaps'
 
 const unit = (v: Vec3): Vec3 => {
   const length = Math.hypot(...v)
@@ -54,7 +55,7 @@ function withMirrorPairOptions(rules: ItemRule[], options: MirrorPairOptions | u
 
 /** Only model/geometry inputs belong in the cache key, not labels or instance poses. */
 export function productAssetKey(catalog: CatalogItem): string {
-  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair, catalog.replaceSnapKinds, catalog.snapDirections, catalog.snapRepeats])
+  return JSON.stringify([catalog.glbUrl, catalog.scale ?? 1, catalog.size, catalog.snapPoints, catalog.autoSnapGrid, catalog.mirrorPair, catalog.replaceSnapKinds, catalog.snapDirections, catalog.snapRepeats, catalog.sideHoleSnaps])
 }
 
 /** Resolve once per GLB/configuration, without mutating the loader cache or requiring React/WebGL. */
@@ -73,7 +74,7 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
   const config = typeof catalog.autoSnapGrid === 'object' ? catalog.autoSnapGrid : {}
   const existingGrid = modelRules.some((rule) => rule.rule === AUTO_SNAP_GRID_RULE)
   // `autoSnapGrid: false` in the catalogue also switches off a rule the GLB declares.
-  const gridRules: ItemRule[] = catalog.autoSnapGrid === false || catalog.snapRepeats?.length
+  const gridRules: ItemRule[] = catalog.autoSnapGrid === false || catalog.snapRepeats?.length || catalog.sideHoleSnaps
     ? modelRules.filter((rule) => rule.rule !== AUTO_SNAP_GRID_RULE)
     : existingGrid
       ? modelRules.map((rule) => rule.rule === AUTO_SNAP_GRID_RULE ? { ...rule, params: { ...rule.params, ...config } } : rule)
@@ -112,11 +113,15 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
         }),
     ], structuredClone(declared)),
   }
-  if (catalog.snapRepeats?.length) {
-    metadata.snaps = repeatSnapMarkers(metadata.snaps, catalog.snapRepeats, {
+  const repeats = catalog.sideHoleSnaps
+    ? catalog.snapRepeats?.filter((row) => metadata.snaps.some((point) => point.id === row.snapId))
+    : catalog.snapRepeats
+  if (repeats?.length) {
+    metadata.snaps = repeatSnapMarkers(metadata.snaps, repeats, {
       min: toLocal(bounds.min.toArray() as Vec3), max: toLocal(bounds.max.toArray() as Vec3),
     }, scale)
   }
+  if (catalog.sideHoleSnaps) metadata.snaps = sideHoleSnaps(scene, metadata.snaps, offset, scale)
   const prepared = { scene, offset, metadata }
   if (!variants) { variants = new Map(); preparedAssets.set(source, variants) }
   if (variants.size >= 16) variants.clear()
