@@ -223,7 +223,6 @@ function Workspace({ catalog, theme, setTheme, onCatalog }: {
             <button aria-label="Tema chiaro" aria-pressed={theme === 'light'} onClick={() => setTheme('light')} title="Tema chiaro"><Icon name="sun" size={15} /><span>Chiaro</span></button>
             <button aria-label="Tema scuro" aria-pressed={theme === 'dark'} onClick={() => setTheme('dark')} title="Tema scuro"><Icon name="moon" size={15} /><span>Scuro</span></button>
           </div>
-          <a className="app-header-link" href="/stl-to-glb.html" title="Converti un rilievo STL in GLB per il catalogo"><Icon name="cube" size={16} /><span>Converti STL</span></a>
           <button aria-label="Apri progetto" onClick={() => fileRef.current?.click()}><Icon name="folder" size={16} /><span>Apri progetto</span></button><button className="app-primary-action" aria-label="Nuovo progetto" onClick={handleNewProject}><Icon name="plus" size={16} /><span>Nuovo progetto</span></button>
         </div>
         <input ref={fileRef} type="file" accept="application/json,.json" hidden aria-label="File progetto" onChange={(event) => { const file = event.target.files?.[0]; if (file) void file.text().then((text) => openProject(text)); event.target.value = '' }} />

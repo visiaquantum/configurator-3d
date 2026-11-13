@@ -63,8 +63,6 @@ export default defineConfig(({ mode }) => {
     // the library bundle with the SPA + all of `public/`.
     build: {
       outDir: 'dist-demo',
-      // Second page: the STL → GLB converter for vehicle surveys.
-      rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), stlToGlb: resolve(import.meta.dirname, 'stl-to-glb.html') } },
     },
   }
 })
