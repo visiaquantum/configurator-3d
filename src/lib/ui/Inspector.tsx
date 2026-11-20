@@ -6,11 +6,13 @@ import { mirrorPairConstraint } from '../scene/mirrorPair'
 import { assemblyMembers } from '../assembly/graph'
 import { pairSpacingOptions } from '../assembly/pairSpacing'
 import { attachmentPoints, beginAttachment } from '../scene/attachment'
-import { rotateAssembly } from '../scene/itemMovement'
-import { assemblyLock, setAssemblyLocked, setMirrorPairDistance, snapAssemblyToAnchor, unjoinItem } from '../scene/commands'
+import { anchorConstraintOf, anchorOffsetRule, rotateAssembly } from '../scene/itemMovement'
+import { assemblyLock, setAnchorOffset, setAssemblyLocked, setMirrorPairDistance, snapAssemblyToAnchor, unjoinItem } from '../scene/commands'
 import { Icon } from './Icon'
 import { own } from '../util/record'
 import { snapStepPreview, stepItemSnap } from '../scene/snapStep'
+import { DistanceField } from './DistanceField'
+import { anchorAxisFields, formatCm } from './anchorDistance'
 
 interface Props { readOnly?: boolean }
 
@@ -37,7 +39,11 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
   const cat = own(catalog, item.catalogId)
   const [x, y, z] = item.position
   const size = own(state.itemSizes, item.catalogId) ?? cat?.size
-  const snapTarget = item.constraints?.find((constraint) => constraint.type === 'snapToAnchor')?.target
+  const held = anchorConstraintOf(item)
+  const snapTarget = held?.target
+  // Only products whose manifest declares the rule, and only once an anchor holds them.
+  const offsetRule = held ? anchorOffsetRule(state, item.catalogId) : undefined
+  const offsetAxes = anchorAxisFields(offsetRule)
   const joints = graph.filter((joint) => joint.sourceItemId === item.id || joint.targetItemId === item.id)
   const canAttach = attachmentPoints(state, item.id).length > 0
   const pair = mirrorPairConstraint(item)
@@ -62,6 +68,12 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
         <button className="cfg-button cfg-primary" disabled={readOnly || !canAttach} onClick={() => beginAttachment(storeApi, item.id)} title={canAttach ? 'Scegli i punti di snap direttamente nella scena' : 'Nessun punto di snap disponibile'}><Icon name="link" size={16} />Aggancia nella scena<Icon name="arrow" size={15} /></button>
         <span className="cfg-property-label">Posizione · metri</span>
         <div className="cfg-coordinates">{[x, y, z].map((value, index) => <span key={index}><b>{['X', 'Y', 'Z'][index]}</b>{value.toFixed(3)}</span>)}</div>
+        {offsetAxes.length > 0 && <>
+          <span className="cfg-property-label">Distanza dall’ancoraggio {snapTarget} · cm</span>
+          <div className="cfg-anchor-offset">{offsetAxes.map(({ axis, index, label }) =>
+            <DistanceField key={`${item.id}:${axis}`} label={label} metres={held?.offset?.[index] ?? 0} disabled={readOnly} onCommit={(metres) => setAnchorOffset(storeApi, item.id, { [axis]: metres })} />)}
+          </div>
+        </>}
 
         {size && <small style={{ display: 'block', color: 'var(--cfg-text-muted)', fontSize: 11, marginTop: 10 }}>Dimensioni {(size[0] * 100).toFixed(1)} × {(size[1] * 100).toFixed(1)} × {(size[2] * 100).toFixed(1)} cm</small>}
         <span className="cfg-property-label">Rotazione</span>
@@ -88,5 +100,3 @@ export function Inspector({ readOnly: hostReadOnly }: Props) {
     </section>
   )
 }
-
-const formatCm = (metres: number) => (metres * 100).toFixed(1).replace(/\.0$/, '')

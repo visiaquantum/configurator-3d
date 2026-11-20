@@ -132,6 +132,24 @@ export interface SnapToAnchorConstraint {
   corner?: number
   /** Id of this item's snap point that sits on the anchor. Wins over `corner`. */
   point?: string
+  /**
+   * Distance from the anchor to that point, corner or centre, in metres in
+   * the scene frame. Omitted: on the anchor. See `AnchorOffsetRule`.
+   */
+  offset?: Vec3
+}
+
+/**
+ * Manifest rule of a product seated at a distance from the enclosure anchor
+ * it is snapped to, instead of on it. Listing an axis makes that distance
+ * adjustable; its value, in metres, is the one a new snap starts from. Scene
+ * frame: `x` runs across the vehicle, `y` is the height above the anchor, `z`
+ * runs along the vehicle.
+ */
+export interface AnchorOffsetRule {
+  x?: number
+  y?: number
+  z?: number
 }
 
 /**
@@ -325,6 +343,14 @@ export interface ProductAssemblyDefinition {
   mirrorPair?: MirrorPairOptions
   /** Mirror-pair spacings (metres) a part spanning the pair fits. Omitted: any. */
   bays?: number[]
+  /**
+   * Ids of the base points this product is seated on the vehicle by. In the
+   * guided attachment such a point is offered the enclosure's anchors, and a
+   * drag released near an anchor snaps by these points only.
+   */
+  anchorPoints?: string[]
+  /** Distance from an enclosure anchor this product may be seated at. Omitted: on the anchor. */
+  anchorOffset?: AnchorOffsetRule
   /** Mating direction of GLB markers by id or kind, GLB frame. */
   directions?: Record<string, Vec3>
   assetCorrections?: AssetCorrection[]

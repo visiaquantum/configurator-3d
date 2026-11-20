@@ -1,7 +1,7 @@
 import { test } from 'vitest'
 import assert from 'node:assert/strict'
 import { Group, Ray, Vector3 } from 'three'
-import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAssemblyManifest, selectCanMove } from '../src/lib/index.ts'
+import { createConfiguratorStore, connectorsCanMate, attachmentPoints, parseAssemblyManifest, parseProject, selectCanMove, serializeProject, AssemblyManifestError } from '../src/lib/index.ts'
 import * as commands from '../src/lib/scene/commands.ts'
 import * as shortcuts from '../src/lib/state/shortcuts.ts'
 import * as spacing from '../src/lib/assembly/pairSpacing.ts'
@@ -139,6 +139,63 @@ test('anchoring an assembly keeps its mirror pair and joints, and a frozen assem
   commands.snapAssemblyToAnchor(frozen, 'a', 'bay')
   assert.deepEqual(frozen.getState().project.items[0].position, [0, 0, 0])
   assert.equal(frozen.getState().past.length, 0)
+})
+
+test('the distance from an anchor follows the product rule: listed axes only, the assembly as one body, inside the van', () => {
+  const pair = (target) => ({ type: 'mirrorPair', target, distance: 1 })
+  const store = setup([part('a', [0, 0, 0], { constraints: [pair('b')] }), part('b', [1, 0, 0], { mirrored: true, constraints: [pair('a')] }), part('free', [9, 0, 9])], [], [{ id: 'bay', position: [5, 0, 5] }])
+  // The twin is placed by a step from its own position: compare to the nanometre.
+  const positions = () => store.getState().project.items.slice(0, 2).map((item) => item.position.map((value) => Math.round(value * 1e9) / 1e9))
+  const held = () => store.getState().project.items[0].constraints.find((constraint) => constraint.type === 'snapToAnchor')
+  // A product without the rule sits on the anchor and takes no distance.
+  commands.snapAssemblyToAnchor(store, 'a', 'bay')
+  commands.setAnchorOffset(store, 'a', { z: 0.2 })
+  assert.deepEqual(positions(), [[5, 0, 5], [6, 0, 5]])
+  assert.deepEqual(held(), { type: 'snapToAnchor', target: 'bay' })
+  commands.snapAssemblyToAnchor(store, 'a', null)
+  // With the rule a new snap starts from its distance.
+  store.getState().setAssemblyManifest({ version: 2, products: [{ catalogId: 'part', connectors: [], anchorOffset: { z: 0.3 } }] })
+  commands.snapAssemblyToAnchor(store, 'a', 'bay')
+  assert.deepEqual(positions(), [[5, 0, 5.3], [6, 0, 5.3]])
+  assert.deepEqual(held(), { type: 'snapToAnchor', target: 'bay', offset: [0, 0, 0.3] })
+  // Only the axis the rule lists moves; the twin comes along and the pair holds.
+  const history = store.getState().past.length
+  commands.setAnchorOffset(store, 'a', { y: 0.2, z: -0.5 })
+  assert.deepEqual(positions(), [[5, 0, 4.5], [6, 0, 4.5]])
+  assert.deepEqual(held().offset, [0, 0, -0.5])
+  assert.ok(store.getState().project.items.slice(0, 2).every((item) => item.constraints.some((constraint) => constraint.type === 'mirrorPair')))
+  assert.equal(store.getState().past.length, history + 1)
+  // Past the wall the distance is the one that fits.
+  store.getState().setInteriorBBox({ min: [0, 0, 0], max: [10, 3, 6] })
+  commands.setAnchorOffset(store, 'a', { z: 2 })
+  assert.deepEqual(positions(), [[5, 0, 5.5], [6, 0, 5.5]])
+  assert.deepEqual(held().offset, [0, 0, 0.5])
+  store.getState().undo()
+  assert.deepEqual(held().offset, [0, 0, -0.5])
+  // Nothing to do: no rule axis, not a number, a part no anchor holds.
+  const before = store.getState().past.length
+  commands.setAnchorOffset(store, 'a', { y: 1 })
+  commands.setAnchorOffset(store, 'a', { z: NaN })
+  commands.setAnchorOffset(store, 'free', { z: 1 })
+  assert.equal(store.getState().past.length, before)
+  // Zero is on the anchor: the constraint carries no distance.
+  commands.setAnchorOffset(store, 'a', { z: 0 })
+  assert.deepEqual(positions(), [[5, 0, 5], [6, 0, 5]])
+  assert.deepEqual(held(), { type: 'snapToAnchor', target: 'bay' })
+})
+
+test('the anchor-offset rule and the distance saved on a constraint are validated', () => {
+  const manifest = (anchorOffset) => ({ version: 2, products: [{ catalogId: 'side', connectors: [], anchorOffset }] })
+  assert.deepEqual(parseAssemblyManifest(manifest({ y: 0, z: 0.12 })).products[0].anchorOffset, { y: 0, z: 0.12 })
+  assert.deepEqual(parseAssemblyManifest(manifest({ x: 0.05 })).products[0].anchorOffset, { x: 0.05 })
+  for (const bad of [{}, { w: 0.1 }, { y: '1' }]) assert.throws(() => parseAssemblyManifest(manifest(bad)), AssemblyManifestError)
+  const based = (anchorPoints) => ({ version: 2, products: [{ catalogId: 'side', connectors: [], anchorPoints }] })
+  assert.deepEqual(parseAssemblyManifest(based(['front', 'back'])).products[0].anchorPoints, ['front', 'back'])
+  for (const bad of [[], ['front', 'front'], ['']]) assert.throws(() => parseAssemblyManifest(based(bad)), AssemblyManifestError)
+  const anchored = (offset) => ({ id: 'p', version: 1, enclosure: { glbUrl: '/van.glb' }, items: [{ id: 'a', catalogId: 'side', position: [0, 0, 0], rotation: [0, 0, 0], constraints: [{ type: 'snapToAnchor', target: 'floor', point: 'base', offset }] }] })
+  const saved = serializeProject(parseProject(anchored([0, 0.1, 0.25])).project)
+  assert.deepEqual(parseProject(saved).project.items[0].constraints, [{ type: 'snapToAnchor', target: 'floor', point: 'base', offset: [0, 0.1, 0.25] }])
+  assert.throws(() => parseProject(anchored([0, 1])))
 })
 
 test('the inspector still turns a part whose model is not mounted', () => {

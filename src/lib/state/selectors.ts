@@ -72,6 +72,7 @@ export const selectAssemblyView = (state: ConfiguratorState) => ({
   itemRules: state.itemRules,
   itemSizes: state.itemSizes,
   interiorBBox: state.interiorBBox,
+  enclosureBBox: state.enclosureBBox,
   assetErrors: state.assetErrors,
   itemRegistry: state.itemRegistry,
   attachment: state.attachment,

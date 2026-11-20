@@ -3,17 +3,21 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 import { Box3, Vector3 } from 'three'
 import {
+  attachToItemsInstead,
   attachmentPointStates,
   beginAttachment,
   buildProjectBom,
   checkCatalog,
+  chooseAttachmentAnchor,
   chooseAttachmentPoint,
   chooseAttachmentTarget,
   computeAttachmentPreview,
+  confirmAttachment,
   extractItemSnapsFromObject,
   extractRulesFromObject,
   parseProject,
   serializeProject,
+  setAttachmentAnchorDistance,
   setMirrorPairDistance,
   snapsForItem,
   validateConfiguration,
@@ -166,6 +170,8 @@ function attach(editor, source, point, target, targetPoint) {
   const { store, hydrate } = editor
   assert.ok(beginAttachment(store, source), `${source} can start an attachment`)
   assert.ok(chooseAttachmentPoint(store, point), `${source}:${point}`)
+  // A base point is offered the van's anchors first; stacking it on a part is the way out of that stage.
+  if (store.getState().attachment.stage === 'anchor') attachToItemsInstead(store)
   assert.ok(chooseAttachmentTarget(store, target), `${source} → ${target}`)
   const committed = chooseAttachmentPoint(store, targetPoint)
   assert.ok(committed, `${source}:${point} → ${target}:${targetPoint}: ${store.getState().attachment?.error}`)
@@ -375,4 +381,44 @@ test('a part hung on the reference wall stays behind the flange in the scene too
   assert.ok(near(holeWorld[0], outer + 0.0036, 1e-6))
   const sideBox = new Box3().setFromCenterAndSize(new Vector3(side.position[0], side.position[1] + 0.54, side.position[2]), new Vector3(0.363, 1.08, 0.029))
   assert.ok(sideBox.containsPoint(new Vector3(...holeWorld)))
+})
+
+test('every side panel is anchored to the van by either base point, at a distance in depth and width', () => {
+  for (const id of ['ysi03036', 'ysi01131', 'ysi02436']) {
+    const editor = createEditor(production, { enclosure: ivecoEnclosure })
+    const { store } = editor
+    const panel = add(editor, id)
+    const rule = definition(id)
+    assert.deepEqual(Object.keys(rule.anchorOffset).sort(), ['x', 'z'], id)
+    const [front, back] = rule.anchorPoints.map((pointId) => attachmentPointStates(store.getState(), panel).find((entry) => entry.point.id === pointId))
+    assert.ok(front?.status === 'free' && back?.status === 'free', id)
+    // One at each end of the base: mirrored across the depth of the panel, both on the floor.
+    assert.ok(near(front.point.position[0], -back.point.position[0]) && front.point.position[0] > 0, id)
+    assert.ok(near(front.point.position[1], back.point.position[1]) && near(front.point.position[2], back.point.position[2]), id)
+    assert.deepEqual([front.heightMm, back.heightMm], [0, 0], id)
+    // The back one is the marker added to the GLB, read with the name and direction its extras give.
+    const marker = extractItemSnapsFromObject(production.scenes[production.fileOf[id]]).map((entry) => entry.extracted).find((point) => point.name === 'SNAP_TERRA__BASE_RETRO')
+    assert.deepEqual([marker?.id, marker?.kind, marker?.stable, marker?.label], ['base_retro', 'terra', true, 'Base su fianco · retro'], id)
+    assert.ok(marker.position.every((value) => Math.abs(value) < 1e-6) && marker.normal[1] === -1, `${id}: ${marker.position}`)
+    assert.deepEqual([back.point.id, back.point.label, front.point.label], ['base_retro', 'Base su fianco · retro', 'Base su fianco'], id)
+    const anchor = ivecoEnclosure.anchors.find((entry) => entry.id === 'pavimento-dx')
+    for (const point of rule.anchorPoints) {
+      assert.ok(beginAttachment(store, panel), id)
+      assert.ok(chooseAttachmentPoint(store, point), `${id}:${point}`)
+      assert.equal(store.getState().attachment.stage, 'anchor', `${id}:${point}`)
+      assert.ok(chooseAttachmentAnchor(store, anchor.id))
+      setAttachmentAnchorDistance(store, { x: -0.5, y: 0.3, z: -0.2 })
+      assert.ok(confirmAttachment(store), `${id}:${point}: ${store.getState().attachment?.error}`)
+      editor.hydrate()
+      const state = store.getState()
+      const placed = state.project.items.find((entry) => entry.id === panel)
+      assert.deepEqual(placed.constraints, [{ type: 'snapToAnchor', target: anchor.id, point, offset: [-0.5, 0, -0.2] }], `${id}:${point}`)
+      const base = snapsForItem(placed, state.itemSnaps, state.itemRules).find((entry) => entry.id === point)
+      const world = worldPoint(placed, base.position, state.itemSizes[id][1])
+      assert.ok(world.every((value, axis) => near(value, anchor.position[axis] + placed.constraints[0].offset[axis])), `${id}:${point} at ${world}`)
+      assert.deepEqual(validateConfiguration(state.project, state.catalog, state.assemblyManifest, {
+        itemSnaps: state.itemSnaps, itemRules: state.itemRules, itemSizes: state.itemSizes, enclosureBounds: state.interiorBBox,
+      }).filter((issue) => issue.level === 'error'), [], `${id}:${point}`)
+    }
+  }
 })

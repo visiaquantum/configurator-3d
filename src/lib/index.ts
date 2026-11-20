@@ -10,14 +10,15 @@ export { selectAssemblyView, selectCanMove, selectCollisionBounds, selectEffecti
 export type { AssemblyView } from './state/selectors'
 export { isResolvedJoint, jointsOf, pendingJoints } from './assembly/graph'
 export type { Joint } from './assembly/graph'
-export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, backAttachment, attachmentPoints, attachmentPointStates, attachmentTargetStates, computeAttachmentPreview, selectAttachmentPoint, confirmAttachment } from './scene/attachment'
+export { beginAttachment, chooseAttachmentPoint, chooseAttachmentTarget, chooseAttachmentAnchor, setAttachmentAnchorDistance, attachToItemsInstead, backAttachment, attachmentPoints, attachmentPointStates, attachmentTargetStates, computeAttachmentPreview, computeAnchorPlacement, isAnchorPoint, selectAttachmentPoint, confirmAttachment } from './scene/attachment'
 export type { AttachmentInteraction, AttachmentPointState, AttachmentPointStatus, AttachmentTargetState } from './scene/attachment'
 export { snapStepPreview, stepItemSnap } from './scene/snapStep'
 export { productCompatibility, compatibleCatalogIds } from './assembly/compatibility'
 export type { ProductCompatibility, ProductIncompatibility } from './assembly/compatibility'
 export { pairSpacingOptions } from './assembly/pairSpacing'
 export type { PairSpacingOption } from './assembly/pairSpacing'
-export { setMirrorPairDistance } from './scene/commands'
+export { setAnchorOffset, setMirrorPairDistance } from './scene/commands'
+export { anchorOffsetRule } from './scene/itemMovement'
 export { ConfiguratorStoreProvider } from './state/ConfiguratorStoreProvider'
 export { configurationStatus, validationForState } from './state/readiness'
 export {
@@ -149,6 +150,7 @@ export type {
   Anchor,
   ItemConstraint,
   SnapToAnchorConstraint,
+  AnchorOffsetRule,
   SnapToItemConstraint,
   LockAxisConstraint,
   MirrorPairConstraint,

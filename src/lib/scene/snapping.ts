@@ -225,7 +225,8 @@ export function clampItemsToBounds(ids: Iterable<string>, bounds: CollisionBound
 
 const EPSILON = 1e-6
 
-function clampAxisDelta(min: number, max: number, boundMin: number, boundMax: number): number {
+/** How far a span must move along one axis to lie inside its bounds; centred when it cannot fit. */
+export function clampAxisDelta(min: number, max: number, boundMin: number, boundMax: number): number {
   const size = max - min
   const boundSize = boundMax - boundMin
   if (size > boundSize) return (boundMin + boundMax - min - max) / 2

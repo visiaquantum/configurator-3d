@@ -114,6 +114,8 @@ disponibile l'utente lo vede e decide (§ 6 di [gestione-catalogo.md](gestione-c
 | `snapRepeats[]` | m, frame GLB | `id`, `snapId`, `pitch`, `label?`: ripete un marker GLB fino al limite del corpo; disattiva `auto-snap-grid` sul prodotto |
 | `mirrorPair` | frame GLB | `axis` verso il gemello, `distances` (m) che sostituiscono quelle del GLB |
 | `bays[]` | m | campate (distanze della coppia) in cui il pezzo entra; assente = qualsiasi |
+| `anchorPoints[]` | id di punti | punti di base con cui il prodotto si ancora al veicolo (§ 3.5); oggi solo i fianchi |
+| `anchorOffset` | m, frame scena | `{ "x": 0, "z": 0 }`: il prodotto può stare a distanza dall'ancoraggio del veicolo a cui è agganciato (§ 3.5); oggi solo i fianchi |
 | `directions` | frame GLB | direzione di aggancio di marker del GLB, per id o tipo |
 | `assetCorrections[]` | — | dati per un file preciso (§ 5) |
 | `review` | — | `confirmed`, `by`, `date`, `notes`: conferma del cliente delle regole meccaniche |
@@ -157,6 +159,67 @@ Passi `{ id, product, position?, yaw? }` (pezzo libero),
 `{ id, product, point, on, at }` (aggancio), `{ id, twinOf, distance }`
 (gemello), più `expectConnections`. Il controllo li compone con la stessa
 matematica dell'editor e li valida; non è una funzione dell'applicazione.
+
+### 3.5 Ancoraggio al veicolo
+
+```json
+"anchorPoints": ["stack-bottom", "base_retro"],
+"anchorOffset": { "x": 0, "z": 0 }
+```
+
+Regole dei prodotti che si ancorano al veicolo: oggi i fianchi.
+
+**`anchorPoints`** elenca gli id dei punti di base del prodotto, uno per
+estremità della base (sui fianchi «Base su fianco», sul fronte, e «Base su
+fianco · retro», specchiato a X = 0). Devono esistere nel prodotto, altrimenti
+il controllo segnala `point-missing`. Un punto di base:
+
+- compare tra i punti di «Aggancia nella scena» anche senza connettore;
+- scelto come punto iniziale, propone come destinazione **solo gli ancoraggi
+  del veicolo**; scelto l'ancoraggio si indicano le distanze e si conferma
+  sull'anteprima. Se il punto ha anche un connettore compatibile con un pezzo
+  in scena (la base che si sovrappone alla testa di un altro fianco), il
+  pannello offre «Aggancia invece a un componente»;
+- è l'unico punto con cui il prodotto si aggancia a un ancoraggio quando lo si
+  rilascia lì vicino trascinandolo (niente centro né spigoli).
+
+**`anchorOffset`** dice su quali assi la distanza dall'ancoraggio è regolabile.
+Senza la regola il prodotto sta sull'ancoraggio.
+
+| Parametro | Definizione |
+| --- | --- |
+| `x` | distanza in profondità, di traverso al veicolo, m |
+| `y` | distanza in altezza dall'ancoraggio, m; positiva verso l'alto. I fianchi non la dichiarano: la base resta all'altezza dell'ancoraggio |
+| `z` | distanza in larghezza, lungo il veicolo (asse di marcia), m |
+| assi | solo quelli elencati sono regolabili; almeno uno |
+| valore | distanza da cui parte un nuovo aggancio; `0` = sull'ancoraggio |
+
+Frame della scena, non del GLB: la distanza non ruota con il prodotto. Chi
+configura la indica nel passo «Distanze» dell'ancoraggio guidato e la cambia
+poi nell'Inspector, sotto la posizione del componente («Distanza
+dall'ancoraggio», in cm). Il valore resta nel progetto, sul vincolo
+`snapToAnchor` (`point`, `offset: [x, y, z]` in m), e l'assieme agganciato si
+sposta insieme. Una distanza che porta fuori dal vano viene ridotta a quella
+che ci sta.
+
+Sui tre fianchi il punto anteriore `stack-bottom` è dichiarato nel manifest
+(correzione legata all'hash del file, § 5): il marker `SNAP_SOVRAPPOSIZIONE`
+del CAD non ha nome stabile. Il punto posteriore `base_retro` è un marker del
+GLB, aggiunto a mano ai tre file (`YSI03036`, `YSI01131`, `YSI02436`):
+
+```jsonc
+{ "name": "SNAP_TERRA__BASE_RETRO",          // tipo terra, id base_retro
+  "mesh": <cubetto del marker SNAP_SOVRAPPOSIZIONE>,
+  "translation": [0, -0.0005, 0],            // specchiato a X = 0, centrato sulla faccia di base
+  "extras": { "normal": [0, -1, 0], "label": "Base su fianco · retro" } }
+```
+
+Vale solo il blocco JSON del file: la geometria è invariata. I file hanno un
+hash nuovo, quindi le correzioni dei tre fianchi nel manifest puntano al nuovo
+hash. Una riesportazione dal CAD perde il marker: va messo nel modello CAD con
+lo stesso nome, oppure riaggiunto, e gli hash delle correzioni riallineati.
+Il vecchio `SNAP_TERRA-7`, nello stesso punto ma 0.5 mm sopra la faccia, resta
+nel file e ora si legge come `terra-1`.
 
 ## 4. Coordinate e precedenze (T10)
 

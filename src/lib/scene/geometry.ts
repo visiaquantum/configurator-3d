@@ -72,7 +72,10 @@ export function cargoFloorTop(root: Object3D, dimensions: Vec3, base = 0): numbe
   }
   if (hits.length === 0) return base
   hits.sort((a, b) => a - b)
-  return Math.max(base, hits[Math.floor(hits.length / 2)])
+  // To a hundredth of a millimetre: finer than that is mesh precision, and it
+  // left an anchor declared on the floor (0.012) microns under it, where the
+  // containment lifted every product seated there and released the anchor.
+  return Math.max(base, Math.round(hits[Math.floor(hits.length / 2)] * 1e5) / 1e5)
 }
 
 /** Visible body bounds, excluding complete marker subtrees rather than their pivots. */

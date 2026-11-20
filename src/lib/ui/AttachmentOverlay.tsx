@@ -1,22 +1,26 @@
 import { useEffect, useRef, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore, useConfiguratorStoreApi } from '../state/store'
-import { selectAssemblyView } from '../state/selectors'
-import { attachmentPointStates, attachmentPoints, attachmentTargetIds, attachmentTargetStates, backAttachment, chooseAttachmentTarget, computeAttachmentPreview, selectAttachmentPoint, confirmAttachment } from '../scene/attachment'
+import { selectAssemblyView, selectEffectiveAnchors } from '../state/selectors'
+import type { AssemblyView } from '../state/selectors'
+import { attachToItemsInstead, attachmentPointStates, attachmentPoints, attachmentTargetIds, attachmentTargetStates, backAttachment, chooseAttachmentAnchor, chooseAttachmentTarget, computeAnchorPlacement, computeAttachmentPreview, selectAttachmentPoint, confirmAttachment, setAttachmentAnchorDistance } from '../scene/attachment'
 import type { AttachmentPointState } from '../scene/attachment'
+import { anchorOffsetRule } from '../scene/itemMovement'
 import { snapPointLabel, snapsForItem } from '../scene/mating'
 import { pairSpacingOptions } from '../assembly/pairSpacing'
 import { MIRROR_PAIR_RULE, mirrorPairConstraint } from '../scene/mirrorPair'
 import { setMirrorPairDistance } from '../scene/commands'
 import { Icon } from './Icon'
+import { DistanceField } from './DistanceField'
+import { anchorAxisFields, formatCm } from './anchorDistance'
 import { own } from '../util/record'
 
 const STATUS_LABELS: Record<AttachmentPointState['status'], string> = {
   free: 'Libero', occupied: 'Occupato', incompatible: 'Non compatibile', 'bay-not-allowed': 'Campata non ammessa',
 }
-const formatCm = (metres: number) => (metres * 100).toFixed(1).replace(/\.0$/, '')
 
 const steps = ['Punto iniziale', 'Destinatario', 'Punto finale']
+const anchorSteps = ['Punto di base', 'Ancoraggio', 'Distanze']
 
 export function AttachmentOverlay() {
   const store = useConfiguratorStoreApi()
@@ -53,6 +57,7 @@ export function AttachmentOverlay() {
       </div>
     </>
   }
+  if (interaction.stage === 'anchor') return <AnchorStage view={view} sourceLabel={sourceLabel} pointLabel={selectedSourcePoint ? snapPointLabel(selectedSourcePoint) : ''} />
   const index = interaction.stage === 'source' ? 0 : interaction.stage === 'target' ? 1 : 2
   // Every interface is listed, with its height and whether it is free: the
   // ones that cannot take this part say why instead of disappearing.
@@ -104,5 +109,53 @@ export function AttachmentOverlay() {
     </div></details>
     {interaction.stage === 'point' && <button className="cfg-button cfg-primary cfg-confirm-attachment" disabled={!interaction.selectedPointId || !preview?.valid} onClick={() => confirmAttachment(store)}>Conferma aggancio</button>}
     <div className="cfg-attachment-footer"><button className="cfg-button cfg-quiet" disabled={index === 0} onClick={() => backAttachment(store)}><Icon name="back" size={16} />Indietro</button><span>Orbita la vista per vedere gli altri punti <kbd>Esc</kbd> per uscire</span></div>
+  </div>
+}
+
+/**
+ * A base point goes on the vehicle: the enclosure's anchors are its only
+ * destinations, then the distance from the one chosen. The ghost in the scene
+ * and the panel read the same preview.
+ */
+function AnchorStage({ view, sourceLabel, pointLabel }: { view: AssemblyView; sourceLabel: string; pointLabel: string }) {
+  const store = useConfiguratorStoreApi()
+  const anchors = useConfiguratorStore(selectEffectiveAnchors)
+  const interaction = view.attachment!
+  const { setAttachment } = store.getState()
+  const source = view.project!.items.find((item) => item.id === interaction.sourceItemId)!
+  const anchor = anchors.find((entry) => entry.id === interaction.anchorId)
+  const shown = anchor ?? anchors.find((entry) => entry.id === interaction.hoveredAnchorId)
+  const preview = shown && interaction.sourcePointId
+    ? computeAnchorPlacement(view, source.id, interaction.sourcePointId, shown, anchor ? interaction.anchorDistance : undefined) : null
+  const fields = anchorAxisFields(anchorOffsetRule(view, source.catalogId))
+  // A base point that also stacks on another product keeps that way out.
+  const others = attachmentTargetIds(view).size
+  const index = anchor ? 2 : 1
+  const hover = (id: string | undefined) => setAttachment({ ...interaction, hoveredAnchorId: id })
+  return <div className="cfg-attachment-panel" aria-label="Modalità aggancio">
+    <div className="cfg-attachment-heading"><span className="cfg-mode-badge"><Icon name="link" size={15} />ANCORAGGIO</span><button className="cfg-icon-button" aria-label="Annulla aggancio" title="Annulla aggancio (Esc)" onClick={() => setAttachment(null)}><Icon name="close" /></button></div>
+    <ol className="cfg-steps">{anchorSteps.map((step, number) => <li key={step} className={number === index ? 'active' : number < index ? 'done' : ''}><span>{number < index ? <Icon name="check" size={12} /> : number + 1}</span>{step}</li>)}</ol>
+    <h3>{anchor ? 'Imposta le distanze dall’ancoraggio' : 'Scegli il punto di ancoraggio del furgone'}</h3>
+    <p>{anchor ? 'Indica a che distanza dall’ancoraggio va il punto di base, controlla l’anteprima e conferma.' : 'Clicca o tocca un ancoraggio nella scena, oppure sceglilo dall’elenco.'}</p>
+    <div className="cfg-snap-feedback" role="status" aria-live="polite">
+      {interaction.error || (preview && !preview.valid) ? <span className="cfg-error-text">{interaction.error ?? preview?.error}</span>
+        : <><span className="cfg-point-dot" />{sourceLabel} · {pointLabel}{shown ? ` → ${shown.id}` : ''}{anchor && preview?.valid && <span className="cfg-positive">Pronto per l’ancoraggio</span>}</>}
+    </div>
+    {anchors.length === 0 && <small className="cfg-warning-text">Questo veicolo non ha punti di ancoraggio.</small>}
+    {anchor && fields.length > 0 && <>
+      <span className="cfg-property-label">Distanza dall’ancoraggio · cm</span>
+      <div className="cfg-anchor-offset">{fields.map(({ axis, index: at, label }) =>
+        <DistanceField key={`${anchor.id}:${axis}`} live label={label} metres={interaction.anchorDistance?.[at] ?? 0} onCommit={(metres) => setAttachmentAnchorDistance(store, { [axis]: metres })} />)}
+      </div>
+    </>}
+    {anchor && preview?.limited && <small className="cfg-warning-text">Così il componente uscirebbe dal vano: distanza ridotta a {fields.map(({ axis, index: at }) => `${axis.toUpperCase()} ${formatCm(preview.offset?.[at] ?? 0)}`).join(' · ')} cm.</small>}
+    <details className="cfg-point-list" open><summary>Punti di ancoraggio del furgone ({anchors.length})</summary><div>
+      {anchors.map((entry, number) => <button key={entry.id} aria-pressed={interaction.anchorId === entry.id}
+        onMouseEnter={() => hover(entry.id)} onMouseLeave={() => hover(undefined)} onFocus={() => hover(entry.id)}
+        onClick={() => chooseAttachmentAnchor(store, entry.id)}><span>{number + 1}</span>{entry.id}</button>)}
+    </div></details>
+    {!anchor && others > 0 && <button className="cfg-button cfg-quiet" onClick={() => attachToItemsInstead(store)}><Icon name="cube" size={15} />Aggancia invece a un componente ({others})</button>}
+    {anchor && <button className="cfg-button cfg-primary cfg-confirm-attachment" disabled={!preview?.valid} onClick={() => confirmAttachment(store)}>Conferma ancoraggio</button>}
+    <div className="cfg-attachment-footer"><button className="cfg-button cfg-quiet" onClick={() => backAttachment(store)}><Icon name="back" size={16} />Indietro</button><span>Orbita la vista per vedere gli altri ancoraggi <kbd>Esc</kbd> per uscire</span></div>
   </div>
 }

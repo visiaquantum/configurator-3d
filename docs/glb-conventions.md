@@ -224,6 +224,9 @@ quel caso la normale non viene dichiarata, invece di tirare a indovinare.
 Un `normal` esplicito negli extras prevale sulla deduzione geometrica. Il
 bounding box usato per la deduzione esclude i sottoalberi dei marker.
 
+Gli extras del nodo possono dare anche `label`, il nome del punto mostrato a
+chi configura (es. `"Base su fianco · retro"`); senza, il nome viene dal tipo.
+
 ### Constraint nel project JSON
 
 Aggancio a un anchor dell'allestimento:
@@ -233,6 +236,10 @@ Aggancio a un anchor dell'allestimento:
 ```
 
 (in alternativa `corner: 0-3` per i vertici del collider; assente = centro).
+`offset: [x, y, z]` (m, frame della scena) tiene il punto a quella distanza
+dall'ancoraggio invece che sopra: lo scrivono i prodotti con le regole
+`anchorPoints` / `anchorOffset` del manifest (i fianchi, ancorati da un punto
+di base), vedi [contratto-glb-manifest.md](contratto-glb-manifest.md) § 3.5.
 
 Aggancio a un altro prodotto:
 

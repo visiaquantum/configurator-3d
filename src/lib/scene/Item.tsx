@@ -43,6 +43,7 @@ const _markerMatrix = new Matrix4()
 // model) gets a new map, and a discarded one releases its materials with it.
 const originalColorsByClone = new WeakMap<Object3D, Map<MeshStandardMaterial, Color>>()
 const NONE: ReadonlySet<string> = new Set()
+const NO_OFFSET: Vec3 = [0, 0, 0]
 
 interface DragCtx {
   mode: 'translate' | 'rotate'
@@ -159,12 +160,14 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
   /* eslint-disable react-hooks/immutability */
   const snapCorner = snapConstraint?.corner ?? null
   const snapPointId = snapConstraint?.point ?? null
+  // Numbers, not the array: a commit elsewhere rebuilds every constraint.
+  const [offsetX, offsetY, offsetZ] = snapConstraint?.offset ?? NO_OFFSET
   const catalogSnaps = useConfiguratorStore((state) => own(state.itemSnaps, item.catalogId)) ?? asset.metadata.snaps
   const effectiveCatalogSnaps = useMemo(() => mirrorSnapPoints(catalogSnaps, mirrorScale), [catalogSnaps, mirrorScale])
   useLayoutEffect(() => {
     if (!group) return
     const [px, py, pz] = snappedAnchor
-      ? anchoredBasePosition(snappedAnchor, { point: snapPointId, corner: snapCorner }, item.rotation, effectiveCatalogSnaps, colliderSize)
+      ? anchoredBasePosition(snappedAnchor, { point: snapPointId, corner: snapCorner, offset: [offsetX, offsetY, offsetZ] }, item.rotation, effectiveCatalogSnaps, colliderSize)
       : item.position
     group.position.set(px, py + colliderSize[1] / 2, pz)
     group.rotation.set(item.rotation[0], item.rotation[1], item.rotation[2])
@@ -174,6 +177,9 @@ export const Item = memo(function Item({ item, asset, anchors }: Props) {
     snappedAnchor,
     snapCorner,
     snapPointId,
+    offsetX,
+    offsetY,
+    offsetZ,
     effectiveCatalogSnaps,
     item.position,
     item.rotation,

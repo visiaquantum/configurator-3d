@@ -5,6 +5,9 @@ import { validateConfiguration } from '../assembly/validation'
 import { assemblyMembers, dedupeJoints, isResolvedJoint, jointsOf, jointsSurvivingMove, withJoints } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
 import { assemblyPosePatches } from './mating'
+import { transformedBounds } from './geometry'
+import { clampAxisDelta } from './snapping'
+import { selectCollisionBounds } from '../state/selectors'
 import { own } from '../util/record'
 
 export type AssemblyPlacementContext = Pick<ConfiguratorState,
@@ -12,6 +15,36 @@ export type AssemblyPlacementContext = Pick<ConfiguratorState,
 
 export function itemHeight(state: Pick<ConfiguratorState, 'itemSizes' | 'catalog'>, item: PlacedItem): number {
   return own(state.itemSizes, item.catalogId)?.[1] ?? (own(state.catalog, item.catalogId)?.size?.[1] ?? 0) * (own(state.catalog, item.catalogId)?.scale ?? 1)
+}
+
+/**
+ * The step that brings the patched items, as one body, back inside the
+ * enclosure, or null when they already are. Computed from their sizes alone:
+ * the counterpart of `clampItemsToBounds` for previews, which must not touch
+ * the live scene.
+ */
+export function containmentStep(
+  state: Pick<ConfiguratorState, 'project' | 'itemSizes' | 'interiorBBox' | 'enclosureBBox'>,
+  patches: Array<{ id: string; patch: Partial<PlacedItem> }>,
+): Vec3 | null {
+  const bounds = selectCollisionBounds(state)
+  if (!bounds || !state.project) return null
+  const byId = new Map(patches.map((entry) => [entry.id, entry.patch]))
+  const min: Vec3 = [Infinity, Infinity, Infinity]
+  const max: Vec3 = [-Infinity, -Infinity, -Infinity]
+  for (const item of state.project.items) {
+    const patch = byId.get(item.id)
+    const size = own(state.itemSizes, item.catalogId)
+    if (!patch || !size) continue
+    const box = transformedBounds({ ...item, ...patch }, size[1], [0, 0, 0], size)
+    for (let axis = 0; axis < 3; axis++) {
+      min[axis] = Math.min(min[axis], box.min[axis])
+      max[axis] = Math.max(max[axis], box.max[axis])
+    }
+  }
+  if (!min.every(Number.isFinite)) return null
+  const step = min.map((value, axis) => clampAxisDelta(value, max[axis], bounds.min[axis], bounds.max[axis])) as Vec3
+  return Math.hypot(...step) <= 1e-6 ? null : step
 }
 
 /**

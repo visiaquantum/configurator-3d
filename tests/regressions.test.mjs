@@ -423,6 +423,22 @@ test('untrusted marker extras cannot crash snap extraction or inflate body bound
   const extracted = extractItemSnapsFromObject(root)[0].extracted
   assert.equal(extracted.id, 'stable-face'); assert.equal(extracted.kind, 'frontale')
   assert.deepEqual(extracted.normal, [1, 0, 0])
+  // A label in the extras names the point for the user; anything but text is ignored.
+  assert.equal('label' in extracted, false)
+  marker.userData.label = 'Base · retro'
+  assert.equal(extractItemSnapsFromObject(root)[0].extracted.label, 'Base · retro')
+  marker.userData.label = 7
+  assert.equal('label' in extractItemSnapsFromObject(root)[0].extracted, false)
+})
+
+test('the measured cargo floor is rounded so an anchor declared on it is not left under it', async () => {
+  const { cargoFloorTop } = await import('../src/lib/scene/geometry.ts')
+  // A 12 mm floor plate whose mesh tops out 2.5 microns high, as in the IVECO model.
+  const top = 0.0120025
+  const plate = new Mesh(new BoxGeometry(2, top, 4), new MeshBasicMaterial())
+  plate.position.y = top / 2
+  const van = new Group().add(plate)
+  assert.equal(cargoFloorTop(van, [1.8, 2, 3.2]), 0.012)
 })
 
 test('moving an anchored item releases its old anchor and undo restores it', () => {

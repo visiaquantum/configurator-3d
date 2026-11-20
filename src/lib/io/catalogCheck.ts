@@ -417,6 +417,13 @@ export function checkCatalog(input: CatalogCheckInput): CatalogCheckReport {
         }
       }
     }
+    // Base points: every point the product is seated on the vehicle by exists.
+    for (const id of definition.anchorPoints ?? []) {
+      if (!ready.metadata.snaps.some((point) => point.id === id)) {
+        issues.push(issue('error', 'point-missing', `Il punto di base ${id} (anchorPoints) non esiste nel prodotto`, { ...where, point: id },
+          'Dichiarare il punto nel manifest o nel GLB, oppure toglierlo da anchorPoints.'))
+      }
+    }
     const half = (item.size ?? [0, 0, 0]).map((value) => value * (item.scale ?? 1) / 2 + 0.001)
     for (const point of item.snapPoints ?? []) {
       if (point.position.some((value, i) => Math.abs(value) > half[i])) {

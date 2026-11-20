@@ -87,6 +87,35 @@ test('translation attaches to an anchor and undo restores the previous free pose
   assert.deepEqual(store.getState().project.items[0].position, [3, 0, 0])
 })
 
+test('a product with the anchor-offset rule is seated at its distance from the anchor and returns to that seat', () => {
+  const store = setup([part('a', [3, 0, 0])])
+  const manifest = store.getState().assemblyManifest
+  store.getState().setAssemblyManifest({ ...manifest, products: manifest.products.map((product) => ({ ...product, anchorOffset: { y: 0.1, z: 0.25 } })) })
+  const anchors = [{ id: 'floor', position: [0, 0, 0] }, { id: 'other', position: [0, 0, 5] }]
+  const placed = () => store.getState().project.items[0]
+  const near = (actual, expected) => actual.forEach((value, axis) => assert.ok(Math.abs(value - expected[axis]) < 1e-9, `${actual} is not ${expected}`))
+  // Dropped on the marker: seated at the rule's distance from it.
+  live(store, 'a').position.set(0.02, 0.5, 0)
+  finishItemMovement(store, 'a', 'translate', [0, 0, 0], anchors, [])
+  near(placed().position, [0, 0.1, 0.25])
+  assert.deepEqual(placed().constraints, [{ type: 'snapToAnchor', target: 'floor', offset: [0, 0.1, 0.25] }])
+  // A distance set by hand is the seat a nudge returns to, not the rule's.
+  const held = { type: 'snapToAnchor', target: 'floor', offset: [0, 0.1, 0.4] }
+  store.getState().updateItem('a', { position: [0, 0.1, 0.4], constraints: [held] })
+  live(store, 'a').position.set(0.03, 0.6, 0.42)
+  finishItemMovement(store, 'a', 'translate', [0, 0, 0], anchors, [])
+  near(placed().position, [0, 0.1, 0.4])
+  assert.deepEqual(placed().constraints, [held])
+  // Another anchor starts from the rule again; away from both, the part is free.
+  live(store, 'a').position.set(0, 0.5, 5.01)
+  finishItemMovement(store, 'a', 'translate', [0, 0, 0], anchors, [])
+  near(placed().position, [0, 0.1, 5.25])
+  assert.deepEqual(placed().constraints, [{ type: 'snapToAnchor', target: 'other', offset: [0, 0.1, 0.25] }])
+  live(store, 'a').position.set(2, 0.6, 2)
+  finishItemMovement(store, 'a', 'translate', [0, 0, 0], anchors, [])
+  assert.deepEqual(placed().constraints, [])
+})
+
 test('in-place rotation keeps a centre anchor but releases a corner anchor', () => {
   for (const [extra, retained] of [[{}, true], [{ corner: 0 }, false]]) {
     const anchor = { type: 'snapToAnchor', target: 'floor', ...extra }

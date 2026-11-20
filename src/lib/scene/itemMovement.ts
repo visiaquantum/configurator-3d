@@ -1,12 +1,13 @@
 import type { ConfiguratorState, ConfiguratorStore, DragClearance } from '../state/store'
 import { rotateVector } from './geometry'
-import type { Anchor, Euler, ItemConstraint, ItemSnapPoint, PlacedItem, Vec3 } from '../types'
+import type { Anchor, AnchorOffsetRule, Euler, ItemConstraint, ItemSnapPoint, PlacedItem, SnapToAnchorConstraint, Vec3 } from '../types'
 import type { ItemRegistry } from './itemRegistry'
 import { selectCanMove, selectCollisionBounds } from '../state/selectors'
 import { colliderSizeOf } from './itemRegistry'
 import { assemblyPosePatches, rotateGroupPatches } from './mating'
 import { assemblyMembers, jointsOf, jointsSurvivingMove } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
+import { definitionFor } from '../assembly/manifest'
 import { clampItemsToBounds, clampItemToBounds, pushOutOverlaps } from './snapping'
 
 const ANCHOR_SNAP_RADIUS = 0.06
@@ -32,13 +33,51 @@ export function rotateOffsetXZ(ox: number, oz: number, yaw: number): [number, nu
   return [ox * c + oz * s, -ox * s + oz * c]
 }
 
+/** Axes of an anchor distance, in the order of a `Vec3`. */
+export const ANCHOR_AXES = ['x', 'y', 'z'] as const
+
+/** The manifest rule that seats a product at a distance from its enclosure anchor, if it declares one. */
+export function anchorOffsetRule(state: Pick<ConfiguratorState, 'assemblyManifest'>, catalogId: string): AnchorOffsetRule | undefined {
+  return definitionFor(state.assemblyManifest, catalogId)?.anchorOffset
+}
+
+/** A distance from an anchor as the constraint stores it: none when it is zero. */
+export function anchorOffset(distance: Vec3 | null | undefined): Vec3 | undefined {
+  return distance && distance.some((value) => Math.abs(value) > 1e-9) ? [...distance] : undefined
+}
+
+/** The distance a product with the rule starts from when it is snapped to an anchor. */
+export function ruleAnchorOffset(rule: AnchorOffsetRule | undefined): Vec3 | undefined {
+  return rule && anchorOffset([rule.x ?? 0, rule.y ?? 0, rule.z ?? 0])
+}
+
+/** The base points a product is seated on the vehicle by, if its manifest entry names any. */
+export function anchorPointIds(state: Pick<ConfiguratorState, 'assemblyManifest'>, catalogId: string): string[] | undefined {
+  return definitionFor(state.assemblyManifest, catalogId)?.anchorPoints
+}
+
+/** The snapToAnchor constraint of an item, if an enclosure anchor holds it. */
+export function anchorConstraintOf(item: PlacedItem): SnapToAnchorConstraint | undefined {
+  return item.constraints?.find((constraint) => constraint.type === 'snapToAnchor')
+}
+
+/** The same hold at another distance from the anchor. */
+export function withAnchorOffset(held: SnapToAnchorConstraint, distance: Vec3 | undefined): SnapToAnchorConstraint {
+  const hold: SnapToAnchorConstraint = { ...held }
+  delete hold.offset
+  const offset = anchorOffset(distance)
+  return offset ? { ...hold, offset } : hold
+}
+
 interface AnchorSnapHit {
   anchor: Anchor
   /** Index into cornerOffsetsXZ, or null when the item center snapped. */
   corner: number | null
   /** Id of the product snap point that snapped, or null. Wins over corner. */
   point: string | null
-  /** New item base position that puts the snapped point on the anchor. */
+  /** Distance from the anchor the snapped point is seated at, if any. */
+  offset?: Vec3
+  /** New item base position that puts the snapped point on its seat. */
   position: Vec3
   dist: number
 }
@@ -57,6 +96,11 @@ interface SnapCandidate {
  * bottom corners, or any product snap point declared in the GLB. Distance is
  * measured on XZ only (the anchor supplies the Y), with a vertical window so
  * floor drags don't grab wall anchors.
+ *
+ * `seatOffset` gives the distance from an anchor the item is seated at. Such
+ * an item engages when dropped on the anchor's marker or back on its seat,
+ * and lands on the seat either way. `pointsOnly` leaves the centre and the
+ * corners out: a product that names its base points is seated by those.
  */
 function findAnchorSnap(
   base: Vec3,
@@ -64,12 +108,17 @@ function findAnchorSnap(
   colliderSize: Vec3,
   anchors: Anchor[],
   snapPoints: ItemSnapPoint[],
+  seatOffset: (anchor: Anchor) => Vec3 | undefined = () => undefined,
+  pointsOnly = false,
 ): AnchorSnapHit | null {
-  const candidates: SnapCandidate[] = [{ corner: null, point: null, dx: 0, dz: 0, oy: 0 }]
-  cornerOffsetsXZ(colliderSize).forEach(([ox, oz], i) => {
-    const [dx, dz] = rotateOffsetXZ(ox, oz, yaw)
-    candidates.push({ corner: i, point: null, dx, dz, oy: 0 })
-  })
+  const candidates: SnapCandidate[] = []
+  if (!pointsOnly) {
+    candidates.push({ corner: null, point: null, dx: 0, dz: 0, oy: 0 })
+    cornerOffsetsXZ(colliderSize).forEach(([ox, oz], i) => {
+      const [dx, dz] = rotateOffsetXZ(ox, oz, yaw)
+      candidates.push({ corner: i, point: null, dx, dz, oy: 0 })
+    })
+  }
   for (const sp of snapPoints) {
     const [dx, dz] = rotateOffsetXZ(sp.position[0], sp.position[2], yaw)
     candidates.push({
@@ -82,28 +131,38 @@ function findAnchorSnap(
   }
   let best: AnchorSnapHit | null = null
   for (const a of anchors) {
-    for (const cand of candidates) {
-      if (Math.abs(base[1] + cand.oy - a.position[1]) > ANCHOR_SNAP_MAX_DY) continue
-      const d = Math.hypot(
-        base[0] + cand.dx - a.position[0],
-        base[2] + cand.dz - a.position[2],
-      )
-      if (d <= ANCHOR_SNAP_RADIUS && (!best || d < best.dist)) {
-        best = {
-          anchor: a,
-          corner: cand.corner,
-          point: cand.point,
-          dist: d,
-          position: [
-            a.position[0] - cand.dx,
-            a.position[1] - cand.oy,
-            a.position[2] - cand.dz,
-          ],
+    const offset = anchorOffset(seatOffset(a))
+    const seat = seatPosition(a, offset)
+    for (const target of offset ? [a.position, seat] : [seat]) {
+      for (const cand of candidates) {
+        if (Math.abs(base[1] + cand.oy - target[1]) > ANCHOR_SNAP_MAX_DY) continue
+        const d = Math.hypot(
+          base[0] + cand.dx - target[0],
+          base[2] + cand.dz - target[2],
+        )
+        if (d <= ANCHOR_SNAP_RADIUS && (!best || d < best.dist)) {
+          best = {
+            anchor: a,
+            corner: cand.corner,
+            point: cand.point,
+            offset,
+            dist: d,
+            position: [
+              seat[0] - cand.dx,
+              seat[1] - cand.oy,
+              seat[2] - cand.dz,
+            ],
+          }
         }
       }
     }
   }
   return best
+}
+
+/** Where the held point of an anchored item sits: the anchor, moved by the constraint's offset. */
+function seatPosition(anchor: Anchor, offset: Vec3 | undefined): Vec3 {
+  return offset ? [anchor.position[0] + offset[0], anchor.position[1] + offset[1], anchor.position[2] + offset[2]] : anchor.position
 }
 
 /** Replace an item's enclosure anchor (or drop it), keeping every other constraint. */
@@ -122,6 +181,7 @@ function snapHitConstraint(hit: AnchorSnapHit): ItemConstraint {
       : hit.corner != null
         ? { corner: hit.corner }
         : {}),
+    ...(hit.offset ? { offset: hit.offset } : {}),
   }
 }
 
@@ -180,7 +240,7 @@ export function rotateAssembly(store: ConfiguratorStore, id: string, step: numbe
  * stays inside the enclosure: turning a wall about one of its parts must not
  * swing the rest through the van's side.
  */
-function keptInside(state: ConfiguratorState, patches: ItemPatch[]): ItemPatch[] {
+export function keptInside(state: ConfiguratorState, patches: ItemPatch[]): ItemPatch[] {
   applyLiveItemPatches(state.itemRegistry, patches)
   const step = clampItemsToBounds(patches.map((entry) => entry.id), selectCollisionBounds(state), state.itemRegistry)
   if (!step) return patches
@@ -225,26 +285,28 @@ export function dragClearance(itemId: string, center: Vec3, size: Vec3, bounds: 
 
 /**
  * Base position of an item held by an enclosure anchor: the snap point,
- * corner or centre it was snapped by sits exactly on the anchor.
+ * corner or centre it was snapped by sits exactly on the anchor, or at the
+ * constraint's `offset` from it.
  */
 export function anchoredBasePosition(
   anchor: Anchor,
-  held: { point?: string | null; corner?: number | null },
+  held: { point?: string | null; corner?: number | null; offset?: Vec3 | null },
   rotation: Euler,
   snaps: ItemSnapPoint[],
   size: Vec3,
 ): Vec3 {
+  const seat = seatPosition(anchor, held.offset ?? undefined)
   const point = held.point ? snaps.find((entry) => entry.id === held.point) : undefined
   if (point) {
     const [dx, dy, dz] = rotateVector(point.position, rotation)
-    return [anchor.position[0] - dx, anchor.position[1] - (dy + size[1] / 2), anchor.position[2] - dz]
+    return [seat[0] - dx, seat[1] - (dy + size[1] / 2), seat[2] - dz]
   }
   const corner = held.corner != null ? cornerOffsetsXZ(size)[held.corner] : undefined
   if (corner) {
     const [dx, dz] = rotateOffsetXZ(corner[0], corner[1], rotation[1])
-    return [anchor.position[0] - dx, anchor.position[1], anchor.position[2] - dz]
+    return [seat[0] - dx, seat[1], seat[2] - dz]
   }
-  return [...anchor.position]
+  return [...seat]
 }
 
 /** Complete a pointer or gizmo gesture using the same collision, anchor and history rules. */
@@ -284,8 +346,8 @@ export function finishItemMovement(
     return pushed || clamped
   }
   const corrected = correctPosition()
+  const anchor = anchorConstraintOf(item)
   if (mode === 'rotate') {
-    const anchor = item.constraints?.find((constraint) => constraint.type === 'snapToAnchor')
     const keepAnchor = !corrected && anchor && anchor.corner == null && anchor.point == null
     commitLiveItemPatches(store, [{ id, patch: {
       position: position(), rotation,
@@ -293,7 +355,13 @@ export function finishItemMovement(
     } }])
     return
   }
-  let hit = findAnchorSnap(position(), rotation[1], size, anchors, snaps)
+  // A product with the rule returns to the distance it was set to on its own
+  // anchor, and starts from the rule's on any other.
+  const ruleOffset = ruleAnchorOffset(anchorOffsetRule(state, item.catalogId))
+  const basePoints = anchorPointIds(state, item.catalogId)
+  let hit = findAnchorSnap(position(), rotation[1], size, anchors,
+    basePoints ? snaps.filter((point) => basePoints.includes(point.id)) : snaps,
+    (candidate) => anchor?.target === candidate.id ? anchor.offset : ruleOffset, !!basePoints)
   if (hit) {
     group.position.set(hit.position[0], hit.position[1] + size[1] / 2, hit.position[2])
     if (correctPosition()) hit = null

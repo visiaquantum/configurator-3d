@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid'
 import type { ConfiguratorState, ConfiguratorStore } from '../state/store'
-import type { CatalogItem, PlacedItem, Vec3 } from '../types'
+import type { AnchorOffsetRule, CatalogItem, PlacedItem, Vec3 } from '../types'
 import { connectionsAtPose } from '../assembly/manifest'
 import { assemblyMembers, dedupeJoints, jointsOf, jointsSurvivingMove } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
@@ -8,7 +8,7 @@ import { selectCanMove, selectCollisionBounds, selectEffectiveAnchors } from '..
 import { assemblyPosePatches } from './mating'
 import { computePartnerPlacement, MIRROR_PAIR_RULE, mirrorPairConstraint } from './mirrorPair'
 import { itemHeight } from './assemblyPlacement'
-import { withAnchorConstraint } from './itemMovement'
+import { ANCHOR_AXES, anchorConstraintOf, anchorOffsetRule, commitLiveItemPatches, keptInside, ruleAnchorOffset, withAnchorConstraint, withAnchorOffset } from './itemMovement'
 import { own } from '../util/record'
 
 /**
@@ -39,7 +39,11 @@ export function addItemToScene(store: ConfiguratorStore, product: CatalogItem, o
   return id
 }
 
-/** Seat an item's whole assembly on an enclosure anchor, or release the anchor with `null`. */
+/**
+ * Seat an item's whole assembly on an enclosure anchor, or release the anchor
+ * with `null`. A product with the `anchorOffset` rule is seated at the rule's
+ * distance from the anchor.
+ */
 export function snapAssemblyToAnchor(store: ConfiguratorStore, id: string, anchorId: string | null): void {
   const state = store.getState()
   const item = state.project?.items.find((entry) => entry.id === id)
@@ -51,10 +55,42 @@ export function snapAssemblyToAnchor(store: ConfiguratorStore, id: string, ancho
   const anchor = selectEffectiveAnchors(state).find((candidate) => candidate.id === anchorId)
   if (!anchor) return
   const members = assemblyMembers(state.project.items, jointsOf(state.project), id)
-  state.updateItems(assemblyPosePatches(state.project.items, members, item, { position: anchor.position, rotation: item.rotation })
+  const offset = ruleAnchorOffset(anchorOffsetRule(state, item.catalogId))
+  const position = anchor.position.map((value, axis) => value + (offset?.[axis] ?? 0)) as Vec3
+  state.updateItems(assemblyPosePatches(state.project.items, members, item, { position, rotation: item.rotation })
     .map((entry) => entry.id === id
-      ? { ...entry, patch: { ...entry.patch, constraints: withAnchorConstraint(item, { type: 'snapToAnchor', target: anchor.id }) } }
+      ? { ...entry, patch: { ...entry.patch, constraints: withAnchorConstraint(item, { type: 'snapToAnchor', target: anchor.id, ...(offset ? { offset } : {}) }) } }
       : entry))
+}
+
+/**
+ * Set the distance of an anchored item from its enclosure anchor, in metres,
+ * on the axes its product's `anchorOffset` rule lists; the other axes and
+ * non-finite values are left as they are. The whole assembly takes the step
+ * as one body and stays inside the enclosure, so the distance committed is
+ * the one that fits. One undo entry.
+ */
+export function setAnchorOffset(store: ConfiguratorStore, id: string, distance: AnchorOffsetRule): void {
+  const state = store.getState()
+  const item = state.project?.items.find((entry) => entry.id === id)
+  const held = item && anchorConstraintOf(item)
+  const rule = item && anchorOffsetRule(state, item.catalogId)
+  if (!state.project || !item || !held || !rule || !selectCanMove(state, id)) return
+  const current = held.offset ?? [0, 0, 0]
+  const wanted: Vec3 = [...current]
+  ANCHOR_AXES.forEach((axis, index) => {
+    if (rule[axis] !== undefined && Number.isFinite(distance[axis])) wanted[index] = distance[axis]!
+  })
+  if (wanted.every((value, axis) => Math.abs(value - current[axis]) < 1e-9)) return
+  const members = assemblyMembers(state.project.items, jointsOf(state.project), id)
+  const position = item.position.map((value, axis) => value + wanted[axis] - current[axis]) as Vec3
+  const patches = keptInside(state, assemblyPosePatches(state.project.items, members, item, { position, rotation: item.rotation }))
+  // What the enclosure took back comes off the distance, to the micron.
+  const placed = patches.find((entry) => entry.id === id)!.patch.position!
+  const offset = wanted.map((value, axis) => Math.round((value + placed[axis] - position[axis]) * 1e6) / 1e6) as Vec3
+  commitLiveItemPatches(store, patches.map((entry) => entry.id === id
+    ? { ...entry, patch: { ...entry.patch, constraints: withAnchorConstraint(item, withAnchorOffset(held, offset)) } }
+    : entry))
 }
 
 /** Release every joint of one item; it stays where it is. */

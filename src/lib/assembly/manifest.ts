@@ -90,6 +90,10 @@ const ProductSchema = z.object({
   sideHoleSnaps: z.boolean().optional(),
   mirrorPair: z.object({ axis: DirectionSchema.optional(), distances: z.array(z.number().positive()).min(1).optional() }).optional(),
   bays: z.array(z.number().positive()).min(1).optional(),
+  anchorPoints: z.array(z.string().min(1)).min(1)
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'Duplicate anchor point id' }).optional(),
+  anchorOffset: z.object({ x: z.number().optional(), y: z.number().optional(), z: z.number().optional() }).strict()
+    .refine((offset) => Object.values(offset).some((value) => value !== undefined), { message: 'anchorOffset lists at least one axis: x, y or z' }).optional(),
   directions: DirectionsSchema.optional(),
   assetCorrections: z.array(z.object({
     asset: Sha,

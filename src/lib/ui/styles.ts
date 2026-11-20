@@ -72,6 +72,12 @@ ${themeStyles}
 .cfg-coordinates { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
 .cfg-coordinates span { padding: 8px; background: var(--cfg-surface-muted); border: 1px solid var(--cfg-line); border-radius: 7px; font: 12px ui-monospace, monospace; }
 .cfg-coordinates b { display: block; color: var(--cfg-text-subtle); font-size: 10px; font-weight: 400; margin-bottom: 5px; }
+.cfg-anchor-offset { display: grid; grid-template-columns: repeat(2,1fr); gap: 6px; }
+.cfg-anchor-offset label { padding: 8px; background: var(--cfg-surface-muted); border: 1px solid var(--cfg-line); border-radius: 7px; }
+.cfg-anchor-offset label:focus-within { border-color: var(--cfg-accent-line); }
+.cfg-anchor-offset b { display: block; color: var(--cfg-text-subtle); font-size: 10px; font-weight: 400; margin-bottom: 5px; }
+.cfg-anchor-offset input { width: 100%; min-width: 0; padding: 0; border: 0; outline: 0; background: transparent; color: var(--cfg-text); font: 12px ui-monospace, monospace; }
+.cfg-anchor-offset input:disabled { color: var(--cfg-text-muted); }
 .cfg-inspector details { border-top: 1px solid var(--cfg-line); margin-top: 14px; padding-top: 12px; font-size: 12px; color: var(--cfg-text-secondary); }
 .cfg-inspector summary { cursor: pointer; padding: 3px 0; }
 .cfg-inspector .cfg-pair-options { display: grid; gap: 6px; margin-top: 10px; }

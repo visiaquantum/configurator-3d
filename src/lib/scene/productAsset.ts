@@ -107,7 +107,7 @@ export function prepareProductAsset(source: Object3D, catalog: CatalogItem): Pre
         .map((point) => {
           const direction = own(directions, point.id) ?? own(directions, point.kind)
           return {
-            id: point.id, kind: point.kind, position: toLocal(point.position),
+            id: point.id, kind: point.kind, ...(point.label ? { label: point.label } : {}), position: toLocal(point.position),
             ...(direction ? { normal: unit(direction) } : point.normal ? { normal: point.normal } : {}),
           }
         }),

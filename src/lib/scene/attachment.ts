@@ -1,23 +1,34 @@
 import type { ConfiguratorStore } from '../state/store'
 import type { AssemblyView } from '../state/selectors'
-import type { Euler, ItemSnapPoint } from '../types'
+import type { Anchor, AnchorOffsetRule, Euler, ItemSnapPoint, Vec3 } from '../types'
 import { DEFAULT_SNAP_TOLERANCE, connectorForSnap, connectorsCanMate, definitionFor } from '../assembly/manifest'
-import { canMate, kindMatesWithAny, positionForItemSnap, snapsForItem, yawToMate } from './mating'
+import { assemblyPosePatches, canMate, kindMatesWithAny, positionForItemSnap, snapsForItem, yawToMate } from './mating'
 import { assemblyMembers, jointsOf, pointUse } from '../assembly/graph'
 import type { Joint } from '../assembly/graph'
 import { worldPoint } from './geometry'
-import { itemHeight, previewAssemblyPlacement } from './assemblyPlacement'
-import { assemblyCanMove } from './itemMovement'
+import { containmentStep, itemHeight, previewAssemblyPlacement } from './assemblyPlacement'
+import { ANCHOR_AXES, anchorConstraintOf, anchorOffset, anchorOffsetRule, anchorPointIds, anchoredBasePosition, assemblyCanMove, ruleAnchorOffset, withAnchorConstraint } from './itemMovement'
+import { selectEffectiveAnchors } from '../state/selectors'
 import { own } from '../util/record'
 
 export interface AttachmentInteraction {
-  stage: 'menu' | 'source' | 'target' | 'point'
+  /**
+   * `source` picks a point of the item. A base point then goes to `anchor`
+   * (an enclosure anchor, then the distance from it); any other to `target`
+   * and `point` (another item, then one of its points).
+   */
+  stage: 'menu' | 'source' | 'target' | 'point' | 'anchor'
   sourceItemId: string
   sourcePointId?: string
   targetItemId?: string
   hoveredItemId?: string
   hoveredPointId?: string
   selectedPointId?: string
+  /** Stage `anchor`: the enclosure anchor chosen for the base point. */
+  anchorId?: string
+  hoveredAnchorId?: string
+  /** Stage `anchor`: distance from the chosen anchor being set, metres, scene frame. */
+  anchorDistance?: Vec3
   menuPosition?: [number, number]
   previousXray: boolean
   error?: string
@@ -42,11 +53,18 @@ const POINT_MESSAGES: Record<AttachmentPointStatus, string> = {
   'bay-not-allowed': 'Campata non ammessa per questo componente',
 }
 
+/** Whether a point is one of the base points its product is seated on the vehicle by. */
+export function isAnchorPoint(state: Pick<AssemblyView, 'project' | 'assemblyManifest'>, itemId: string, pointId: string): boolean {
+  const item = state.project?.items.find((entry) => entry.id === itemId)
+  return !!item && !!anchorPointIds(state, item.catalogId)?.includes(pointId)
+}
+
 /**
  * Every interface of an item, with whether it can take `source` and why not:
  * occupied, incompatible family, or a mirror-pair spacing the source part does
- * not fit. Points without a manifest connector are not interfaces and are left
- * out; positions include the reflection of mirrored halves.
+ * not fit. Points with neither a manifest connector nor a place among the
+ * product's base points are not interfaces and are left out; positions
+ * include the reflection of mirrored halves.
  */
 export function attachmentPointStates(state: AssemblyView, itemId: string, source?: { itemId: string; pointId: string }): AttachmentPointState[] {
   const item = state.project?.items.find((entry) => entry.id === itemId)
@@ -66,7 +84,7 @@ export function attachmentPointStates(state: AssemblyView, itemId: string, sourc
   for (const point of snapsForItem(item, state.itemSnaps, state.itemRules)) {
     // The manifest names the interfaces; without one, the kind table does.
     const connector = connectorForSnap(definition, point)
-    if (state.assemblyManifest ? !connector : !kindMatesWithAny(point.kind)) continue
+    if (state.assemblyManifest ? !connector && !definition?.anchorPoints?.includes(point.id) : !kindMatesWithAny(point.kind)) continue
     let status: AttachmentPointStatus = 'free'
     if (pointUse(joints, itemId, point.id) >= (connector?.capacity ?? 1)) status = 'occupied'
     else if (source && (!sourcePoint || (state.assemblyManifest
@@ -153,6 +171,34 @@ export function computeAttachmentPreview(state: AssemblyView, sourceId: string, 
   }
 }
 
+/**
+ * Pure preview of an item seated by one of its base points on an enclosure
+ * anchor, `distance` away from it (default: the product rule's). The assembly
+ * comes along as one body and stays inside the enclosure: `offset` is the
+ * distance that fits, `limited` says the enclosure took some of it back.
+ */
+export function computeAnchorPlacement(state: AssemblyView, sourceId: string, pointId: string, anchor: Anchor, distance?: Vec3) {
+  const project = state.project
+  const source = project?.items.find((item) => item.id === sourceId)
+  const rejected = (error: string) => ({ valid: false as const, error, patches: [], offset: undefined, limited: false })
+  if (!project || !source || !assemblyCanMove(state, sourceId)) return rejected('Il componente non è modificabile')
+  const size = own(state.itemSizes, source.catalogId)
+  const snaps = snapsForItem(source, state.itemSnaps, state.itemRules)
+  if (!size || !isAnchorPoint(state, sourceId, pointId) || !snaps.some((point) => point.id === pointId)) return rejected('Punto di base non disponibile')
+  const wanted = distance ?? ruleAnchorOffset(anchorOffsetRule(state, source.catalogId)) ?? [0, 0, 0]
+  const members = assemblyMembers(project.items, jointsOf(project), sourceId)
+  const seat = anchoredBasePosition(anchor, { point: pointId, offset: wanted }, source.rotation, snaps, size)
+  const step = containmentStep(state, assemblyPosePatches(project.items, members, source, { position: seat, rotation: source.rotation }))
+  const position = seat.map((value, axis) => value + (step?.[axis] ?? 0)) as Vec3
+  const offset = anchorOffset(wanted.map((value, axis) => Math.round((value + (step?.[axis] ?? 0)) * 1e6) / 1e6) as Vec3)
+  const { patches, issues } = previewAssemblyPlacement(state, source, { position, rotation: source.rotation }, null)
+  // As for a joint: an assembly larger than the van is reported, not refused.
+  const blocking = issues.find((issue) => issue.code !== 'out-of-bounds')
+  const entry = patches.find((patch) => patch.id === sourceId)
+  if (entry) entry.patch.constraints = withAnchorConstraint(source, { type: 'snapToAnchor', target: anchor.id, point: pointId, ...(offset ? { offset } : {}) })
+  return { valid: !blocking, error: blocking?.message, patches, offset, limited: !!step }
+}
+
 export function beginAttachment(store: ConfiguratorStore, itemId: string, menuPosition?: [number, number]): boolean {
   const state = store.getState()
   if (!assemblyCanMove(state, itemId) || !state.itemRegistry.has(itemId) || (!menuPosition && attachmentPoints(state, itemId).length === 0)) return false
@@ -170,7 +216,9 @@ export function chooseAttachmentPoint(store: ConfiguratorStore, pointId: string)
   if (!interaction || !assemblyCanMove(state, interaction.sourceItemId)) return false
   if (interaction.stage === 'source') {
     if (!attachmentPoints(state, interaction.sourceItemId).some((point) => point.id === pointId)) return false
-    state.setAttachment({ ...interaction, stage: 'target', sourcePointId: pointId, hoveredPointId: undefined, error: undefined })
+    // A base point goes on the vehicle: its destinations are the enclosure's anchors.
+    const stage = isAnchorPoint(state, interaction.sourceItemId, pointId) ? 'anchor' : 'target'
+    state.setAttachment({ ...interaction, stage, sourcePointId: pointId, hoveredPointId: undefined, error: undefined })
     return true
   }
   if (interaction.stage !== 'point' || !interaction.sourcePointId || !interaction.targetItemId) return false
@@ -196,8 +244,57 @@ export function selectAttachmentPoint(store: ConfiguratorStore, pointId: string)
   store.getState().setAttachment({ ...interaction, selectedPointId: pointId, hoveredPointId: undefined, error: undefined })
 }
 
+/**
+ * Choose the enclosure anchor the base point goes on. The distance starts
+ * from the one this same hold already has, or from the product rule's.
+ */
+export function chooseAttachmentAnchor(store: ConfiguratorStore, anchorId: string): boolean {
+  const state = store.getState()
+  const interaction = state.attachment
+  const source = state.project?.items.find((item) => item.id === interaction?.sourceItemId)
+  if (interaction?.stage !== 'anchor' || !source || !selectEffectiveAnchors(state).some((anchor) => anchor.id === anchorId)) return false
+  const held = anchorConstraintOf(source)
+  const distance = held?.target === anchorId && held.point === interaction.sourcePointId
+    ? held.offset : ruleAnchorOffset(anchorOffsetRule(state, source.catalogId))
+  state.setAttachment({ ...interaction, anchorId, anchorDistance: [...(distance ?? [0, 0, 0])], hoveredAnchorId: undefined, error: undefined })
+  return true
+}
+
+/** Set the distance from the chosen anchor, in metres, on the axes the product rule lists. */
+export function setAttachmentAnchorDistance(store: ConfiguratorStore, distance: AnchorOffsetRule): void {
+  const state = store.getState()
+  const interaction = state.attachment
+  const source = state.project?.items.find((item) => item.id === interaction?.sourceItemId)
+  const rule = source && anchorOffsetRule(state, source.catalogId)
+  if (interaction?.stage !== 'anchor' || !interaction.anchorId || !rule) return
+  const next: Vec3 = [...(interaction.anchorDistance ?? [0, 0, 0])]
+  ANCHOR_AXES.forEach((axis, index) => {
+    if (rule[axis] !== undefined && Number.isFinite(distance[axis])) next[index] = distance[axis]!
+  })
+  state.setAttachment({ ...interaction, anchorDistance: next, error: undefined })
+}
+
+/** A base point that also mates with other products: offer those instead of the anchors. */
+export function attachToItemsInstead(store: ConfiguratorStore): void {
+  const state = store.getState()
+  if (state.attachment?.stage !== 'anchor') return
+  state.setAttachment({ ...state.attachment, stage: 'target', anchorId: undefined, anchorDistance: undefined, hoveredAnchorId: undefined, error: undefined })
+}
+
 export function confirmAttachment(store: ConfiguratorStore): boolean {
-  const pointId = store.getState().attachment?.selectedPointId
+  const state = store.getState()
+  const interaction = state.attachment
+  if (interaction?.stage === 'anchor') {
+    const anchor = selectEffectiveAnchors(state).find((entry) => entry.id === interaction.anchorId)
+    if (!anchor || !interaction.sourcePointId) return false
+    const result = computeAnchorPlacement(state, interaction.sourceItemId, interaction.sourcePointId, anchor, interaction.anchorDistance)
+    if (!result.valid) { state.setAttachment({ ...interaction, error: result.error }); return false }
+    state.updateItems(result.patches)
+    store.getState().setAttachment(null)
+    store.setState({ interactionNotice: result.limited ? 'Ancoraggio completato: distanza ridotta per restare nel vano' : 'Ancoraggio completato' })
+    return true
+  }
+  const pointId = interaction?.selectedPointId
   return !!pointId && chooseAttachmentPoint(store, pointId)
 }
 
@@ -205,8 +302,11 @@ export function backAttachment(store: ConfiguratorStore): void {
   const state = store.getState()
   const interaction = state.attachment
   if (!interaction) return
-  state.setAttachment({ ...interaction, stage: interaction.stage === 'point' ? 'target' : 'source',
+  const cleared = { anchorId: undefined, anchorDistance: undefined, hoveredAnchorId: undefined, error: undefined }
+  // From the distances back to the choice of the anchor, then to the point.
+  if (interaction.stage === 'anchor' && interaction.anchorId) { state.setAttachment({ ...interaction, ...cleared }); return }
+  state.setAttachment({ ...interaction, ...cleared, stage: interaction.stage === 'point' ? 'target' : 'source',
     ...(interaction.stage !== 'point' ? { sourcePointId: undefined } : {}),
-    targetItemId: undefined, selectedPointId: undefined, hoveredPointId: undefined, hoveredItemId: undefined, error: undefined })
+    targetItemId: undefined, selectedPointId: undefined, hoveredPointId: undefined, hoveredItemId: undefined })
   if (interaction.stage === 'menu') state.setXrayEnabled(true)
 }

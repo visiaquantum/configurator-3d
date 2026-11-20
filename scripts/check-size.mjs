@@ -8,7 +8,10 @@ import { gzipSync } from 'node:zlib'
 // that does not import them drops them when it bundles (`sideEffects: false`).
 // 72 → 74 kB: validated stepping between support holes and the shared
 // mouse/touch attachment preview and confirmation flow.
-const BUDGET_KB = 74
+// 74 → 76 kB: seating a product on the vehicle's anchors, by its base points
+// and at a distance from them (anchor stage of the guided attachment, its
+// preview and containment, the distance fields).
+const BUDGET_KB = 76
 const bundle = new URL('../dist/configurator-3d.js', import.meta.url)
 const size = gzipSync(await readFile(bundle)).length / 1024
 console.log(`dist/configurator-3d.js: ${size.toFixed(1)} kB gzip (budget ${BUDGET_KB} kB)`)

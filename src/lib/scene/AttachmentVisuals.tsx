@@ -2,8 +2,8 @@ import { useEffect, useMemo } from 'react'
 import { Mesh, MeshBasicMaterial } from 'three'
 import { useShallow } from 'zustand/react/shallow'
 import { useConfiguratorStore } from '../state/store'
-import { selectAssemblyView } from '../state/selectors'
-import { computeAttachmentPreview } from './attachment'
+import { selectAssemblyView, selectEffectiveAnchors } from '../state/selectors'
+import { computeAnchorPlacement, computeAttachmentPreview } from './attachment'
 import { own } from '../util/record'
 
 /** Ghosts never enter the item registry or mutate the live assembly. */
@@ -14,9 +14,18 @@ export function AttachmentVisuals() {
   const sourcePoint = interaction?.sourcePointId
   const targetId = interaction?.targetItemId
   const targetPoint = interaction?.selectedPointId ?? interaction?.hoveredPointId
-  const preview = useMemo(() => sourceId && sourcePoint && targetId && targetPoint && interaction?.stage === 'point'
-    ? computeAttachmentPreview(state, sourceId, sourcePoint, targetId, targetPoint) : null,
-  [state, sourceId, sourcePoint, targetId, targetPoint, interaction?.stage])
+  // The anchor stage shows where the part would sit on the anchor pointed at, or on the one chosen.
+  const anchors = useConfiguratorStore(selectEffectiveAnchors)
+  const anchorId = interaction?.anchorId ?? interaction?.hoveredAnchorId
+  const anchorDistance = interaction?.anchorId ? interaction.anchorDistance : undefined
+  const preview = useMemo(() => {
+    if (!sourceId || !sourcePoint) return null
+    if (interaction?.stage === 'anchor') {
+      const anchor = anchors.find((entry) => entry.id === anchorId)
+      return anchor ? computeAnchorPlacement(state, sourceId, sourcePoint, anchor, anchorDistance) : null
+    }
+    return targetId && targetPoint && interaction?.stage === 'point' ? computeAttachmentPreview(state, sourceId, sourcePoint, targetId, targetPoint) : null
+  }, [state, sourceId, sourcePoint, targetId, targetPoint, interaction?.stage, anchors, anchorId, anchorDistance])
   // Two ghost materials for the whole session, not one per hover change.
   const ghostMaterials = useMemo(() => ({
     valid: new MeshBasicMaterial({ color: '#46e8bc', transparent: true, opacity: 0.35, depthWrite: false, toneMapped: false }),

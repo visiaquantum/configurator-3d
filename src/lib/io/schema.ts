@@ -29,7 +29,7 @@ const EnclosureSchema = z.object({
 // type needs. Widening the set since v1 stays backward compatible.
 const Id = z.string().min(1)
 const ItemConstraintSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('snapToAnchor'), target: Id, corner: z.number().int().min(0).max(3).optional(), point: Id.optional() }),
+  z.object({ type: z.literal('snapToAnchor'), target: Id, corner: z.number().int().min(0).max(3).optional(), point: Id.optional(), offset: Vec3Schema.optional() }),
   z.object({ type: z.literal('snapToItem'), target: Id, point: Id, targetPoint: Id }),
   z.object({ type: z.literal('lockAxis'), axis: z.enum(['x', 'y', 'z']) }),
   z.object({ type: z.literal('mirrorPair'), target: Id, distance: z.number().positive().optional() }),

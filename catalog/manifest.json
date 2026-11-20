@@ -56,9 +56,17 @@
           -1
         ]
       },
+      "anchorPoints": [
+        "stack-bottom",
+        "base_retro"
+      ],
+      "anchorOffset": {
+        "x": 0,
+        "z": 0
+      },
       "assetCorrections": [
         {
-          "asset": "79abe7daccd52677",
+          "asset": "ff1363319438f394",
           "reason": "Il GLB ha un solo marker SNAP_SOVRAPPOSIZIONE, senza nome stabile, e nessun punto di appoggio superiore: base, testa e appoggio sono dichiarati qui. I fori li genera la colonna di fori.",
           "points": [
             {
@@ -324,9 +332,17 @@
           -1
         ]
       },
+      "anchorPoints": [
+        "stack-bottom",
+        "base_retro"
+      ],
+      "anchorOffset": {
+        "x": 0,
+        "z": 0
+      },
       "assetCorrections": [
         {
-          "asset": "a9c4fb895bc45dbc",
+          "asset": "53b19f2488b98c24",
           "reason": "Il GLB ha un solo marker SNAP_SOVRAPPOSIZIONE, senza nome stabile, e nessun punto di appoggio superiore: base, testa e appoggio sono dichiarati qui. I fori li genera la colonna di fori.",
           "points": [
             {
@@ -1404,7 +1420,7 @@
       ],
       "assetCorrections": [
         {
-          "asset": "8cb639f764d5d1d0",
+          "asset": "85727ac3331e7e1c",
           "reason": "GLB YSI02436: marker interni ed esterni al piede; colonne anteriori e posteriori a passo 36 mm. Sedi ripiani e traverse mantenute alle quote del KIT01 (traverse −1.3 mm per i pezzi singoli), con normali verso l’interno.",
           "points": [
             {
@@ -1465,6 +1481,21 @@
                 0,
                 0,
                 -1
+              ]
+            },
+            {
+              "id": "stack-bottom",
+              "label": "Base su fianco",
+              "kind": "sovrapposizione",
+              "position": [
+                0.36,
+                0,
+                0
+              ],
+              "normal": [
+                0,
+                0,
+                1
               ]
             }
           ]
@@ -1623,6 +1654,14 @@
           0,
           -1
         ]
+      },
+      "anchorPoints": [
+        "stack-bottom",
+        "base_retro"
+      ],
+      "anchorOffset": {
+        "x": 0,
+        "z": 0
       },
       "holeColumns": [
         {

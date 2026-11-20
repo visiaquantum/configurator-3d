@@ -19,6 +19,10 @@ import type { Vec3 } from '../types'
  *    `userData.snapKind` (or `userData.id`, or the node name) supplies the
  *    kind, `userData.id` the stable id.
  *
+ * In every form the node extras may add `normal: [x, y, z]`, the mating
+ * direction when no single face owns the point, and `label`, the name shown
+ * to the user.
+ *
  * Names are read as written in the GLB (`userData.name`, kept by
  * GLTFLoader), before the loader appends `_1` to repeated names: a duplicated
  * stable name is reported, never silently renamed.
@@ -54,6 +58,8 @@ export interface ExtractedSnapPoint {
   position: Vec3
   /** Outward normal of the bbox face the point lies on, if one is clear. */
   normal?: Vec3
+  /** Name shown to the user, from the node extras. */
+  label?: string
   /** The marker's name as written in the GLB. */
   name?: string
   /** True when the id comes from the file (stable name or extras id), not from traversal order. */
@@ -87,6 +93,7 @@ interface RawSnapNode {
   name: string
   explicitId?: string
   normal?: Vec3
+  label?: string
 }
 
 /** The name as authored: GLTFLoader keeps it in `userData.name` before making it unique. */
@@ -156,7 +163,8 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
       normal = direction.toArray() as Vec3
     }
     const explicitId = stableId ?? (ud.kind === 'snap' && typeof ud.id === 'string' && ud.id ? ud.id : undefined)
-    raw.push({ kind, position, node: obj, name, normal, explicitId })
+    const label = typeof ud.label === 'string' && ud.label ? ud.label : undefined
+    raw.push({ kind, position, node: obj, name, normal, explicitId, label })
   })
 
   if (raw.length === 0) return []
@@ -184,7 +192,7 @@ export function extractItemSnapsFromObject(root: Object3D): ExtractedSnapNode[] 
     }
     const normal = r.normal ?? (hasBox ? faceNormalFor(r.position, _modelBox) : undefined)
     return {
-      extracted: { id, kind: r.kind, position: r.position, normal, name: r.name, stable: !!r.explicitId },
+      extracted: { id, kind: r.kind, position: r.position, normal, ...(r.label ? { label: r.label } : {}), name: r.name, stable: !!r.explicitId },
       node: r.node,
     }
   })
